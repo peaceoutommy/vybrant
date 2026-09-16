@@ -3,3 +3,7 @@ bin/
 Makefile
 *.o
 .qmake.stash
+# project files / autosaves / recordings live outside version control
+*.mtp
+*.mtp.autosave
+Recordings/

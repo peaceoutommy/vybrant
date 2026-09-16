@@ -61,6 +61,7 @@ void PianoRollView::renderCache() {
     Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar(); Tick step = snapTicks(); if (step * m_ppt < 8) step = beat; if (beat * m_ppt < 8) step = bar; Tick barStep = bar; while (barStep * m_ppt < 10) barStep *= 2; if (bar * m_ppt < 10) step = barStep; Tick first = (m_scrollTick / step) * step; Tick last = xToTick(L.grid.right());
     for (Tick t = first; t <= last; t += step) { int x = tickToX(t); QColor c = (t % bar == 0) ? theme::gridStrong().lighter(130) : (t % beat == 0) ? theme::gridStrong() : theme::grid(); p.setPen(c); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
     if (patLen > 0) { int x = tickToX(patLen); p.fillRect(QRect(x, L.grid.top(), L.grid.right() - x, L.grid.height()), QColor(0, 0, 0, 60)); p.setPen(theme::accent()); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
+    if (m_timeSel) { int x1 = tickToX(m_selStart), x2 = tickToX(m_selEnd); p.fillRect(QRect(x1, L.grid.top(), x2 - x1, L.grid.height()), theme::withAlpha(theme::accent(), 22)); p.setPen(QPen(theme::withAlpha(theme::accent(), 160), 1)); p.drawLine(x1, L.grid.top(), x1, L.grid.bottom()); p.drawLine(x2, L.grid.top(), x2, L.grid.bottom()); }
     // ghost notes
     if (m_ghost && pat) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; const Channel* ch = m_app.project().channel(oc.id); QColor c = ch ? ch->color : theme::textDim(); c.setAlpha(70); for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; p.fillRect(r.adjusted(0, 1, -1, -1), c); } }
     // notes
@@ -71,6 +72,7 @@ void PianoRollView::renderCache() {
     p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont());
     Tick rstep = beat * m_ppt >= 6 ? beat : barStep; Tick lstep = barStep; while (lstep * m_ppt < 34) lstep *= 2;
     for (Tick t = (m_scrollTick / rstep) * rstep; t <= last; t += rstep) { int x = tickToX(t); bool isBar = t % bar == 0; bool labeled = t % lstep == 0; p.setPen(labeled ? theme::text() : theme::textDim()); p.drawLine(x, labeled ? L.ruler.top() + 6 : (isBar ? L.ruler.top() + 11 : L.ruler.top() + 15), x, L.ruler.bottom()); if (labeled) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1)); }
+    if (m_timeSel) { int x1 = tickToX(m_selStart), x2 = tickToX(m_selEnd); p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), theme::accent()); }
     p.setClipping(false);
     // keys
     p.fillRect(L.keys, theme::panel()); p.setClipRect(L.keys);
@@ -112,7 +114,7 @@ void PianoRollView::previewNote(int pitch, bool on) { if (on) { m_app.selectChan
 void PianoRollView::mousePressEvent(QMouseEvent* e) {
     setFocus(); Layout L = layout(); m_pressPos = m_lastPos = e->pos(); m_altHeld = e->modifiers() & Qt::AltModifier;
     if (e->button() == Qt::MiddleButton) { m_drag = Pan; return; }
-    if (L.ruler.contains(e->pos())) { Tick t = snap(xToTick(e->pos().x())); if (!m_app.project().transport.songMode) m_app.seek(std::max<Tick>(0, t)); return; }
+    if (L.ruler.contains(e->pos())) { Tick t = std::max<Tick>(0, snapNear(xToTick(e->pos().x()))); if (e->modifiers() & Qt::ControlModifier) { m_drag = TimeSelect; m_selAnchor = t; m_selStart = m_selEnd = t; m_timeSel = false; invalidate(); return; } if (m_timeSel) { m_timeSel = false; invalidate(); } if (!m_app.project().transport.songMode) m_app.seek(t); return; }
     if (L.keys.contains(e->pos())) { int pitch = yToPitch(e->pos().y()); m_previewPitch = pitch; previewNote(pitch, true); if (m_noteRepeat) m_repeatTimer.start((int)(ticksToSeconds(snapTicks(), m_app.project().transport.bpm) * 1000)); m_drag = KeyPreview; invalidate(); return; }
     if (L.vel.contains(e->pos())) { beginEdit(); m_drag = Velocity; mouseMoveEvent(e); return; }
     if (!L.grid.contains(e->pos())) return;
@@ -138,6 +140,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     m_hoverPos = e->pos(); m_altHeld = e->modifiers() & Qt::AltModifier; Layout L = layout(); PatternChannelData* d = data();
     if (m_drag == NoDrag) { bool edge = false; Note* n = L.grid.contains(e->pos()) ? noteAt(e->pos(), &edge) : nullptr; if (m_tool != Erase) setCursor(n && edge ? Qt::SizeHorCursor : (n ? Qt::SizeAllCursor : (m_tool == Select ? Qt::CrossCursor : Qt::ArrowCursor))); if (m_tool == Draw) update(); return; }
     if (m_drag == Pan) { int dx = e->pos().x() - m_lastPos.x(), dy = e->pos().y() - m_lastPos.y(); m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(dx / m_ppt)); m_topPitch = clamp(m_topPitch + dy / m_rowH, 10, 127); m_lastPos = e->pos(); updateScrollbars(); invalidate(); return; }
+    if (m_drag == TimeSelect) { Tick t = std::max<Tick>(0, snapNear(xToTick(e->pos().x()))); m_selStart = std::min(m_selAnchor, t); m_selEnd = std::max(m_selAnchor, t); m_timeSel = m_selEnd > m_selStart; invalidate(); return; }
     if (m_drag == KeyPreview) { int pitch = yToPitch(e->pos().y()); if (pitch != m_previewPitch && L.keys.contains(e->pos())) { previewNote(m_previewPitch, false); m_previewPitch = pitch; previewNote(pitch, true); invalidate(); } return; }
     if (!d) return;
     if (m_drag == Velocity) { float v = clamp((float)(L.vel.bottom() - e->pos().y()) / (L.vel.height() - 6), 0.f, 1.f); Tick t = xToTick(e->pos().x()); bool any = !m_selected.empty(); for (auto& n : d->notes) { int x = tickToX(n.start); if (any ? m_selected.count(n.id) : (std::abs(x - e->pos().x()) <= 4)) n.velocity = v; } m_lastVelocity = v; (void)t; invalidate(); return; }
@@ -202,7 +205,7 @@ void PianoRollView::keyPressEvent(QKeyEvent* e) {
     case Qt::Key_Up: transpose((ctrl || (e->modifiers() & Qt::ShiftModifier)) ? 12 : 1); return;
     case Qt::Key_Down: transpose((ctrl || (e->modifiers() & Qt::ShiftModifier)) ? -12 : -1); return;
     case Qt::Key_Left: case Qt::Key_Right: { if (m_selected.empty()) break; Tick dt = (e->key() == Qt::Key_Left ? -1 : 1) * (ctrl ? PPQ / 32 : snapTicks()); beginEdit(); Tick minS = LLONG_MAX; for (auto& n : d->notes) if (m_selected.count(n.id)) minS = std::min(minS, n.start); if (minS + dt < 0) dt = -minS; for (auto& n : d->notes) if (m_selected.count(n.id)) n.start += dt; commitEdit("Move notes"); return; }
-    case Qt::Key_Escape: m_selected.clear(); invalidate(); return;
+    case Qt::Key_Escape: m_selected.clear(); m_timeSel = false; invalidate(); return;
     case Qt::Key_1: setTool(Draw); Q_EMIT toolChanged(Draw); return; case Qt::Key_2: setTool(Select); Q_EMIT toolChanged(Select); return; case Qt::Key_3: setTool(Erase); Q_EMIT toolChanged(Erase); return;
     default: break;
     }
@@ -219,11 +222,16 @@ void PianoRollView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
 
 // ---------------------------------------------------------------- tools
 void PianoRollView::selectAll() { PatternChannelData* d = data(); if (!d) return; for (auto& n : d->notes) m_selected.insert(n.id); invalidate(); }
-void PianoRollView::deleteSelected() { PatternChannelData* d = data(); if (!d || m_selected.empty()) return; beginEdit(); std::erase_if(d->notes, [this](const Note& n) { return m_selected.count(n.id) > 0; }); m_selected.clear(); commitEdit("Delete notes"); }
+void PianoRollView::deleteSelected() { PatternChannelData* d = data(); if (!d) return; if (m_selected.empty() && m_timeSel) { beginEdit(); std::erase_if(d->notes, [this](const Note& n) { return n.start >= m_selStart && n.start < m_selEnd; }); commitEdit("Delete notes in selection"); return; } if (m_selected.empty()) return; beginEdit(); std::erase_if(d->notes, [this](const Note& n) { return m_selected.count(n.id) > 0; }); m_selected.clear(); commitEdit("Delete notes"); }
 void PianoRollView::copySelected() { PatternChannelData* d = data(); if (!d) return; m_clipboard.clear(); Tick minS = LLONG_MAX; for (auto& n : d->notes) if (m_selected.count(n.id)) { m_clipboard.push_back(n); minS = std::min(minS, n.start); } for (auto& n : m_clipboard) n.start -= minS; }
 void PianoRollView::cutSelected() { copySelected(); deleteSelected(); }
 void PianoRollView::paste() { PatternChannelData* d = data(); if (!d || m_clipboard.empty()) return; beginEdit(); Tick at = m_playTick >= 0 ? snap((Tick)m_playTick, true) : (m_hoverPos.x() > 0 ? snap(xToTick(m_hoverPos.x()), true) : m_scrollTick); m_selected.clear(); for (auto n : m_clipboard) { n.id = m_app.project().newId(); n.start += at; d->notes.push_back(n); m_selected.insert(n.id); } commitEdit("Paste notes"); }
-void PianoRollView::duplicateSelected() { PatternChannelData* d = data(); if (!d || m_selected.empty()) return; beginEdit(); Tick minS = LLONG_MAX, maxE = 0; for (auto& n : d->notes) if (m_selected.count(n.id)) { minS = std::min(minS, n.start); maxE = std::max(maxE, n.start + n.duration); } Tick span = snap(maxE - minS + snapTicks() - 1, true); if (span <= 0) span = maxE - minS; std::vector<Note> copies; for (auto& n : d->notes) if (m_selected.count(n.id)) { Note c = n; c.id = m_app.project().newId(); c.start += span; copies.push_back(c); } m_selected.clear(); for (auto& c : copies) { d->notes.push_back(c); m_selected.insert(c.id); } commitEdit("Duplicate notes"); }
+void PianoRollView::duplicateSelected() {
+    PatternChannelData* d = data(); if (!d) return;
+    if (m_timeSel) { // FL-style: duplicate the notes inside the time selection to right after it and move the selection along
+        Tick span = m_selEnd - m_selStart; beginEdit(); std::vector<Note> copies; for (auto& n : d->notes) { bool inside = m_selected.empty() ? (n.start >= m_selStart && n.start < m_selEnd) : m_selected.count(n.id) > 0; if (inside) { Note c = n; c.id = m_app.project().newId(); c.start += span; copies.push_back(c); } }
+        m_selected.clear(); for (auto& c : copies) { d->notes.push_back(c); m_selected.insert(c.id); } commitEdit("Duplicate selection"); m_selStart += span; m_selEnd += span; invalidate(); return; }
+    if (m_selected.empty()) return; beginEdit(); Tick minS = LLONG_MAX, maxE = 0; for (auto& n : d->notes) if (m_selected.count(n.id)) { minS = std::min(minS, n.start); maxE = std::max(maxE, n.start + n.duration); } Tick span = snap(maxE - minS + snapTicks() - 1, true); if (span <= 0) span = maxE - minS; std::vector<Note> copies; for (auto& n : d->notes) if (m_selected.count(n.id)) { Note c = n; c.id = m_app.project().newId(); c.start += span; copies.push_back(c); } m_selected.clear(); for (auto& c : copies) { d->notes.push_back(c); m_selected.insert(c.id); } commitEdit("Duplicate notes"); }
 void PianoRollView::quantize(bool lengths) { PatternChannelData* d = data(); if (!d) return; beginEdit(); Tick s = snapTicks(); if (s <= 1) s = PPQ / 4; bool any = !m_selected.empty(); for (auto& n : d->notes) { if (any && !m_selected.count(n.id)) continue; n.start = ((n.start + s / 2) / s) * s; if (lengths) n.duration = std::max<Tick>(s, ((n.duration + s / 2) / s) * s); } commitEdit("Quantize"); }
 void PianoRollView::transpose(int semis) { PatternChannelData* d = data(); if (!d || m_selected.empty()) return; beginEdit(); for (auto& n : d->notes) if (m_selected.count(n.id)) n.pitch = clamp(n.pitch + semis, 0, 127); commitEdit("Transpose"); }
 void PianoRollView::legato() { PatternChannelData* d = data(); if (!d) return; beginEdit(); std::vector<Note*> sel; for (auto& n : d->notes) if (m_selected.empty() || m_selected.count(n.id)) sel.push_back(&n); std::sort(sel.begin(), sel.end(), [](Note* a, Note* b) { return a->start < b->start; }); for (size_t i = 0; i + 1 < sel.size(); ++i) { Tick next = sel[i + 1]->start; if (next > sel[i]->start) sel[i]->duration = next - sel[i]->start; } commitEdit("Legato"); }

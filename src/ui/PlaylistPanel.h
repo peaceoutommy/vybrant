@@ -26,7 +26,7 @@ protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void keyPressEvent(QKeyEvent*) override; void resizeEvent(QResizeEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
     void dragEnterEvent(QDragEnterEvent*) override; void dragMoveEvent(QDragMoveEvent*) override; void dropEvent(QDropEvent*) override;
 private:
-    enum Drag { NoDrag, Moving, ResizingR, ResizingL, Rubber, LoopRange, TrackHeight, Pan, AutoPoint, FadeIn, FadeOut, Erasing };
+    enum Drag { NoDrag, Moving, ResizingR, ResizingL, Rubber, LoopRange, Seek, TrackHeight, Pan, AutoPoint, FadeIn, FadeOut, Erasing };
     struct Layout { int headerW = 170, rulerH = 24; QRect ruler, headers, area; };
     Layout layout() const;
     Tick xToTick(int x) const; int tickToX(Tick t) const; int trackAtY(int y) const; int trackTop(int idx) const; int trackH(int idx) const; Tick snap(Tick t, bool force = false) const; Tick snapRound(Tick t) const; Tick snapNear(Tick t) const; Tick snapTicks() const;

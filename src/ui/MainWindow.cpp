@@ -184,7 +184,7 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
 void MainWindow::showHelp() {
     QMessageBox::information(this, "Quick help", R"(<b>Workflow</b><br>
 Channel Rack: click steps to program beats (right-click erases, wheel = velocity, Ctrl+wheel = pitch). Double-click a channel name to open its instrument. Drag samples/plugins from the Browser onto the rack.<br>
-Piano Roll: draw notes with the pencil (1), select (2), erase (3). Drag note edges to resize, Ctrl+Shift+drag duplicates, Ctrl+Q quantizes, Ctrl+L legato. Ctrl+wheel zooms.<br>
+Piano Roll: draw notes with the pencil (1), select (2), erase (3). Drag note edges to resize, Ctrl+Shift+drag duplicates, Ctrl+Q quantizes, Ctrl+L legato. Ctrl+drag the ruler selects a time area: Ctrl+B duplicates its notes to the right, Delete clears it. Ctrl+wheel zooms.<br>
 Playlist: click to place the selected pattern, drag to move, edges to resize, slice tool (4) splits, mute tool (5). Drag the ruler to set the loop region. Double-click audio clips for stretch/pitch/fades.<br>
 Mixer: double-click an empty slot to add an effect, click to open, drag slots to reorder. Select a strip, then right-click another strip to route / send / sidechain to it.<br>
 Automation: right-click any knob or fader &gt; "Create automation clip". Edit points in the Playlist (double-click adds, right-click for curve types).<br>

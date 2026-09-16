@@ -68,8 +68,13 @@ static float previewEnvelope(double frac, double seconds, float a, float d, floa
 // ---------------------------------------------------------------- sampler editor
 static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
     App& app = *App::instance(); Id owner = ownerOf(s); auto* w = new QWidget(parent); auto* lay = new QVBoxLayout(w); lay->setContentsMargins(4, 4, 4, 4);
-    auto* top = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play", w); play->setToolTip("Hold to audition the sample at its root note (through the channel's mixer track)"); play->setFocusPolicy(Qt::NoFocus); top->addWidget(play); auto* load = new QPushButton("Load sample...", w); top->addWidget(load); auto* name = new QLabel(s->samplePath().isEmpty() ? "(no sample)" : QFileInfo(s->samplePath()).fileName(), w); top->addWidget(name, 1); lay->addLayout(top);
-    QObject::connect(play, &QPushButton::pressed, w, [&app, owner, s] { app.selectChannel(owner); app.noteOn(s->params().getInt(Sampler::pRoot), 1.f); }); QObject::connect(play, &QPushButton::released, w, [&app, s] { app.noteOff(s->params().getInt(Sampler::pRoot)); });
+    auto* top = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play", w); play->setToolTip("Play the sample at its root note through the channel's mixer track (click again to stop)"); play->setFocusPolicy(Qt::NoFocus); top->addWidget(play); auto* load = new QPushButton("Load sample...", w); top->addWidget(load); auto* name = new QLabel(s->samplePath().isEmpty() ? "(no sample)" : QFileInfo(s->samplePath()).fileName(), w); top->addWidget(name, 1); lay->addLayout(top);
+    { // FL-style one-shot audition: one click plays the whole sample, a second click stops it
+        auto* stopTimer = new QTimer(w); stopTimer->setSingleShot(true); auto* playing = new bool(false); QObject::connect(w, &QObject::destroyed, [playing] { delete playing; });
+        auto stop = [&app, s, play, playing, stopTimer] { if (*playing) { app.noteOff(s->params().getInt(Sampler::pRoot)); *playing = false; play->setText("\u25B6 Play"); stopTimer->stop(); } };
+        QObject::connect(stopTimer, &QTimer::timeout, w, stop);
+        QObject::connect(play, &QPushButton::clicked, w, [&app, owner, s, play, playing, stopTimer, stop] { if (*playing) { stop(); return; } app.selectChannel(owner); int note = s->params().getInt(Sampler::pRoot); app.noteOn(note, 1.f); *playing = true; play->setText("\u25A0 Stop"); auto a = s->sample(); double secs = a ? a->seconds() / std::pow(2.0, (s->params().get(Sampler::pTune) + s->params().get(Sampler::pFine) / 100.0) / 12.0) : 1.0; bool loops = s->params().getInt(Sampler::pLoopMode) != 0; if (!loops) stopTimer->start((int)(secs * 1000) + 100); });
+    }
     auto* wave = new WaveView(w); wave->asset = [s] { return s->sample(); }; wave->startFrac = [s] { return s->params().get(Sampler::pStart); }; wave->setStart = [&app, owner](float f) { app.setProcessorParam(owner, Sampler::pStart, f, true); };
     wave->reversed = [s] { return s->params().getBool(Sampler::pReverse); };
     wave->loop = [s] { auto& ps = s->params(); if (ps.getInt(Sampler::pLoopMode) == 0) return std::make_pair(0.f, 0.f); return std::make_pair(ps.get(Sampler::pLoopStart), ps.get(Sampler::pLoopEnd)); };
@@ -102,8 +107,8 @@ static QWidget* makeDrumEditor(DrumSampler* ds, QWidget* parent) {
     auto* left = new QVBoxLayout(); auto* hint = new QLabel("Pads: click to audition (C1 = pad 1), right-click / drop files to assign. Steps trigger pad 1 at the root note.", w); hint->setWordWrap(true); hint->setStyleSheet("color:#8a919a;"); left->addWidget(hint);
     auto* grid = new PadGrid(app, owner, ds, w); left->addWidget(grid, 1);
     auto* padWave = new WaveView(w); padWave->setMinimumHeight(90); left->addWidget(padWave);
-    auto* playRow = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play pad", w); play->setToolTip("Hold to audition the selected pad"); play->setFocusPolicy(Qt::NoFocus); playRow->addWidget(play); playRow->addStretch(1); left->addLayout(playRow); lay->addLayout(left, 1);
-    QObject::connect(play, &QPushButton::pressed, w, [&app, owner, grid] { app.selectChannel(owner); app.noteOn(36 + grid->selected, 1.f); }); QObject::connect(play, &QPushButton::released, w, [&app, grid] { app.noteOff(36 + grid->selected); });
+    auto* playRow = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play pad", w); play->setToolTip("Play the selected pad (pads are one-shot)"); play->setFocusPolicy(Qt::NoFocus); playRow->addWidget(play); playRow->addStretch(1); left->addLayout(playRow); lay->addLayout(left, 1);
+    QObject::connect(play, &QPushButton::clicked, w, [&app, owner, grid] { app.selectChannel(owner); app.noteOn(36 + grid->selected, 1.f); QTimer::singleShot(50, [&app, n = 36 + grid->selected] { app.noteOff(n); }); });
     padWave->asset = [ds, grid] { return ds->padSample(grid->selected); };
     padWave->onDrop = [grid](const QString& p) { grid->assign(grid->selected, p); };
     padWave->startFrac = [ds, grid] { return ds->params().get(DrumSampler::padParam(grid->selected, 6)); }; padWave->setStart = [&app, owner, grid](float f) { app.setProcessorParam(owner, DrumSampler::padParam(grid->selected, 6), f, true); };

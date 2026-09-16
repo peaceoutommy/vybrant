@@ -36,7 +36,7 @@ Q_SIGNALS:
 protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; void resizeEvent(QResizeEvent*) override; void contextMenuEvent(QContextMenuEvent*) override; void leaveEvent(QEvent*) override;
 private:
-    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating };
+    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect };
     struct Layout { int keyW = 60, rulerH = 22, velH = 70; QRect grid, ruler, keys, vel; };
     Layout layout() const;
     Pattern* pattern() const; PatternChannelData* data() const;
@@ -51,6 +51,7 @@ private:
     double m_ppt = 0.08; int m_rowH = 12; Tick m_scrollTick = 0; int m_topPitch = 84; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
     std::set<Id> m_selected; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
     Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer; bool m_altHeld = false; bool m_erasedAny = false;
+    Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0;   // time selection (Ctrl+drag on the ruler)
     std::vector<Note> m_clipboard; QPixmap m_cache; bool m_cacheValid = false; double m_playTick = -1; QPoint m_hoverPos;
 };
 
