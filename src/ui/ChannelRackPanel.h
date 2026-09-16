@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QToolButton>
 #include <QLabel>
+#include <set>
 #include <QTimer>
 #include "ui/widgets/Controls.h"
 
@@ -22,9 +23,9 @@ public:
     int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 12 - 44) / (4 * stepW() + 4) * 4; return std::max(4, n); }
     int widthForSteps(int n) const { return m_leftW + 12 + 44 + (n / 4) * (4 * stepW() + 4) + 8; }
 Q_SIGNALS:
-    void openEditor(Id channelId);
+    void openEditor(Id channelId); void openPianoRoll(Id channelId);
 protected:
-    void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
+    void paintEvent(QPaintEvent*) override; void keyPressEvent(QKeyEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
     void dragEnterEvent(QDragEnterEvent*) override; void dragMoveEvent(QDragMoveEvent*) override; void dropEvent(QDropEvent*) override;
 private:
     enum Hit { None, Grip, Enable, Name, Mute, Solo, Pan, Vol, Mixer, StepCell, Graph };
@@ -36,6 +37,9 @@ private:
     void applyGraphAt(const QPoint& p, bool commit);
     App& m_app; int m_rowH = 24, m_leftW = 238, m_graphH = 90; int m_graphMode = -1;
     // drag state
+    std::set<Id> m_multi; Id m_anchor = 0;   // multi-selection (Ctrl / Shift click); the project's selectedChannelId is the primary
+    std::vector<Id> selectedIds() const;
+    void deleteSelected();
     HitInfo m_press; bool m_paintValue = false; bool m_erasing = false; int m_dragRow = -1; QPoint m_lastPos; float m_knobStart = 0; int m_reorderTarget = -1; int m_playStep = -1; bool m_dragging = false;
 };
 
@@ -46,10 +50,11 @@ public:
     void refresh(uint32_t flags); void uiTick();
     QSize sizeHint() const override { return {widthForSteps(16), 320}; }
     int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; }
+    int heightForContent() const;   // toolbar + all channel rows (+ graph editor when open)
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;
 Q_SIGNALS:
-    void openEditor(Id channelId);
+    void openEditor(Id channelId); void openPianoRoll(Id channelId);
 private:
     void fitStepsToWidth();
     App& m_app; RackView* m_view; QScrollArea* m_scroll; QTimer* m_fitTimer = nullptr; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;

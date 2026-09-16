@@ -87,7 +87,7 @@ Project makeDefaultProject() {
     p.patterns.push_back(pat);
     p.selectedPatternId = pat.id; p.selectedChannelId = p.channels[0].id;
     for (int i = 1; i <= 8; ++i) { PlaylistTrack t; t.id = p.newId(); t.name = QString("Track %1").arg(i); p.playlistTracks.push_back(t); }
-    Clip c; c.id = p.newId(); c.type = ClipType::Pattern; c.trackId = p.playlistTracks[0].id; c.sourceId = pat.id; c.start = 0; c.length = PPQ * 4 * 4; c.name = pat.name; p.clips.push_back(c);
+    Clip c; c.id = p.newId(); c.type = ClipType::Pattern; c.trackId = p.playlistTracks[0].id; c.sourceId = pat.id; c.start = 0; c.length = 0; c.loopSource = false; c.name = pat.name; p.clips.push_back(c);
     p.transport.loopEnd = PPQ * 16;
     return p;
 }

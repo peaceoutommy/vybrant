@@ -25,7 +25,7 @@ BrowserModel::BrowserModel(App& app, QObject* parent) : QStandardItemModel(paren
     auto tagMap = s.value("browser/tags").toMap(); for (auto it = tagMap.begin(); it != tagMap.end(); ++it) m_tags[it.key()] = it.value().toStringList();
     m_dirs = s.value("browser/dirs").toStringList(); if (m_dirs.isEmpty()) { m_dirs << QStandardPaths::writableLocation(QStandardPaths::MusicLocation); for (auto& d : {"/usr/share/sounds", "/usr/share/hydrogen/data/drumkits", "/usr/share/sounds/sf2"}) if (QDir(d).exists()) m_dirs << d; }
 }
-void BrowserModel::setLibraryDirs(const QStringList& d) { m_dirs = d; QSettings().setValue("browser/dirs", d); rebuild(); }
+void BrowserModel::setLibraryDirs(const QStringList& d) { m_dirs = d; QSettings s; s.setValue("browser/dirs", d); s.sync(); rebuild(); }
 void BrowserModel::toggleFavorite(const QString& key) { if (m_favorites.contains(key)) m_favorites.remove(key); else m_favorites.insert(key); QSettings().setValue("browser/favorites", QStringList(m_favorites.begin(), m_favorites.end())); rebuild(); }
 void BrowserModel::setTags(const QString& key, const QStringList& t) { if (t.isEmpty()) m_tags.remove(key); else m_tags[key] = t; QVariantMap m; for (auto it = m_tags.begin(); it != m_tags.end(); ++it) m[it.key()] = it.value(); QSettings().setValue("browser/tags", m); rebuild(); }
 

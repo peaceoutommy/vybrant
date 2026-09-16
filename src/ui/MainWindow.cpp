@@ -26,6 +26,7 @@
 #include <QApplication>
 #include <QFileInfo>
 #include <QPixmap>
+#include <QScreen>
 #include <QDebug>
 
 namespace mt {
@@ -70,6 +71,7 @@ void MainWindow::buildDocks() {
     m_rack->setMinimumHeight(180); m_dRack->setMinimumHeight(200); resizeDocks({m_dBrowser}, {260}, Qt::Horizontal); resizeDocks({m_dRack}, {330}, Qt::Vertical);
     connect(m_browser, &BrowserPanel::openEditor, this, [this](Id id) { openEditor(id); });
     connect(m_rack, &ChannelRackPanel::openEditor, this, [this](Id id) { openEditor(id); });
+    connect(m_rack, &ChannelRackPanel::openPianoRoll, this, [this](Id id) { m_app.selectChannel(id); showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(id); });
     connect(m_dRack, &QDockWidget::topLevelChanged, this, [this](bool floating) { if (floating) { QSize s = m_dRack->size(); int w = std::min(s.width(), 900); if (s.width() > 950) QTimer::singleShot(0, m_dRack, [this, w, s] { m_dRack->resize(w, std::min(s.height(), 420)); }); } });
     connect(m_mixer, &MixerPanel::openEditor, this, [this](Id id, const QString& t) { openEditor(id, t); });
     connect(m_playlist, &PlaylistPanel::openPattern, this, [this](Id) { showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(m_app.project().selectedChannelId); });
@@ -121,6 +123,7 @@ void MainWindow::buildMenus() {
 }
 
 void MainWindow::onChanged(uint32_t flags) {
+    if ((flags & (ChangeStructure | ChangeChannels)) && m_dRack->isFloating() && m_dRack->isVisible()) { int need = m_rack->heightForContent() + 24; if (m_dRack->height() < need) m_dRack->resize(m_dRack->width(), std::min(need, screen() ? screen()->availableGeometry().height() - 100 : need)); }
     m_transport->refresh(flags); m_rack->refresh(flags); m_pianoRoll->refresh(flags); m_playlist->refresh(flags); m_mixer->refresh(flags); m_browser->refresh(flags); m_samples->refresh(flags);
     for (auto it = m_editors.begin(); it != m_editors.end();) { Id id = it->first; bool exists = m_app.project().channel(id) != nullptr; for (auto& t : m_app.project().mixerTracks) for (auto& e : t.effects) if (e.id == id) exists = true; if (!exists) { it->second->close(); it = m_editors.erase(it); } else ++it; }
 }
@@ -144,7 +147,7 @@ void MainWindow::resetLayout() { restoreState(m_defaultState); m_workspace->rest
 void MainWindow::applyDefaultLayout() {
     resizeDocks({m_dBrowser}, {260}, Qt::Horizontal);
     QRect g = geometry(); int left = g.left() + 300, top = g.top() + 110;
-    m_dRack->setFloating(true); m_dRack->move(left, top); m_dRack->show(); m_dRack->raise(); QTimer::singleShot(0, m_dRack, [this] { m_dRack->resize(m_rack->widthForSteps(16), 330); });
+    m_dRack->setFloating(true); m_dRack->move(left, top); m_dRack->show(); m_dRack->raise(); QTimer::singleShot(0, m_dRack, [this] { m_dRack->resize(m_rack->widthForSteps(16), m_rack->heightForContent() + 24); });
     showMixerPage(false);
 }
 void MainWindow::showMixerPage(bool on) { m_pages->setCurrentWidget(on ? static_cast<QWidget*>(m_mixer) : static_cast<QWidget*>(m_workspace)); if (on && m_dRack->isFloating()) m_dRack->hide(); syncWindowButtons(); }
@@ -171,10 +174,10 @@ void MainWindow::keyPressEvent(QKeyEvent* e) {
 }
 void MainWindow::keyReleaseEvent(QKeyEvent* e) { if (e->isAutoRepeat()) { QMainWindow::keyReleaseEvent(e); return; } int k = e->key(); if (m_heldKeys.count(k)) { m_heldKeys.erase(k); int note = typingNote(k); if (note >= 0) m_app.noteOff(note); e->accept(); return; } QMainWindow::keyReleaseEvent(e); }
 
-// FL behaviour: clicking in the main workspace (playlist / piano roll / browser) closes the floating Channel Rack.
+// FL behaviour: clicking in the main workspace (playlist / piano roll / mixer) closes the floating Channel Rack; the Browser is exempt so you can browse sounds while the rack stays open.
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
     if (e->type() == QEvent::MouseButtonPress && m_dRack && m_dRack->isFloating() && m_dRack->isVisible()) {
-        QWidget* w = qobject_cast<QWidget*>(o); if (w && w->window() == this && !m_dRack->isAncestorOf(w)) { QWidget* p = w; bool inMain = false; while (p) { if (p == m_pages || p == m_dBrowser) { inMain = true; break; } p = p->parentWidget(); } if (inMain) m_dRack->hide(); }
+        QWidget* w = qobject_cast<QWidget*>(o); if (w && w->window() == this && !m_dRack->isAncestorOf(w)) { QWidget* p = w; bool inMain = false; while (p) { if (p == m_dBrowser || p == m_dSamples) return QMainWindow::eventFilter(o, e); if (p == m_pages) { inMain = true; break; } p = p->parentWidget(); } if (inMain) m_dRack->hide(); }
     }
     return QMainWindow::eventFilter(o, e);
 }

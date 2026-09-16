@@ -194,7 +194,8 @@ struct Project {
     MixerTrack* master() { for (auto& t : mixerTracks) if (t.isMaster) return &t; return nullptr; }
     Id masterId() const { for (auto& t : mixerTracks) if (t.isMaster) return t.id; return 0; }
     int mixerIndex(Id id) const { for (size_t i = 0; i < mixerTracks.size(); ++i) if (mixerTracks[i].id == id) return (int)i; return -1; }
-    Tick songLength() const { Tick e = 0; for (auto& c : clips) e = std::max(e, c.start + c.length); return e; }
+    Tick clipLength(const Clip& c) const { if (c.type == ClipType::Pattern && c.length <= 0) { const Pattern* p = pattern(c.sourceId); return p ? p->effectiveLength(transport.timeSig) : PPQ * 4; } return c.length; }
+    Tick songLength() const { Tick e = 0; for (auto& c : clips) e = std::max(e, c.start + clipLength(c)); return e; }
     bool routingWouldCycle(Id from, Id to) const;   // true if routing from->to would create a cycle
 };
 

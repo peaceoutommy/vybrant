@@ -42,7 +42,7 @@ int runSelfTest(App& app) {
     // ---- plugin delay compensation: limiter with lookahead on one insert
     { Id t1 = app.project().mixerTracks[1].id; Id slot = app.addEffect(t1, "native.limiter"); app.engine().rebuild(app.project()); int lat = app.processor(slot) ? app.processor(slot)->latencySamples() : 0; auto& tc2 = app.engine().registry().track(app.project().mixerTracks[2].id); CHECK(lat > 0 && tc2.generatorDelay.delay == lat, "PDC delays parallel tracks by the reported plugin latency"); app.removeEffect(t1, slot); app.engine().rebuild(app.project()); CHECK(app.engine().registry().track(app.project().mixerTracks[2].id).generatorDelay.delay == 0, "PDC updates when the effect is removed"); }
     // ---- offline render of the default beat
-    { RenderOptions o; o.path = tmp.path() + "/r.wav"; o.format = "wav"; o.tailSeconds = 0.5; o.songMode = true; bool r = app.exportAudio(o, nullptr, &err); double sr = 0; int ch = 0; int64_t frames = 0; AudioFile::probe(o.path, &sr, &ch, &frames); CHECK(r && frames > 44100 * 4 && ch == 2, "offline render produces a stereo file of the song length"); auto asset = AudioFile::load(o.path, 0); CHECK(asset && asset->peakValue > 0.1f, "rendered audio is not silent"); }
+    { RenderOptions o; o.path = tmp.path() + "/r.wav"; o.format = "wav"; o.tailSeconds = 0.5; o.songMode = true; bool r = app.exportAudio(o, nullptr, &err); double sr = 0; int ch = 0; int64_t frames = 0; AudioFile::probe(o.path, &sr, &ch, &frames); CHECK(r && frames > 44100 && ch == 2, "offline render produces a stereo file of the song length"); auto asset = AudioFile::load(o.path, 0); CHECK(asset && asset->peakValue > 0.1f, "rendered audio is not silent"); }
     // ---- sample cache & waveform peaks
     { auto a = DrumSampler::synthesizeDrum("Kick", 44100); CHECK(a->peaks.size() == 4 && a->levelFor(100).samplesPerBin == 64 && a->levelFor(5000).samplesPerBin == 4096, "multiresolution waveform cache levels"); }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
@@ -63,6 +63,25 @@ int runPreviewBench(App& app, const QString& dir) {
         std::printf("%-14s  %6lld ms\n", f.toUtf8().constData(), (long long)t.elapsed());
         QElapsedTimer hold; hold.start(); while (hold.elapsed() < 300) QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
     }
+    return 0;
+}
+}
+
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QMainWindow>
+#include <QPixmap>
+namespace mt {
+// `musicthingy --uitest <png>`: Ctrl+drag a selection rectangle in the playlist and screenshot the result
+int runUiTest(QMainWindow* win, const QString& png) {
+    QWidget* view = nullptr; for (auto* w : win->findChildren<QWidget*>()) if (QString(w->metaObject()->className()) == "mt::PlaylistView") view = w;
+    if (!view) { std::printf("no playlist view\n"); return 1; }
+    if (png.contains("zoom")) { for (int i = 0; i < 14; ++i) { QWheelEvent w(QPointF(600, 300), view->mapToGlobal(QPoint(600, 300)), QPoint(), QPoint(0, -120), Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false); QCoreApplication::sendEvent(view, &w); } QCoreApplication::processEvents(); view->repaint(); view->grab().save(png); return 0; }
+    QPoint a(520, 300), b(760, 420);
+    QMouseEvent press(QEvent::MouseButtonPress, a, view->mapToGlobal(a), Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier); QCoreApplication::sendEvent(view, &press);
+    QMouseEvent move(QEvent::MouseMove, b, view->mapToGlobal(b), Qt::NoButton, Qt::LeftButton, Qt::ControlModifier); QCoreApplication::sendEvent(view, &move);
+    QCoreApplication::processEvents(); view->repaint(); view->grab().save(png);
+    QMouseEvent rel(QEvent::MouseButtonRelease, b, view->mapToGlobal(b), Qt::LeftButton, Qt::NoButton, Qt::ControlModifier); QCoreApplication::sendEvent(view, &rel);
     return 0;
 }
 }

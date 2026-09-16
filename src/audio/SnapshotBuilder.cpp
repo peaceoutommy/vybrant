@@ -169,7 +169,7 @@ void AudioEngine::rebuild(const Project& p) {
     bool anyPlSolo = false; for (auto& t : p.playlistTracks) if (t.solo) anyPlSolo = true;
     for (auto& c : p.clips) {
         const PlaylistTrack* pt = p.track(c.trackId); if (!pt) continue;
-        RtClip rc; rc.type = c.type; rc.start = c.start; rc.end = c.start + c.length; rc.sourceOffset = c.sourceOffset; rc.loopSource = c.loopSource; rc.muted = c.muted || pt->mute || (anyPlSolo && !pt->solo) || (c.type == ClipType::Pattern && !p.transport.songMode && false);
+        RtClip rc; rc.type = c.type; rc.start = c.start; rc.end = c.start + p.clipLength(c); rc.sourceOffset = c.sourceOffset; rc.loopSource = c.loopSource; rc.muted = c.muted || pt->mute || (anyPlSolo && !pt->solo) || (c.type == ClipType::Pattern && !p.transport.songMode && false);
         rc.trackIdx = trackIdx.count(pt->mixerTrackId) ? trackIdx[pt->mixerTrackId] : (p.masterId() ? trackIdx[p.masterId()] : 0);
         if (c.type == ClipType::Pattern) rc.patternIdx = patIdx.count(c.sourceId) ? patIdx[c.sourceId] : -1;
         else if (c.type == ClipType::Automation) rc.laneIdx = laneIdx.count(c.sourceId) ? laneIdx[c.sourceId] : -1;

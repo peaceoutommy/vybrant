@@ -29,7 +29,7 @@ private:
     enum Drag { NoDrag, Moving, ResizingR, ResizingL, Rubber, LoopRange, TrackHeight, Pan, AutoPoint, FadeIn, FadeOut, Erasing };
     struct Layout { int headerW = 170, rulerH = 24; QRect ruler, headers, area; };
     Layout layout() const;
-    Tick xToTick(int x) const; int tickToX(Tick t) const; int trackAtY(int y) const; int trackTop(int idx) const; int trackH(int idx) const; Tick snap(Tick t, bool force = false) const; Tick snapRound(Tick t) const; Tick snapTicks() const;
+    Tick xToTick(int x) const; int tickToX(Tick t) const; int trackAtY(int y) const; int trackTop(int idx) const; int trackH(int idx) const; Tick snap(Tick t, bool force = false) const; Tick snapRound(Tick t) const; Tick snapNear(Tick t) const; Tick snapTicks() const;
     Clip* clipAt(const QPoint& p, int* edge = nullptr) const; QRect clipRect(const Clip& c) const;
     int autoPointAt(const Clip& c, const QPoint& p) const; float autoValueAtY(const Clip& c, int y) const; Tick autoTickAtX(const Clip& c, int x) const;
     void beginEdit(); void commitEdit(const QString& desc);

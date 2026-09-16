@@ -39,6 +39,7 @@ int PianoRollView::yToPitch(int y) const { return m_topPitch - (y - layout().rul
 int PianoRollView::pitchToY(int pitch) const { return layout().rulerH + (m_topPitch - pitch) * m_rowH; }
 Tick PianoRollView::snapTicks() const { if (m_snapDiv == 0) return 1; if (m_snapDiv < 0) return m_app.project().transport.timeSig.ticksPerBar() * -m_snapDiv; return PPQ / m_snapDiv; }
 Tick PianoRollView::snap(Tick t, bool force) const { if (m_altHeld && !force) return t; Tick s = snapTicks(); if (s <= 1) return t; return (t / s) * s; }
+Tick PianoRollView::snapNear(Tick t) const { if (m_altHeld) return t; Tick s = snapTicks(); if (s <= 1) return t; return ((t + s / 2) / s) * s; }
 bool PianoRollView::inScale(int pitch) const { if (m_scale <= 0) return true; return kScales[m_scale][((pitch - m_scaleRoot) % 12 + 12) % 12] != 0; }
 void PianoRollView::updateScrollbars() { m_updatingBars = true; Pattern* p = pattern(); Tick len = p ? p->effectiveLength(m_app.project().transport.timeSig) : PPQ * 16; Tick visible = (Tick)(layout().grid.width() / m_ppt); m_hbar->setRange(0, (int)std::max<Tick>(0, (len + PPQ * 8 - visible) * 16 / PPQ)); m_hbar->setPageStep((int)(visible * 16 / PPQ)); m_hbar->setValue((int)(m_scrollTick * 16 / PPQ)); int rows = layout().grid.height() / m_rowH; m_vbar->setRange(0, std::max(0, 127 - rows)); m_vbar->setPageStep(rows); m_vbar->setValue(127 - m_topPitch); m_updatingBars = false; }
 void PianoRollView::refresh() { updateScrollbars(); invalidate(); }
@@ -57,7 +58,7 @@ void PianoRollView::renderCache() {
     p.setClipRect(L.grid);
     for (int pitch = m_topPitch; pitch >= 0; --pitch) { int y = pitchToY(pitch); if (y > L.grid.bottom()) break; bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10); QColor c = black ? QColor(0x17, 0x1a, 0x1f) : QColor(0x1c, 0x1f, 0x25); if (!inScale(pitch)) c = c.darker(130); p.fillRect(QRect(L.grid.left(), y, L.grid.width(), m_rowH), c); if (pitch % 12 == 0) { p.setPen(theme::gridStrong()); p.drawLine(L.grid.left(), y + m_rowH, L.grid.right(), y + m_rowH); } }
     // grid columns
-    Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar(); Tick step = snapTicks(); if (step * m_ppt < 6) step = beat; Tick first = (m_scrollTick / step) * step; Tick last = xToTick(L.grid.right());
+    Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar(); Tick step = snapTicks(); if (step * m_ppt < 8) step = beat; if (beat * m_ppt < 8) step = bar; Tick barStep = bar; while (barStep * m_ppt < 10) barStep *= 2; if (bar * m_ppt < 10) step = barStep; Tick first = (m_scrollTick / step) * step; Tick last = xToTick(L.grid.right());
     for (Tick t = first; t <= last; t += step) { int x = tickToX(t); QColor c = (t % bar == 0) ? theme::gridStrong().lighter(130) : (t % beat == 0) ? theme::gridStrong() : theme::grid(); p.setPen(c); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
     if (patLen > 0) { int x = tickToX(patLen); p.fillRect(QRect(x, L.grid.top(), L.grid.right() - x, L.grid.height()), QColor(0, 0, 0, 60)); p.setPen(theme::accent()); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
     // ghost notes
@@ -68,7 +69,8 @@ void PianoRollView::renderCache() {
     p.setClipping(false);
     // ruler
     p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont());
-    for (Tick t = (m_scrollTick / beat) * beat; t <= last; t += beat) { int x = tickToX(t); bool isBar = t % bar == 0; p.setPen(isBar ? theme::text() : theme::textDim()); p.drawLine(x, isBar ? L.ruler.top() + 6 : L.ruler.top() + 14, x, L.ruler.bottom()); if (isBar) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1)); }
+    Tick rstep = beat * m_ppt >= 6 ? beat : barStep; Tick lstep = barStep; while (lstep * m_ppt < 34) lstep *= 2;
+    for (Tick t = (m_scrollTick / rstep) * rstep; t <= last; t += rstep) { int x = tickToX(t); bool isBar = t % bar == 0; bool labeled = t % lstep == 0; p.setPen(labeled ? theme::text() : theme::textDim()); p.drawLine(x, labeled ? L.ruler.top() + 6 : (isBar ? L.ruler.top() + 11 : L.ruler.top() + 15), x, L.ruler.bottom()); if (labeled) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1)); }
     p.setClipping(false);
     // keys
     p.fillRect(L.keys, theme::panel()); p.setClipRect(L.keys);
@@ -84,9 +86,9 @@ void PianoRollView::paintEvent(QPaintEvent*) {
     if (!m_cacheValid) renderCache();
     QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
     if (m_playTick >= 0) { int x = tickToX((Tick)m_playTick); if (x >= L.grid.left() && x <= L.grid.right()) { p.setPen(QPen(theme::playhead(), 1.5)); p.drawLine(x, L.ruler.top(), x, L.vel.bottom()); } }
-    if (m_drag == Rubber) { p.setPen(QPen(theme::accent(), 1, Qt::DashLine)); p.setBrush(theme::selection()); p.drawRect(m_rubber.normalized()); }
-    if (m_tool == Draw && m_drag == NoDrag && L.grid.contains(m_hoverPos) && underMouse()) { int pitch = yToPitch(m_hoverPos.y()); Tick t = snap(xToTick(m_hoverPos.x())); QRect r(tickToX(t), pitchToY(pitch), std::max(3, (int)(m_lastLength * m_ppt)), m_rowH); p.setPen(QPen(theme::accent(), 1, Qt::DotLine)); p.setBrush(Qt::NoBrush); p.drawRect(r.adjusted(0, 1, -1, -1)); }
-    p.setPen(theme::border()); p.drawRect(rect().adjusted(0, 0, -1, -1));
+    if (m_drag == Rubber) { p.save(); p.setRenderHint(QPainter::Antialiasing, false); p.setPen(QPen(theme::withAlpha(theme::accent(), 220), 1)); p.setBrush(theme::selection()); p.drawRect(m_rubber.normalized()); p.restore(); }
+    if (m_tool == Draw && m_drag == NoDrag && L.grid.contains(m_hoverPos) && underMouse()) { int pitch = yToPitch(m_hoverPos.y()); Tick t = snap(xToTick(m_hoverPos.x())); QRect r(tickToX(t), pitchToY(pitch), std::max(3, (int)(m_lastLength * m_ppt)), m_rowH); p.save(); p.setClipRect(L.grid); p.setPen(QPen(theme::withAlpha(theme::accent(), 200), 1)); p.setBrush(theme::withAlpha(theme::accent(), 40)); p.drawRect(r.adjusted(0, 1, -1, -1)); p.restore(); }
+    p.setPen(theme::border()); p.setBrush(Qt::NoBrush); p.drawRect(rect().adjusted(0, 0, -1, -1));
 }
 
 // ---------------------------------------------------------------- editing helpers
@@ -147,7 +149,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
         // snap the dragged note's new start, apply the same delta to all selected
         const Note* anchorBefore = nullptr; for (auto& n : m_before.notes) if (n.id == m_dragNote) anchorBefore = &n; Note anchorNew; if (!anchorBefore) { for (auto& n : d->notes) if (n.id == m_dragNote) anchorNew = n; }
         Tick anchorStart = anchorBefore ? anchorBefore->start : anchorNew.start - 0; if (!anchorBefore) { anchorStart = snap(xToTick(m_pressPos.x())); }
-        Tick target = snap(anchorStart + dt); Tick delta = target - anchorStart; int minPitch = 127, maxPitch = 0; for (auto& n : m_before.notes) if (m_selected.count(n.id)) { minPitch = std::min(minPitch, n.pitch); maxPitch = std::max(maxPitch, n.pitch); }
+        Tick target = snapNear(anchorStart + dt); Tick delta = target - anchorStart; int minPitch = 127, maxPitch = 0; for (auto& n : m_before.notes) if (m_selected.count(n.id)) { minPitch = std::min(minPitch, n.pitch); maxPitch = std::max(maxPitch, n.pitch); }
         if (m_duplicated || m_drag == Creating) { for (auto& n : d->notes) if (m_selected.count(n.id)) { minPitch = std::min(minPitch, n.pitch); maxPitch = std::max(maxPitch, n.pitch); } }
         dp = clamp(dp, -minPitch, 127 - maxPitch);
         Tick minStart = LLONG_MAX; for (auto& n : m_before.notes) if (m_selected.count(n.id)) minStart = std::min(minStart, n.start); if (minStart != LLONG_MAX && minStart + delta < 0) delta = -minStart;
@@ -157,7 +159,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
         invalidate(); return;
     }
     if (m_drag == Resizing) {
-        Tick end = snap(xToTick(e->pos().x()) + (m_altHeld ? 0 : snapTicks() / 2)); const Note* anchor = nullptr; for (auto& n : m_before.notes) if (n.id == m_dragNote) anchor = &n; if (!anchor) return; Tick newLen = std::max<Tick>(end - anchor->start, m_altHeld ? PPQ / 64 : snapTicks()); Tick dl = newLen - anchor->duration;
+        Tick end = snapNear(xToTick(e->pos().x())); const Note* anchor = nullptr; for (auto& n : m_before.notes) if (n.id == m_dragNote) anchor = &n; if (!anchor) return; Tick newLen = std::max<Tick>(end - anchor->start, m_altHeld ? PPQ / 64 : snapTicks()); Tick dl = newLen - anchor->duration;
         for (auto& n : d->notes) if (m_selected.count(n.id)) { const Note* b = nullptr; for (auto& x : m_before.notes) if (x.id == n.id) b = &x; if (b) n.duration = std::max<Tick>(PPQ / 64, b->duration + dl); } m_lastLength = newLen; invalidate(); return;
     }
 }

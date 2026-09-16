@@ -40,7 +40,7 @@ private:
     struct Layout { int keyW = 60, rulerH = 22, velH = 70; QRect grid, ruler, keys, vel; };
     Layout layout() const;
     Pattern* pattern() const; PatternChannelData* data() const;
-    Tick xToTick(int x) const; int tickToX(Tick t) const; int yToPitch(int y) const; int pitchToY(int pitch) const; Tick snap(Tick t, bool force = false) const; Tick snapTicks() const;
+    Tick xToTick(int x) const; int tickToX(Tick t) const; int yToPitch(int y) const; int pitchToY(int pitch) const; Tick snap(Tick t, bool force = false) const; Tick snapNear(Tick t) const; Tick snapTicks() const;
     Note* noteAt(const QPoint& p, bool* nearEdge = nullptr) const;
     void beginEdit(); void commitEdit(const QString& desc); void cancelEdit();
     void invalidate() { m_cacheValid = false; update(); }

@@ -5,11 +5,12 @@
 #include "plugins/PluginHost.h"
 #include "audio/RenderEngine.h"
 #include <QApplication>
+#include <QMainWindow>
 #include <QTimer>
 #include <QFileInfo>
 #include <cstring>
 #include <cstdio>
-namespace mt { int runSelfTest(App& app); int runPreviewBench(App& app, const QString& dir); }
+namespace mt { int runSelfTest(App& app); int runPreviewBench(App& app, const QString& dir); int runUiTest(QMainWindow* win, const QString& png); }
 
 int main(int argc, char** argv) {
     // Plugin scanning runs in a child process so a crashing plugin cannot take the DAW down.
@@ -29,6 +30,7 @@ int main(int argc, char** argv) {
     if (!renderPath.isEmpty()) { // batch render: musicthingy song.mtp --render out.wav [--quit]
         QTimer::singleShot(500, &win, [&daw, renderPath, quitAfter] { mt::RenderOptions o; o.path = renderPath; o.format = QFileInfo(renderPath).suffix().toLower(); if (o.format.isEmpty()) o.format = "wav"; o.songMode = true; o.tailSeconds = 1.0; QString err; bool ok = daw.exportAudio(o, [](double p) { std::fprintf(stderr, "render %3d%%\r", (int)(p * 100)); return true; }, &err); std::fprintf(stderr, "\n%s\n", ok ? "Rendered OK" : ("Render failed: " + err).toUtf8().constData()); if (quitAfter) QApplication::exit(ok ? 0 : 1); });
     }
+    for (int i = 1; i + 1 < argc; ++i) if (std::strcmp(argv[i], "--uitest") == 0) { QString png = argv[i + 1]; QTimer::singleShot(800, &win, [&win, png] { mt::runUiTest(&win, png); QApplication::quit(); }); }
     if (!panel.isEmpty()) QTimer::singleShot(100, &win, [&daw, &win, panel] { if (panel == "mixer") daw.commands().action("view.mixer")->trigger(); else if (panel == "pianoroll") { daw.commands().action("view.pianoRoll")->trigger(); } else if (panel == "editor") { win.openEditor(daw.project().channels.empty() ? 0 : daw.project().channels.back().id); } });
     if (!screenshot.isEmpty()) QTimer::singleShot(1500, &win, [&win, screenshot, quitAfter] { win.saveScreenshot(screenshot); if (quitAfter) QApplication::quit(); });
     else if (quitAfter) QTimer::singleShot(3000, &app, &QApplication::quit);

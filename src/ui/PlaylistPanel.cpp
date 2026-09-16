@@ -36,8 +36,9 @@ int PlaylistView::trackTop(int idx) const { int y = layout().rulerH - m_scrollY;
 int PlaylistView::trackAtY(int y) const { auto& tr = m_app.project().playlistTracks; int top = layout().rulerH - m_scrollY; for (int i = 0; i < (int)tr.size(); ++i) { if (y >= top && y < top + tr[i].height) return i; top += tr[i].height; } return -1; }
 Tick PlaylistView::snapTicks() const { if (m_snapDiv == 0) return 1; if (m_snapDiv < 0) return m_app.project().transport.timeSig.ticksPerBar() * -m_snapDiv; return PPQ / m_snapDiv; }
 Tick PlaylistView::snap(Tick t, bool force) const { if (m_altHeld && !force) return t; Tick s = snapTicks(); if (s <= 1) return t; return (t / s) * s; }
+Tick PlaylistView::snapNear(Tick t) const { if (m_altHeld) return t; Tick s = snapTicks(); if (s <= 1) return t; return ((t + s / 2) / s) * s; }   // nearest grid line, past halfway rounds up
 Tick PlaylistView::snapRound(Tick t) const { Tick s = snapTicks(); if (s <= 1) s = PPQ / 4; return ((t + s / 2) / s) * s; }   // nearest grid line (rounds up past halfway)
-QRect PlaylistView::clipRect(const Clip& c) const { auto& tr = m_app.project().playlistTracks; int idx = -1; for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == c.trackId) idx = (int)i; if (idx < 0) return QRect(); return QRect(tickToX(c.start), trackTop(idx) + 1, std::max(3, (int)(c.length * m_ppt)), trackH(idx) - 2); }
+QRect PlaylistView::clipRect(const Clip& c) const { auto& tr = m_app.project().playlistTracks; int idx = -1; for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == c.trackId) idx = (int)i; if (idx < 0) return QRect(); return QRect(tickToX(c.start), trackTop(idx) + 1, std::max(3, (int)(m_app.project().clipLength(c) * m_ppt)), trackH(idx) - 2); }
 Clip* PlaylistView::clipAt(const QPoint& p, int* edge) const { auto& clips = m_app.project().clips; for (auto it = clips.rbegin(); it != clips.rend(); ++it) { QRect r = clipRect(*it); if (r.contains(p)) { if (edge) { *edge = 0; if (r.width() > 14) { if (p.x() >= r.right() - 6) *edge = 1; else if (p.x() <= r.left() + 5) *edge = -1; } } return const_cast<Clip*>(&*it); } } return nullptr; }
 void PlaylistView::updateScrollbars() { m_updatingBars = true; Tick len = std::max<Tick>(m_app.project().songLength(), PPQ * 4) + PPQ * 32; Tick visible = (Tick)(layout().area.width() / m_ppt); m_hbar->setRange(0, (int)std::max<Tick>(0, (len - visible) * 4 / PPQ)); m_hbar->setPageStep((int)(visible * 4 / PPQ)); m_hbar->setValue((int)(m_scrollTick * 4 / PPQ)); int total = 0; for (auto& t : m_app.project().playlistTracks) total += t.height; m_vbar->setRange(0, std::max(0, total + 60 - layout().area.height())); m_vbar->setPageStep(layout().area.height()); m_vbar->setValue(m_scrollY); m_updatingBars = false; }
 void PlaylistView::refresh() { updateScrollbars(); invalidate(); }
@@ -64,7 +65,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c) {
         if (auto* pat = proj.pattern(c.sourceId)) {
             Tick plen = std::max<Tick>(pat->effectiveLength(proj.transport.timeSig), 1); int lo = 127, hi = 0; for (auto& ch : pat->channels) { for (auto& n : ch.notes) { lo = std::min(lo, n.pitch); hi = std::max(hi, n.pitch); } for (size_t i = 0; i < ch.steps.size(); ++i) if (ch.steps[i].enabled) { auto* cc = proj.channel(ch.id); int pp = cc ? cc->rootNote : 60; lo = std::min(lo, pp); hi = std::max(hi, pp); } }
             if (lo > hi) { lo = 48; hi = 72; } int range = std::max(hi - lo + 1, 6);
-            for (Tick k = 0; k * plen < c.length + c.sourceOffset; ++k) {
+            Tick clen = proj.clipLength(c); for (Tick k = 0; k * plen < clen + c.sourceOffset; ++k) { if (k > 0 && !c.loopSource) break;
                 Tick off = c.start - c.sourceOffset + k * plen; if (off + plen <= c.start) continue; if (k > 0) { int x = tickToX(off); p.setPen(QPen(col.darker(90), 1, Qt::DashLine)); p.drawLine(x, body.top(), x, body.bottom()); }
                 for (auto& ch : pat->channels) { auto* cc = proj.channel(ch.id); QColor nc = cc ? cc->color.lighter(130) : theme::text(); p.setPen(nc);
                     for (auto& n : ch.notes) { int x1 = tickToX(off + n.start), x2 = tickToX(off + n.start + n.duration); int y = body.bottom() - (int)((n.pitch - lo + 0.5) / range * body.height()); p.drawLine(std::max(x1, r.left()), y, std::max(x2, x1 + 1), y); }
@@ -98,15 +99,17 @@ void PlaylistView::renderCache() {
     // tracks background
     p.setClipRect(L.area); int y = L.rulerH - m_scrollY;
     for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; QRect tr(L.area.left(), y, L.area.width(), t.height); p.fillRect(tr, i % 2 ? QColor(0x18, 0x1b, 0x20) : QColor(0x1a, 0x1d, 0x22)); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += t.height; }
-    Tick step = snapTicks(); if (step * m_ppt < 8) step = beat; if (beat * m_ppt < 8) step = bar; Tick last = xToTick(L.area.right());
-    for (Tick t = (m_scrollTick / step) * step; t <= last; t += step) { int x = tickToX(t); p.setPen(t % bar == 0 ? theme::gridStrong().lighter(130) : t % beat == 0 ? theme::gridStrong() : theme::grid()); p.drawLine(x, L.area.top(), x, L.area.bottom()); }
+    // grid density adapts to the zoom: never draw lines closer than ~10 px; bars are stronger than beats, beats than snap subdivisions
+    Tick step = snapTicks(); if (step * m_ppt < 10) step = beat; if (beat * m_ppt < 10) step = bar; Tick barStep = bar; while (barStep * m_ppt < 14) barStep *= 2; if (step < barStep && bar * m_ppt < 14) step = barStep;
+    Tick last = xToTick(L.area.right());
+    for (Tick t = (m_scrollTick / step) * step; t <= last; t += step) { int x = tickToX(t); bool isBar = t % bar == 0; bool strongBar = t % (barStep * 4) == 0; if (isBar && t % barStep != 0) continue; p.setPen(strongBar && barStep > bar ? theme::gridStrong().lighter(140) : isBar ? theme::gridStrong().lighter(120) : t % beat == 0 ? theme::gridStrong() : theme::grid()); p.drawLine(x, L.area.top(), x, L.area.bottom()); }
     // loop / punch region
     if (proj.transport.loopEnabled) { int x1 = tickToX(proj.transport.loopStart), x2 = tickToX(proj.transport.loopEnd); p.fillRect(QRect(x1, L.area.top(), x2 - x1, L.area.height()), QColor(0xf2, 0xa9, 0x3b, 18)); }
     for (auto& c : proj.clips) drawClip(p, c);
     p.setClipping(false);
     // ruler
-    p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont()); Tick lstep = bar; if (bar * m_ppt < 30) lstep = bar * 4; if (bar * m_ppt < 8) lstep = bar * 16;
-    for (Tick t = (m_scrollTick / beat) * beat; t <= last; t += beat) { int x = tickToX(t); bool isBar = t % bar == 0; if (!isBar && beat * m_ppt < 6) continue; p.setPen(isBar ? theme::text() : theme::textDim()); p.drawLine(x, isBar ? L.ruler.top() + 8 : L.ruler.top() + 16, x, L.ruler.bottom()); if (isBar && t % lstep == 0) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1)); }
+    p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont()); Tick lstep = barStep; while (lstep * m_ppt < 34) lstep *= 2; Tick tickStep = beat * m_ppt >= 6 ? beat : barStep;
+    for (Tick t = (m_scrollTick / tickStep) * tickStep; t <= last; t += tickStep) { int x = tickToX(t); bool isBar = t % bar == 0; bool labeled = t % lstep == 0; p.setPen(labeled ? theme::text() : theme::textDim()); p.drawLine(x, labeled ? L.ruler.top() + 8 : (isBar ? L.ruler.top() + 13 : L.ruler.top() + 17), x, L.ruler.bottom()); if (labeled) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1)); }
     if (proj.transport.loopEnabled || true) { int x1 = tickToX(proj.transport.loopStart), x2 = tickToX(proj.transport.loopEnd); p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), proj.transport.loopEnabled ? theme::accent() : theme::textDim()); }
     if (proj.transport.punchEnabled) { int x1 = tickToX(proj.transport.punchIn), x2 = tickToX(proj.transport.punchOut); p.fillRect(QRect(x1, L.ruler.top() + 5, x2 - x1, 3), theme::red()); }
     for (auto& m : proj.markers) { int x = tickToX(m.position); p.setPen(theme::green()); p.setBrush(theme::green()); p.drawPolygon(QPolygon({QPoint(x, L.ruler.bottom()), QPoint(x - 5, L.ruler.bottom() - 7), QPoint(x + 5, L.ruler.bottom() - 7)})); p.drawText(x + 7, L.ruler.bottom() - 2, m.name); }
@@ -128,9 +131,9 @@ void PlaylistView::renderCache() {
 void PlaylistView::paintEvent(QPaintEvent*) {
     if (!m_cacheValid) renderCache(); QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
     if (m_playTick >= 0) { int x = tickToX((Tick)m_playTick); if (x >= L.area.left() && x <= L.area.right()) { p.setPen(QPen(theme::playhead(), 1.5)); p.drawLine(x, L.ruler.top(), x, L.area.bottom()); } }
-    if (m_drag == Rubber) { p.setPen(QPen(theme::accent(), 1, Qt::DashLine)); p.setBrush(theme::selection()); p.drawRect(m_rubber.normalized()); }
-    if (m_tool == Draw && m_drag == NoDrag && L.area.contains(m_hoverPos) && underMouse() && !clipAt(m_hoverPos)) { int tr = trackAtY(m_hoverPos.y()); if (tr >= 0) { if (auto* pat = m_app.project().pattern(m_app.project().selectedPatternId)) { Tick t = snap(xToTick(m_hoverPos.x())); QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(pat->effectiveLength(m_app.project().transport.timeSig) * m_ppt)), trackH(tr) - 2); p.setPen(QPen(pat->color, 1, Qt::DotLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(r, 3, 3); } } }
-    p.setPen(theme::border()); p.drawRect(rect().adjusted(0, 0, -1, -1));
+    if (m_drag == Rubber) { p.save(); p.setRenderHint(QPainter::Antialiasing, false); p.setPen(QPen(theme::withAlpha(theme::accent(), 220), 1)); p.setBrush(theme::selection()); p.drawRect(m_rubber.normalized()); p.restore(); }
+    if (m_tool == Draw && m_drag == NoDrag && L.area.contains(m_hoverPos) && underMouse() && !clipAt(m_hoverPos)) { int tr = trackAtY(m_hoverPos.y()); if (tr >= 0) { if (auto* pat = m_app.project().pattern(m_app.project().selectedPatternId)) { Tick t = snap(xToTick(m_hoverPos.x())); QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(pat->effectiveLength(m_app.project().transport.timeSig) * m_ppt)), trackH(tr) - 2); p.save(); p.setClipRect(L.area); p.setRenderHint(QPainter::Antialiasing, false); p.setPen(QPen(theme::withAlpha(pat->color, 200), 1)); p.setBrush(theme::withAlpha(pat->color, 40)); p.drawRect(r); p.restore(); } } }
+    p.setPen(theme::border()); p.setBrush(Qt::NoBrush); p.drawRect(rect().adjusted(0, 0, -1, -1));
 }
 
 // ---------------------------------------------------------------- edit transactions
@@ -198,8 +201,8 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
         invalidate(); return;
     }
     if (m_drag == ResizingR || m_drag == ResizingL) {
-        auto ab = m_before.find(m_dragClip); if (ab == m_before.end()) return; const Clip& o = ab->second; Tick t = snap(xToTick(e->pos().x()));
-        for (auto& c : proj.clips) if (m_selected.count(c.id)) { auto it = m_before.find(c.id); if (it == m_before.end()) continue; const Clip& b = it->second; if (m_drag == ResizingR) { Tick newLen = std::max<Tick>(snapTicks() > 1 ? snapTicks() : PPQ / 16, t - o.start + (b.length - o.length)); c.length = newLen; } else { Tick newStart = clamp<Tick>(t, 0, b.start + b.length - PPQ / 16); Tick d = newStart - b.start; c.start = newStart; c.length = b.length - d; c.sourceOffset = std::max<Tick>(0, b.sourceOffset + d); } }
+        auto ab = m_before.find(m_dragClip); if (ab == m_before.end()) return; const Clip& o = ab->second; Tick olen = proj.clipLength(o); Tick t = snapNear(xToTick(e->pos().x()));
+        for (auto& c : proj.clips) if (m_selected.count(c.id)) { auto it = m_before.find(c.id); if (it == m_before.end()) continue; const Clip& b = it->second; Tick blen = proj.clipLength(b); if (m_drag == ResizingR) { Tick newLen = std::max<Tick>(snapTicks() > 1 ? snapTicks() : PPQ / 16, t - o.start + (blen - olen)); c.length = newLen; } else { Tick newStart = clamp<Tick>(t, 0, b.start + blen - PPQ / 16); Tick d = newStart - b.start; c.start = newStart; c.length = blen - d; c.sourceOffset = std::max<Tick>(0, b.sourceOffset + d); } }
         invalidate(); return;
     }
 }
@@ -254,7 +257,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
     m.addAction(c->muted ? "Unmute" : "Mute", [this, id] { m_app.editClip(id, "Mute clip", [](Clip& x) { x.muted = !x.muted; }); }); m.addAction("Delete", [this] { deleteSelected(); }); m.addAction("Duplicate", [this] { duplicateSelected(); });
     m.addAction("Split at playhead", [this, id] { m_app.splitClip(id, (Tick)m_app.engine().positionTicks()); }); m.addAction("Rename...", [this, id, n = c->name] { bool ok; QString nn = QInputDialog::getText(this, "Rename clip", "Name:", QLineEdit::Normal, n, &ok); if (ok) m_app.editClip(id, "Rename clip", [nn](Clip& x) { x.name = nn; }); });
     m.addSeparator();
-    if (type == ClipType::Pattern) { m.addAction("Make unique (clone pattern)", [this, id] { m_app.makeClipUnique(id); }); m.addAction("Open in piano roll", [this, pid = c->sourceId] { m_app.selectPattern(pid); Q_EMIT openPattern(pid); }); m.addAction(c->loopSource ? "Don't repeat pattern" : "Repeat pattern", [this, id] { m_app.editClip(id, "Repeat pattern", [](Clip& x) { x.loopSource = !x.loopSource; }); }); }
+    if (type == ClipType::Pattern) { m.addAction("Make unique (clone pattern)", [this, id] { m_app.makeClipUnique(id); }); m.addAction("Open in piano roll", [this, pid = c->sourceId] { m_app.selectPattern(pid); Q_EMIT openPattern(pid); }); m.addAction(c->loopSource ? "Don't repeat pattern" : "Repeat pattern (when the clip is longer than the pattern)", [this, id] { m_app.editClip(id, "Repeat pattern", [](Clip& x) { x.loopSource = !x.loopSource; }); }); if (c->length > 0) m.addAction("Fit to pattern length", [this, id] { m_app.editClip(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); }); }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
         m.addAction(c->reverse ? "Un-reverse" : "Reverse", [this, id] { m_app.editClip(id, "Reverse clip", [](Clip& x) { x.reverse = !x.reverse; }); });
@@ -274,10 +277,10 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
 void PlaylistView::deleteSelected() { std::vector<Id> ids(m_selected.begin(), m_selected.end()); m_selected.clear(); m_app.deleteClips(ids); }
 void PlaylistView::selectAll() { for (auto& c : m_app.project().clips) m_selected.insert(c.id); invalidate(); }
 void PlaylistView::muteSelected(bool m) { std::vector<std::unique_ptr<Command>> cmds; for (Id id : m_selected) cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_app.model(), id, "", [m](Clip& x) { x.muted = m; }, 0)); if (!cmds.empty()) m_app.model().macro(m ? "Mute clips" : "Unmute clips", std::move(cmds)); }
-void PlaylistView::duplicateSelected() { auto& proj = m_app.project(); if (m_selected.empty()) return; Tick minS = LLONG_MAX, maxE = 0; for (auto& c : proj.clips) if (m_selected.count(c.id)) { minS = std::min(minS, c.start); maxE = std::max(maxE, c.start + c.length); } Tick span = maxE - minS; std::vector<std::unique_ptr<Command>> cmds; std::set<Id> newSel; for (auto& c : proj.clips) if (m_selected.count(c.id)) { Clip d = c; d.id = proj.newId(); d.start += span; newSel.insert(d.id); cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_app.model(), d, "", -1)); } m_app.model().macro("Duplicate clips", std::move(cmds)); m_selected = newSel; invalidate(); }
+void PlaylistView::duplicateSelected() { auto& proj = m_app.project(); if (m_selected.empty()) return; Tick minS = LLONG_MAX, maxE = 0; for (auto& c : proj.clips) if (m_selected.count(c.id)) { minS = std::min(minS, c.start); maxE = std::max(maxE, c.start + proj.clipLength(c)); } Tick span = maxE - minS; std::vector<std::unique_ptr<Command>> cmds; std::set<Id> newSel; for (auto& c : proj.clips) if (m_selected.count(c.id)) { Clip d = c; d.id = proj.newId(); d.start += span; newSel.insert(d.id); cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_app.model(), d, "", -1)); } m_app.model().macro("Duplicate clips", std::move(cmds)); m_selected = newSel; invalidate(); }
 void PlaylistView::crossfadeSelected() {
     auto& proj = m_app.project(); std::vector<Clip*> sel; for (auto& c : proj.clips) if (m_selected.count(c.id) && c.type == ClipType::Audio) sel.push_back(&c); if (sel.size() != 2) { m_app.statusMessage("Select exactly two overlapping audio clips", 3000); return; }
-    std::sort(sel.begin(), sel.end(), [](Clip* a, Clip* b) { return a->start < b->start; }); Clip* a = sel[0]; Clip* b = sel[1]; Tick overlap = (a->start + a->length) - b->start; if (overlap <= 0) { m_app.statusMessage("Clips do not overlap", 3000); return; }
+    std::sort(sel.begin(), sel.end(), [](Clip* a, Clip* b) { return a->start < b->start; }); Clip* a = sel[0]; Clip* b = sel[1]; Tick overlap = (a->start + proj.clipLength(*a)) - b->start; if (overlap <= 0) { m_app.statusMessage("Clips do not overlap", 3000); return; }
     std::vector<std::unique_ptr<Command>> cmds; cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_app.model(), a->id, "", [overlap](Clip& x) { x.fadeOut = overlap; }, 0)); cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_app.model(), b->id, "", [overlap](Clip& x) { x.fadeIn = overlap; }, 0)); m_app.model().macro("Crossfade", std::move(cmds));
 }
 void PlaylistView::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) e->acceptProposedAction(); }
