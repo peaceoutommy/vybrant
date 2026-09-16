@@ -191,7 +191,17 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent),
     connect(m_resolution, &QComboBox::currentIndexChanged, this, [this](int i) { if (m_updating) return; static const int spb[] = {1, 2, 3, 4, 8}; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) m_app.editPattern(p->id, "Step resolution", [v = spb[i]](Pattern& pp) { pp.stepsPerBeat = v; }); });
     connect(m_swing, &Knob::dragFinished, this, [this] { if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) m_app.editPattern(p->id, "Swing", [v = m_swing->value()](Pattern& pp) { pp.swing = v; }, 3100); });
     connect(m_graph, &QComboBox::currentIndexChanged, this, [this](int i) { m_view->setGraphMode(i - 1); m_view->refresh(); });
+    m_fitTimer = new QTimer(this); m_fitTimer->setSingleShot(true); m_fitTimer->setInterval(120); connect(m_fitTimer, &QTimer::timeout, this, &ChannelRackPanel::fitStepsToWidth);
+    m_scroll->viewport()->installEventFilter(this);
     refresh(ChangeAll);
+}
+bool ChannelRackPanel::eventFilter(QObject* o, QEvent* e) { if (o == m_scroll->viewport() && e->type() == QEvent::Resize) m_fitTimer->start(); return QWidget::eventFilter(o, e); }
+// FL behaviour: the number of steps shown (and the pattern's step count) follows the rack width, 4 steps at a time
+void ChannelRackPanel::fitStepsToWidth() {
+    auto* p = m_app.project().pattern(m_app.project().selectedPatternId); if (!p) return;
+    int n = m_view->stepsThatFit(m_scroll->viewport()->width()); if (n == p->stepCount) return;
+    p->stepCount = n; for (auto& c : p->channels) if ((int)c.steps.size() < n) c.steps.resize(n);
+    m_app.model().notifyClean(ChangePatterns);
 }
 void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }
 void ChannelRackPanel::uiTick() { m_view->uiTick(); }

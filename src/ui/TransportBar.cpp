@@ -24,7 +24,7 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     m_tsNum = new DragValue(this); m_tsNum->setRange(1, 32, 1, 0); m_tsNum->setMinimumWidth(34); m_tsNum->setToolTip("Time signature numerator"); lay->addWidget(m_tsNum); mkLabel("/"); m_tsDen = new DragValue(this); m_tsDen->setRange(1, 32, 1, 0); m_tsDen->setMinimumWidth(34); m_tsDen->setToolTip("Time signature denominator"); lay->addWidget(m_tsDen);
     m_position = new QLabel("001:1:000", this); m_position->setStyleSheet("QLabel { background:#15181c; color:#f2a93b; border:1px solid #3a4048; border-radius:3px; padding:2px 8px; font-family: monospace; font-size: 12pt; }"); m_position->setToolTip("Position (bar:beat:tick) - click to jump"); lay->addWidget(m_position);
     lay->addSpacing(8);
-    m_loop = mkBtn("LOOP", "Loop the loop region (song mode)", true); m_metro = mkBtn("⏱", "Metronome", true); m_countIn = mkBtn("C-IN", "Count-in before recording", true); m_punch = mkBtn("PUNCH", "Punch in/out recording between loop points", true); m_loopRec = mkBtn("TAKES", "Loop recording: new take on every loop pass", true);
+    m_loop = nullptr; m_metro = mkBtn("⏱", "Metronome", true); m_countIn = mkBtn("C-IN", "Count-in before recording", true); m_punch = mkBtn("PUNCH", "Punch in/out recording between loop points", true); m_loopRec = mkBtn("TAKES", "Loop recording: new take on every loop pass", true);
     lay->addSpacing(8);
     mkLabel("Snap"); m_snap = makeSnapCombo(this); lay->addWidget(m_snap);
     mkLabel("Rec"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("Recording mode"); lay->addWidget(m_recMode);
@@ -45,7 +45,6 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     connect(m_bpm, &DragValue::editingFinished, this, [this] { if (!m_updating) m_app.setBpm(m_bpm->value(), true); });
     connect(m_tsNum, &DragValue::editingFinished, this, [this] { if (!m_updating) m_app.setTimeSig((int)m_tsNum->value(), (int)m_tsDen->value()); });
     connect(m_tsDen, &DragValue::editingFinished, this, [this] { if (!m_updating) m_app.setTimeSig((int)m_tsNum->value(), (int)m_tsDen->value()); });
-    connect(m_loop, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) m_app.setLoop(on); });
     connect(m_metro, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) m_app.setMetronome(on); });
     connect(m_countIn, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) m_app.setCountIn(on); });
     connect(m_punch, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) { auto& t = m_app.project().transport; m_app.setPunch(on, t.loopStart, t.loopEnd); } });
@@ -66,7 +65,7 @@ void TransportBar::rebuildPatternCombo() {
 }
 void TransportBar::refresh(uint32_t flags) {
     m_updating = true; const auto& t = m_app.project().transport;
-    m_bpm->setValue(t.bpm); m_tsNum->setValue(t.timeSig.numerator); m_tsDen->setValue(t.timeSig.denominator); m_loop->setChecked(t.loopEnabled); m_metro->setChecked(t.metronome); m_countIn->setChecked(t.countIn); m_punch->setChecked(t.punchEnabled); m_loopRec->setChecked(t.loopRecord);
+    m_bpm->setValue(t.bpm); m_tsNum->setValue(t.timeSig.numerator); m_tsDen->setValue(t.timeSig.denominator); m_metro->setChecked(t.metronome); m_countIn->setChecked(t.countIn); m_punch->setChecked(t.punchEnabled); m_loopRec->setChecked(t.loopRecord);
     m_patMode->setChecked(!t.songMode); m_songMode->setChecked(t.songMode); m_snap->setCurrentIndex(t.snap ? indexFromSnapDivision(t.snapDivision) : 9); m_recMode->setCurrentIndex(t.recordMode);
     if (flags & (ChangePatterns | ChangeStructure | ChangeMeta | ChangeAll)) rebuildPatternCombo();
     if (auto* m = m_app.project().master()) m_masterVol->setValue(m->volume / 1.25f);

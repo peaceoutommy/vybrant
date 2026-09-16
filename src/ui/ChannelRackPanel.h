@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QToolButton>
 #include <QLabel>
+#include <QTimer>
 #include "ui/widgets/Controls.h"
 
 namespace mt {
@@ -18,6 +19,8 @@ public:
     void setGraphMode(int mode) { m_graphMode = mode; update(); }   // -1 off, 0 vel, 1 pan, 2 pitch, 3 prob, 4 offset
     int graphMode() const { return m_graphMode; }
     QSize sizeHint() const override;
+    int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 12 - 44) / (4 * stepW() + 4) * 4; return std::max(4, n); }
+    int widthForSteps(int n) const { return m_leftW + 12 + 44 + (n / 4) * (4 * stepW() + 4) + 8; }
 Q_SIGNALS:
     void openEditor(Id channelId);
 protected:
@@ -41,11 +44,15 @@ class ChannelRackPanel : public QWidget {
 public:
     explicit ChannelRackPanel(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags); void uiTick();
-    QSize sizeHint() const override { return {900, 320}; }
+    QSize sizeHint() const override { return {widthForSteps(16), 320}; }
+    int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; }
+protected:
+    bool eventFilter(QObject* o, QEvent* e) override;
 Q_SIGNALS:
     void openEditor(Id channelId);
 private:
-    App& m_app; RackView* m_view; QScrollArea* m_scroll; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;
+    void fitStepsToWidth();
+    App& m_app; RackView* m_view; QScrollArea* m_scroll; QTimer* m_fitTimer = nullptr; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;
 };
 
 } // namespace mt

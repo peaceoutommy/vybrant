@@ -6,6 +6,7 @@
 #include <QTreeView>
 #include <QStandardItemModel>
 #include <QSortFilterProxyModel>
+#include <QMimeData>
 #include <QLineEdit>
 #include <QSet>
 #include <QMap>
@@ -20,9 +21,14 @@ public:
     explicit BrowserModel(App& app, QObject* parent = nullptr);
     void rebuild();
     void populateFolder(QStandardItem* item);
-    QStringList mimeTypes() const override { return {"text/uri-list", "application/x-musicthingy-item"}; }
+    QStringList mimeTypes() const override { return {"text/uri-list", "application/x-musicthingy-item", "application/x-musicthingy-folder"}; }
     QMimeData* mimeData(const QModelIndexList& indexes) const override;
-    Qt::ItemFlags flags(const QModelIndex& i) const override { auto f = QStandardItemModel::flags(i); if (i.isValid()) f |= Qt::ItemIsDragEnabled; return f & ~Qt::ItemIsEditable; }
+    bool dropMimeData(const QMimeData* data, Qt::DropAction action, int row, int column, const QModelIndex& parent) override;
+    bool canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex& parent) const override { return data->hasFormat("application/x-musicthingy-folder") && !parent.parent().isValid(); }
+    Qt::DropActions supportedDropActions() const override { return Qt::CopyAction; }   // we reorder ourselves; the view must not remove rows
+    Qt::ItemFlags flags(const QModelIndex& i) const override { auto f = QStandardItemModel::flags(i); if (i.isValid()) f |= Qt::ItemIsDragEnabled; if (!i.isValid() || !i.parent().isValid()) f |= Qt::ItemIsDropEnabled; else f &= ~Qt::ItemIsDropEnabled; return f & ~Qt::ItemIsEditable; }
+    void moveLibraryDir(const QString& path, int delta);
+    bool isRootFolder(const QModelIndex& i) const { return i.isValid() && !i.parent().isValid() && i.data(KindRole).toInt() == Folder; }
     bool isFavorite(const QString& key) const { return m_favorites.contains(key); }
     void toggleFavorite(const QString& key); QStringList tags(const QString& key) const { return m_tags.value(key); } void setTags(const QString& key, const QStringList& t);
     QStringList libraryDirs() const { return m_dirs; } void setLibraryDirs(const QStringList& d);

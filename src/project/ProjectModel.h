@@ -19,6 +19,7 @@ public:
 
     void replaceProject(Project p);            // load / new (clears undo)
     void notify(uint32_t flags);              // called by commands after mutation
+    void notifyClean(uint32_t flags) { Q_EMIT changed(flags); }   // view-driven change that should not dirty the project
     void push(std::unique_ptr<Command> cmd) { m_undo.push(std::move(cmd)); m_dirty = true; }
     bool isDirty() const { return m_dirty; }
     void setDirty(bool d) { m_dirty = d; Q_EMIT dirtyChanged(d); }

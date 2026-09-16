@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
     mt::MainWindow win(daw); win.show();
     QString openFile, screenshot, renderPath, panel; bool quitAfter = false;
     for (int i = 1; i < argc; ++i) { QString a = argv[i]; if (a == "--screenshot" && i + 1 < argc) screenshot = argv[++i]; else if (a == "--render" && i + 1 < argc) renderPath = argv[++i]; else if (a == "--panel" && i + 1 < argc) panel = argv[++i]; else if (a == "--quit") quitAfter = true; else if (QFileInfo(a).suffix() == "mtp") openFile = a; }
+    if (quitAfter) win.setForceClose(true);
     if (!openFile.isEmpty()) daw.openProject(openFile); else if (renderPath.isEmpty()) QTimer::singleShot(0, &win, [&win] { win.startupChecks(); });
     if (!renderPath.isEmpty()) { // batch render: musicthingy song.mtp --render out.wav [--quit]
         QTimer::singleShot(500, &win, [&daw, renderPath, quitAfter] { mt::RenderOptions o; o.path = renderPath; o.format = QFileInfo(renderPath).suffix().toLower(); if (o.format.isEmpty()) o.format = "wav"; o.songMode = true; o.tailSeconds = 1.0; QString err; bool ok = daw.exportAudio(o, [](double p) { std::fprintf(stderr, "render %3d%%\r", (int)(p * 100)); return true; }, &err); std::fprintf(stderr, "\n%s\n", ok ? "Rendered OK" : ("Render failed: " + err).toUtf8().constData()); if (quitAfter) QApplication::exit(ok ? 0 : 1); });

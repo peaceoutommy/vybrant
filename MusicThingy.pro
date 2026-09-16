@@ -17,3 +17,9 @@ DESTDIR = bin
 
 SOURCES += $$files(src/*.cpp, true)
 HEADERS += $$files(src/*.h, true)
+
+# `make install` puts the binary and a launcher into the user's home (no root needed)
+target.path = $$(HOME)/.local/bin
+desktop.files = resources/musicthingy.desktop
+desktop.path = $$(HOME)/.local/share/applications
+INSTALLS += target desktop

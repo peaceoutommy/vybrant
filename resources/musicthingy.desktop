@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=MusicThingy
+Comment=Digital audio workstation
+Exec=musicthingy %f
+Terminal=false
+Categories=AudioVideo;Audio;Music;
+MimeType=application/x-musicthingy-project;

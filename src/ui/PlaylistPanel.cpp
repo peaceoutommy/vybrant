@@ -219,7 +219,7 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
 void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
     Layout L = layout(); auto& proj = m_app.project();
     if (L.headers.contains(e->pos())) { int idx = trackAtY(e->pos().y()); if (idx < 0) { m_app.addPlaylistTrack(); return; } auto& t = proj.playlistTracks[idx]; bool ok; QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t.name, &ok); if (ok && !n.isEmpty()) m_app.editTrack(t.id, "Rename track", [n](PlaylistTrack& x) { x.name = n; }); return; }
-    if (L.ruler.contains(e->pos())) { zoomToFit(); return; }
+    if (L.ruler.contains(e->pos())) { if (m_app.project().transport.loopEnabled) m_app.setLoop(false); else zoomToFit(); return; }   // double-click on the loop bar deselects it
     if (Clip* c = clipAt(e->pos())) {
         if (c->type == ClipType::Automation) { auto* l = proj.lane(c->sourceId); if (!l) return; AutomationPoint pt; pt.time = snap(autoTickAtX(*c, e->pos().x())); pt.value = autoValueAtY(*c, e->pos().y()); m_app.editLane(l->id, "Add automation point", [pt](AutomationLane& x) { x.points.push_back(pt); std::sort(x.points.begin(), x.points.end(), [](const AutomationPoint& a, const AutomationPoint& b) { return a.time < b.time; }); if (x.length < pt.time) x.length = pt.time; }); return; }
         if (c->type == ClipType::Pattern) { m_app.selectPattern(c->sourceId); Q_EMIT openPattern(c->sourceId); return; }

@@ -13,6 +13,7 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QHeaderView>
+#include <QTimer>
 #include <QPainter>
 #include <QMouseEvent>
 
@@ -51,14 +52,15 @@ void BrowserModel::rebuild() {
     auto* chans = makeItem("Channels", Category, "cat:channels"); proj->appendRow(chans); for (auto& c : m_app.project().channels) { auto* it = makeItem(c.name, ChannelItem, "channel:" + QString::number(c.id), QString::number(c.id)); it->setForeground(c.color); chans->appendRow(it); }
     auto* lanes = makeItem("Automation", Category, "cat:lanes"); proj->appendRow(lanes); for (auto& l : m_app.project().automationLanes) lanes->appendRow(makeItem(l.name, LaneItem, "lane:" + QString::number(l.id), QString::number(l.id)));
     auto* mix = makeItem("Mixer tracks", Category, "cat:mixer"); proj->appendRow(mix); for (auto& t : m_app.project().mixerTracks) { auto* it = makeItem(t.name + (t.effects.empty() ? "" : QString("  (%1 fx)").arg(t.effects.size())), MixerItem, "mixer:" + QString::number(t.id), QString::number(t.id)); mix->appendRow(it); }
+    // every sample the project references (audio clips - including ones removed from the playlist - and channel samples)
+    auto* psamples = makeItem("Samples", Category, "cat:projsamples"); proj->appendRow(psamples); QSet<QString> seen;
+    for (auto& a : m_app.project().audioSources) { if (a.filePath.isEmpty() || seen.contains(a.filePath)) continue; seen.insert(a.filePath); int uses = 0; for (auto& c : m_app.project().clips) if (c.type == ClipType::Audio && c.sourceId == a.id) ++uses; auto* it = makeItem(QString("%1%2").arg(a.name.isEmpty() ? QFileInfo(a.filePath).fileName() : a.name, uses ? QString("  (%1 clip%2)").arg(uses).arg(uses > 1 ? "s" : "") : "  (not in playlist)"), AudioFile, "file:" + a.filePath, a.filePath); if (a.missing) it->setForeground(theme::red()); if (!uses) it->setForeground(theme::textDim()); psamples->appendRow(it); }
+    for (auto& c : m_app.project().channels) { if (c.samplePath.isEmpty() || c.samplePath.startsWith("builtin:") || seen.contains(c.samplePath)) continue; seen.insert(c.samplePath); psamples->appendRow(makeItem(QFileInfo(c.samplePath).fileName() + "  (channel: " + c.name + ")", AudioFile, "file:" + c.samplePath, c.samplePath)); }
+    if (psamples->rowCount() == 0) psamples->appendRow(makeItem("(no samples used yet)", Category, "hint0"));
     // Favorites
     m_favRoot = addCategory("Favorites");
-    // Samples / loops / one-shots: folders from the library
-    auto* samples = addCategory("Samples"); for (auto& d : m_dirs) if (QDir(d).exists()) addFolder(samples, d);
-    auto* loops = addCategory("Loops"); auto* ones = addCategory("One-shots");
-    for (auto& d : m_dirs) { QDir dir(d); for (auto& sub : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) { QString n = sub.fileName().toLower(); if (n.contains("loop")) addFolder(loops, sub.absoluteFilePath()); if (n.contains("one") || n.contains("shot") || n.contains("drum") || n.contains("kick") || n.contains("snare")) addFolder(ones, sub.absoluteFilePath()); } }
-    if (loops->rowCount() == 0) loops->appendRow(makeItem("(add folders containing 'loop' to your library)", Category, "hint1"));
-    if (ones->rowCount() == 0) ones->appendRow(makeItem("(add folders named 'drums', 'one-shots'... to your library)", Category, "hint2"));
+    // Library folders: each one is a top-level entry (drag to reorder, right-click to remove)
+    for (auto& d : m_dirs) if (QDir(d).exists()) { auto* it = makeItem(QFileInfo(d).fileName().isEmpty() ? d : QFileInfo(d).fileName(), Folder, "dir:" + d, d); QFont f = theme::boldFont(); it->setFont(f); it->setForeground(theme::text()); it->setData(false, LoadedRole); it->appendRow(new QStandardItem("...")); it->setToolTip(d); appendRow(it); }
     // Instruments & effects
     auto* inst = addCategory("Instruments"); auto* fx = addCategory("Effects"); std::map<QString, QStandardItem*> fxCats;
     for (auto& i : NativeRegistry::instance().all()) { if (i.kind == ProcessorKind::Instrument) { inst->appendRow(makeItem(i.name, NativeInstrument, "native:" + i.key, i.key)); } else { auto& cat = fxCats[i.category]; if (!cat) { cat = makeItem(i.category, Category, "cat:fx:" + i.category); fx->appendRow(cat); } cat->appendRow(makeItem(i.name, NativeEffect, "native:" + i.key, i.key)); } }
@@ -71,18 +73,30 @@ void BrowserModel::rebuild() {
     for (auto& sub : pdir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) { QString key = sub.fileName(); key.replace('_', ':'); QString name = key; if (auto* info = NativeRegistry::instance().info(key)) name = info->name; auto* cat = makeItem(name, Category, "cat:preset:" + key); presets->appendRow(cat); for (auto& f : QDir(sub.absoluteFilePath()).entryInfoList({"*.json"}, QDir::Files)) cat->appendRow(makeItem(f.completeBaseName(), Preset, "preset:" + f.absoluteFilePath(), f.absoluteFilePath())); }
     // Projects
     auto* projs = addCategory("Projects"); for (auto& r : m_app.recentFiles()) projs->appendRow(makeItem(QFileInfo(r).fileName(), ProjectFile, "file:" + r, r)); auto* tpl = makeItem("Templates", Category, "cat:templates"); projs->appendRow(tpl); for (auto& t : m_app.templates()) tpl->appendRow(makeItem(QFileInfo(t).completeBaseName(), ProjectFile, "file:" + t, t));
-    // User library (extra dirs beyond the first)
-    auto* user = addCategory("User Library"); for (int i = 1; i < m_dirs.size(); ++i) if (QDir(m_dirs[i]).exists()) addFolder(user, m_dirs[i]); if (user->rowCount() == 0) user->appendRow(makeItem("(right-click to add folders)", Category, "hint4"));
     // favorites: files, plugins, natives
     for (auto& f : m_favorites) { if (f.startsWith("file:")) { QString p = f.mid(5); m_favRoot->appendRow(makeItem(QFileInfo(p).fileName(), AudioFile::isAudioFile(p) ? AudioFile : ProjectFile, f, p)); } else if (f.startsWith("native:")) { QString k = f.mid(7); if (auto* info = NativeRegistry::instance().info(k)) m_favRoot->appendRow(makeItem(info->name, info->kind == ProcessorKind::Instrument ? NativeInstrument : NativeEffect, f, k)); } else if (f.startsWith("plugin:")) { for (auto& p : m_app.pluginDb().plugins()) if ("plugin:" + p.key() == f) { auto* it = makeItem(p.name, Plugin, f, p.path); it->setData(p.key(), PluginKeyRole); m_favRoot->appendRow(it); } } }
 }
 QMimeData* BrowserModel::mimeData(const QModelIndexList& indexes) const {
     auto* md = new QMimeData(); if (indexes.isEmpty()) return md; auto idx = indexes.first(); int kind = idx.data(KindRole).toInt(); QString path = idx.data(PathRole).toString();
+    if (isRootFolder(idx)) { md->setData("application/x-musicthingy-folder", path.toUtf8()); return md; }
     if (kind == AudioFile || kind == ProjectFile) md->setUrls({QUrl::fromLocalFile(path)});
     QString payload; switch (kind) { case NativeInstrument: case NativeEffect: payload = "native|" + path; break; case Plugin: payload = "plugin|" + idx.data(PluginKeyRole).toString(); break; case PatternItem: payload = "pattern|" + path; break; case LaneItem: payload = "lane|" + path; break; case Preset: payload = "preset|" + path; break; case AudioFile: payload = "audio|" + path; break; default: break; }
     if (!payload.isEmpty()) md->setData("application/x-musicthingy-item", payload.toUtf8());
     return md;
 }
+
+bool BrowserModel::dropMimeData(const QMimeData* data, Qt::DropAction, int row, int, const QModelIndex& parent) {
+    if (!data->hasFormat("application/x-musicthingy-folder")) return false;
+    QString path = QString::fromUtf8(data->data("application/x-musicthingy-folder")); if (!m_dirs.contains(path)) return false;
+    // target position among the root library folders (drops on categories clamp to the folder block)
+    int targetRow = parent.isValid() ? parent.row() : row; if (targetRow < 0) targetRow = rowCount();
+    QStringList order; for (int r = 0; r < rowCount(); ++r) { auto* it = item(r); if (it->data(KindRole).toInt() == Folder && r != -1) order << it->data(PathRole).toString(); }
+    int before = 0; for (int r = 0; r < std::min(targetRow, rowCount()); ++r) if (item(r)->data(KindRole).toInt() == Folder && item(r)->data(PathRole).toString() != path) ++before;
+    QStringList dirs = m_dirs; dirs.removeAll(path); dirs.insert(std::clamp(before, 0, (int)dirs.size()), path);
+    // keep folders that don't exist on disk in their old relative place
+    QTimer::singleShot(0, this, [this, dirs] { setLibraryDirs(dirs); }); return true;   // rebuild after the drop completes
+}
+void BrowserModel::moveLibraryDir(const QString& path, int delta) { int i = m_dirs.indexOf(path); if (i < 0) return; int j = std::clamp(i + delta, 0, (int)m_dirs.size() - 1); if (i == j) return; QStringList d = m_dirs; d.move(i, j); setLibraryDirs(d); }
 
 // ---------------------------------------------------------------- filter
 bool BrowserFilter::filterAcceptsRow(int row, const QModelIndex& parent) const {
@@ -122,20 +136,20 @@ BrowserPanel::BrowserPanel(App& app, QWidget* parent) : QWidget(parent), m_app(a
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
     auto* top = new QHBoxLayout(); m_search = new QLineEdit(this); m_search->setPlaceholderText("Search samples, plugins, presets, tags..."); m_search->setClearButtonEnabled(true); top->addWidget(m_search);
     auto* prev = new QToolButton(this); prev->setText("♫"); prev->setCheckable(true); prev->setChecked(true); prev->setToolTip("Preview audio files on click"); top->addWidget(prev); connect(prev, &QToolButton::toggled, this, [this](bool b) { m_previewEnabled = b; });
-    auto* addDir = new QToolButton(this); addDir->setText("+"); addDir->setToolTip("Add a folder to the library"); top->addWidget(addDir);
+    auto* addDir = new QToolButton(this); addDir->setText("+"); addDir->setToolTip("Add a folder to the browser (appears as its own entry; drag entries to reorder)"); top->addWidget(addDir);
     lay->addLayout(top);
     m_tree = new QTreeView(this); m_model = new BrowserModel(app, this); m_filter = new BrowserFilter(this); m_filter->setModelRef(m_model); m_filter->setSourceModel(m_model); m_filter->setRecursiveFilteringEnabled(false);
-    m_tree->setModel(m_filter); m_tree->setHeaderHidden(true); m_tree->setDragEnabled(true); m_tree->setDragDropMode(QAbstractItemView::DragOnly); m_tree->setContextMenuPolicy(Qt::CustomContextMenu); m_tree->setUniformRowHeights(true); m_tree->setIndentation(14); m_tree->setAlternatingRowColors(true);
+    m_tree->setModel(m_filter); m_tree->setHeaderHidden(true); m_tree->setDragEnabled(true); m_tree->setAcceptDrops(true); m_tree->setDragDropMode(QAbstractItemView::DragDrop); m_tree->setDefaultDropAction(Qt::CopyAction); m_tree->setDropIndicatorShown(true); m_tree->setContextMenuPolicy(Qt::CustomContextMenu); m_tree->setUniformRowHeights(true); m_tree->setIndentation(14); m_tree->setAlternatingRowColors(true);
     lay->addWidget(m_tree);
     m_previewBar = new PreviewBar(app, this); lay->addWidget(m_previewBar);
     connect(&app, &App::previewChanged, this, [this](const QString& path) { highlightPlaying(path); m_previewBar->update(); });
     m_model->rebuild(); m_tree->expand(m_filter->mapFromSource(m_model->index(0, 0)));
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString& t) { m_filter->setFilterRegularExpression(QRegularExpression::escape(t)); if (!t.isEmpty()) m_tree->expandAll(); });
     connect(m_tree, &QTreeView::clicked, this, &BrowserPanel::onClicked); connect(m_tree, &QTreeView::doubleClicked, this, &BrowserPanel::onDoubleClicked); connect(m_tree, &QTreeView::customContextMenuRequested, this, &BrowserPanel::onContext); connect(m_tree, &QTreeView::expanded, this, &BrowserPanel::onExpanded);
-    connect(addDir, &QToolButton::clicked, this, [this] { QString d = QFileDialog::getExistingDirectory(this, "Add library folder"); if (!d.isEmpty()) { auto dirs = m_model->libraryDirs(); dirs << d; m_model->setLibraryDirs(dirs); } });
+    connect(addDir, &QToolButton::clicked, this, [this] { QString d = QFileDialog::getExistingDirectory(this, "Add folder to browser"); if (!d.isEmpty()) { auto dirs = m_model->libraryDirs(); if (!dirs.contains(d)) dirs << d; m_model->setLibraryDirs(dirs); } });
     connect(&m_app.pluginDb(), &PluginDatabase::changed, this, [this] { m_model->rebuild(); });
 }
-void BrowserPanel::refresh(uint32_t flags) { if (flags & (ChangePatterns | ChangeChannels | ChangeAutomation | ChangeStructure | ChangeMixer)) { QStringList expanded; std::function<void(const QModelIndex&)> collect = [&](const QModelIndex& idx) { for (int r = 0; r < m_filter->rowCount(idx); ++r) { auto c = m_filter->index(r, 0, idx); if (m_tree->isExpanded(c)) { expanded << c.data(BrowserModel::KeyRole).toString(); collect(c); } } }; collect(QModelIndex()); m_model->rebuild(); std::function<void(const QModelIndex&)> restore = [&](const QModelIndex& idx) { for (int r = 0; r < m_filter->rowCount(idx); ++r) { auto c = m_filter->index(r, 0, idx); if (expanded.contains(c.data(BrowserModel::KeyRole).toString())) { m_tree->expand(c); restore(c); } } }; restore(QModelIndex()); } }
+void BrowserPanel::refresh(uint32_t flags) { if (flags & (ChangePatterns | ChangeChannels | ChangeAutomation | ChangeStructure | ChangeMixer | ChangeAudio | ChangePlaylist)) { QStringList expanded; std::function<void(const QModelIndex&)> collect = [&](const QModelIndex& idx) { for (int r = 0; r < m_filter->rowCount(idx); ++r) { auto c = m_filter->index(r, 0, idx); if (m_tree->isExpanded(c)) { expanded << c.data(BrowserModel::KeyRole).toString(); collect(c); } } }; collect(QModelIndex()); m_model->rebuild(); std::function<void(const QModelIndex&)> restore = [&](const QModelIndex& idx) { for (int r = 0; r < m_filter->rowCount(idx); ++r) { auto c = m_filter->index(r, 0, idx); if (expanded.contains(c.data(BrowserModel::KeyRole).toString())) { m_tree->expand(c); restore(c); } } }; restore(QModelIndex()); } }
 void BrowserPanel::uiTick() { m_previewBar->tick(); }
 void BrowserPanel::highlightPlaying(const QString& path) {
     // bold + accent colour on the item that is being previewed (search the whole loaded tree)
@@ -166,11 +180,12 @@ void BrowserPanel::onContext(const QPoint& pos) {
         if (kind == BrowserModel::PatternItem) { Id pid = path.toULongLong(); menu.addAction("Rename", [this, pid] { bool ok; QString n = QInputDialog::getText(this, "Rename pattern", "Name:", QLineEdit::Normal, m_app.project().pattern(pid)->name, &ok); if (ok) m_app.renamePattern(pid, n); }); menu.addAction("Clone", [this, pid] { m_app.clonePattern(pid); }); menu.addAction("Delete", [this, pid] { m_app.deletePattern(pid); }); menu.addSeparator(); }
         if (kind == BrowserModel::LaneItem) { Id lid = path.toULongLong(); menu.addAction("Delete automation", [this, lid] { m_app.deleteLane(lid); }); }
         if (kind == BrowserModel::Plugin) { menu.addAction(m_app.pluginDb().findByPath(path) && m_app.pluginDb().findByPath(path)->hidden ? "Unhide" : "Hide plugin", [this, idx] { m_app.pluginDb().setHidden(idx.data(BrowserModel::PluginKeyRole).toString(), true); }); }
-        if (kind == BrowserModel::Folder) { menu.addAction("Remove from library", [this, path] { auto d = m_model->libraryDirs(); d.removeAll(path); m_model->setLibraryDirs(d); }); }
+        if (kind == BrowserModel::Folder && m_model->isRootFolder(m_filter->mapToSource(idx))) { menu.addAction("Move up", [this, path] { m_model->moveLibraryDir(path, -1); }); menu.addAction("Move down", [this, path] { m_model->moveLibraryDir(path, 1); }); menu.addAction("Remove from browser", [this, path] { auto d = m_model->libraryDirs(); d.removeAll(path); m_model->setLibraryDirs(d); }); menu.addSeparator(); }
+        else if (kind == BrowserModel::Folder) { menu.addAction("Add this folder to the browser", [this, path] { auto d = m_model->libraryDirs(); if (!d.contains(path)) { d << path; m_model->setLibraryDirs(d); } }); }
         if (kind != BrowserModel::Category && kind != BrowserModel::Folder) { menu.addAction(m_model->isFavorite(key) ? "Remove from favorites" : "Add to favorites", [this, key] { m_model->toggleFavorite(key); }); menu.addAction("Edit tags...", [this, key] { bool ok; QString t = QInputDialog::getText(this, "Tags", "Space-separated tags:", QLineEdit::Normal, m_model->tags(key).join(' '), &ok); if (ok) m_model->setTags(key, t.split(' ', Qt::SkipEmptyParts)); }); }
         menu.addSeparator();
     }
-    menu.addAction("Add library folder...", [this] { QString d = QFileDialog::getExistingDirectory(this, "Add library folder"); if (!d.isEmpty()) { auto dirs = m_model->libraryDirs(); dirs << d; m_model->setLibraryDirs(dirs); } });
+    menu.addAction("Add folder to browser...", [this] { QString d = QFileDialog::getExistingDirectory(this, "Add folder"); if (!d.isEmpty()) { auto dirs = m_model->libraryDirs(); if (!dirs.contains(d)) dirs << d; m_model->setLibraryDirs(dirs); } });
     menu.addAction("Refresh", [this] { m_model->rebuild(); });
     menu.exec(m_tree->viewport()->mapToGlobal(pos));
 }
