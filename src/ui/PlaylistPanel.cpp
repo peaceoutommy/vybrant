@@ -55,11 +55,11 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c) {
     auto& proj = m_app.project(); bool sel = m_selected.count(c.id); QColor col = theme::accent2();
     if (c.type == ClipType::Pattern) { if (auto* pat = proj.pattern(c.sourceId)) col = pat->color; } else if (c.type == ClipType::Audio) col = QColor("#5ad1c9"); else if (c.type == ClipType::Automation) { if (auto* l = proj.lane(c.sourceId)) col = l->color; }
     if (c.muted) col = col.darker(220);
-    p.setPen(sel ? QPen(Qt::white, 1.5) : QPen(col.darker(140), 1)); p.setBrush(col.darker(sel ? 120 : 160)); p.drawRoundedRect(r, 3, 3);
+    p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(col.darker(125), 1)); p.setBrush(col.darker(sel ? 135 : 190)); p.drawRoundedRect(r, 2, 2);
     p.setClipRect(r.adjusted(1, 1, -1, -1));
     // header strip
-    p.fillRect(QRect(r.left(), r.top(), r.width(), 14), col.darker(sel ? 90 : 110)); p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(QRect(r.left() + 4, r.top(), r.width() - 8, 14), Qt::AlignVCenter | Qt::AlignLeft, c.name + (c.muted ? " (muted)" : ""));
-    QRect body = r.adjusted(1, 15, -1, -1);
+    p.fillRect(QRect(r.left(), r.top(), r.width(), 13), theme::withAlpha(col, sel ? 230 : 170)); p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(QRect(r.left() + 4, r.top(), r.width() - 8, 13), Qt::AlignVCenter | Qt::AlignLeft, c.name + (c.muted ? " (muted)" : ""));
+    QRect body = r.adjusted(1, 14, -1, -1);
     if (c.type == ClipType::Pattern) {
         if (auto* pat = proj.pattern(c.sourceId)) {
             Tick plen = std::max<Tick>(pat->effectiveLength(proj.transport.timeSig), 1); int lo = 127, hi = 0; for (auto& ch : pat->channels) { for (auto& n : ch.notes) { lo = std::min(lo, n.pitch); hi = std::max(hi, n.pitch); } for (size_t i = 0; i < ch.steps.size(); ++i) if (ch.steps[i].enabled) { auto* cc = proj.channel(ch.id); int pp = cc ? cc->rootNote : 60; lo = std::min(lo, pp); hi = std::max(hi, pp); } }
@@ -97,7 +97,7 @@ void PlaylistView::renderCache() {
     Layout L = layout(); m_cache = QPixmap(size()); m_cache.fill(theme::bg()); QPainter p(&m_cache); auto& proj = m_app.project(); const auto& ts = proj.transport.timeSig; Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar();
     // tracks background
     p.setClipRect(L.area); int y = L.rulerH - m_scrollY;
-    for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; QRect tr(L.area.left(), y, L.area.width(), t.height); p.fillRect(tr, i % 2 ? QColor(0x1f, 0x22, 0x28) : QColor(0x22, 0x26, 0x2c)); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += t.height; }
+    for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; QRect tr(L.area.left(), y, L.area.width(), t.height); p.fillRect(tr, i % 2 ? QColor(0x18, 0x1b, 0x20) : QColor(0x1a, 0x1d, 0x22)); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += t.height; }
     Tick step = snapTicks(); if (step * m_ppt < 8) step = beat; if (beat * m_ppt < 8) step = bar; Tick last = xToTick(L.area.right());
     for (Tick t = (m_scrollTick / step) * step; t <= last; t += step) { int x = tickToX(t); p.setPen(t % bar == 0 ? theme::gridStrong().lighter(130) : t % beat == 0 ? theme::gridStrong() : theme::grid()); p.drawLine(x, L.area.top(), x, L.area.bottom()); }
     // loop / punch region
@@ -114,15 +114,15 @@ void PlaylistView::renderCache() {
     // headers
     p.fillRect(L.headers, theme::panel()); p.setClipRect(L.headers); y = L.rulerH - m_scrollY;
     for (size_t i = 0; i < proj.playlistTracks.size(); ++i) {
-        auto& t = proj.playlistTracks[i]; QRect hr(0, y, L.headerW, t.height); p.fillRect(hr, i % 2 ? theme::panel() : theme::panelLight().darker(110)); p.fillRect(QRect(0, y, 5, t.height), t.color); p.setPen(theme::border()); p.drawLine(0, hr.bottom(), L.headerW, hr.bottom());
+        auto& t = proj.playlistTracks[i]; QRect hr(0, y, L.headerW, t.height); p.fillRect(hr, i % 2 ? QColor(0x1c, 0x1f, 0x24) : QColor(0x1e, 0x21, 0x27)); p.fillRect(QRect(0, y + 2, 3, t.height - 4), t.color); p.setPen(theme::border()); p.drawLine(0, hr.bottom(), L.headerW, hr.bottom());
         p.setPen(theme::text()); p.setFont(theme::uiFont()); p.drawText(QRect(10, y + 3, L.headerW - 14, 16), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(t.name, Qt::ElideRight, L.headerW - 16));
-        auto btn = [&](QRect r, const QString& s, bool on, QColor c) { p.setPen(QPen(theme::border(), 1)); p.setBrush(on ? c : theme::bg()); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, s); };
+        auto btn = [&](QRect r, const QString& s, bool on, QColor c) { p.setPen(QPen(on ? c.darker(120) : theme::border(), 1)); p.setBrush(on ? c : QColor(0x16, 0x19, 0x1e)); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, s); };
         if (t.height >= 40) { btn(QRect(10, y + 22, 18, 14), "M", t.mute, theme::red()); btn(QRect(31, y + 22, 18, 14), "S", t.solo, theme::accent()); btn(QRect(52, y + 22, 18, 14), "L", t.locked, theme::textDim()); int mi = proj.mixerIndex(t.mixerTrackId); btn(QRect(73, y + 22, 40, 14), mi <= 0 ? "> Master" : QString("> Ins %1").arg(mi), false, theme::bg()); }
         y += t.height;
     }
     p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(6, y + 4, L.headerW - 12, 14), Qt::AlignLeft, "+ double-click to add track");
     p.setClipping(false);
-    p.fillRect(QRect(0, 0, L.headerW, L.rulerH), theme::panelLight()); p.setPen(theme::textDim()); p.drawText(QRect(0, 0, L.headerW, L.rulerH), Qt::AlignCenter, "Playlist");
+    p.fillRect(QRect(0, 0, L.headerW, L.rulerH), theme::panel()); p.setPen(theme::border()); p.drawLine(0, L.rulerH - 1, L.headerW, L.rulerH - 1);
     m_cacheValid = true;
 }
 void PlaylistView::paintEvent(QPaintEvent*) {

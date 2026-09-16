@@ -1,6 +1,7 @@
 #include "ui/MainWindow.h"
 #include "ui/TransportBar.h"
 #include "ui/BrowserPanel.h"
+#include "ui/ProjectSamplesPanel.h"
 #include "ui/ChannelRackPanel.h"
 #include "ui/PianoRollPanel.h"
 #include "ui/PlaylistPanel.h"
@@ -36,8 +37,8 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
     m_transport = new TransportBar(app, this); auto* tb = new QToolBar("Transport", this); tb->setObjectName("transportBar"); tb->setMovable(false); tb->addWidget(m_transport); addToolBar(Qt::TopToolBarArea, tb);
     buildDocks(); buildMenus();
     { // FL-style window toggles on the right of the toolbar
-        auto mk = [&](const QString& key, const QString& text, const QString& actionId, const QString& tip) { auto* b = new QToolButton(this); b->setText(text); b->setCheckable(true); b->setFocusPolicy(Qt::NoFocus); b->setToolTip(tip); b->setToolButtonStyle(Qt::ToolButtonTextOnly); b->setMinimumWidth(b->fontMetrics().horizontalAdvance(text) + 18); connect(b, &QToolButton::clicked, this, [this, actionId] { if (auto* a = m_app.commands().action(actionId)) a->trigger(); }); m_transport->addWindowButton(b); m_winButtons[key] = b; };
-        mk("playlist", "PL", "view.playlist", "Playlist (F5)"); mk("rack", "CR", "view.rack", "Channel Rack (F6)"); mk("pianoroll", "PR", "view.pianoRoll", "Piano Roll (F7)"); mk("browser", "BR", "view.browser", "Browser (F8)"); mk("mixer", "MX", "view.mixer", "Mixer (F9)");
+        auto mk = [&](const QString& key, const QString& text, const QString& actionId, const QString& tip) { auto* b = new QToolButton(this); b->setText(text); b->setCheckable(true); b->setFocusPolicy(Qt::NoFocus); b->setToolTip(tip); b->setToolButtonStyle(Qt::ToolButtonTextOnly); b->setFont(theme::smallFont()); b->setFixedSize(std::max(26, b->fontMetrics().horizontalAdvance(text) + 22), 22); connect(b, &QToolButton::clicked, this, [this, actionId] { if (auto* a = m_app.commands().action(actionId)) a->trigger(); }); m_transport->addWindowButton(b); m_winButtons[key] = b; };
+        mk("playlist", "PL", "view.playlist", "Playlist (F5)"); mk("rack", "CR", "view.rack", "Channel Rack (F6)"); mk("pianoroll", "PR", "view.pianoRoll", "Piano Roll (F7)"); mk("browser", "BR", "view.browser", "Browser (F8)"); mk("mixer", "MX", "view.mixer", "Mixer (F9)"); mk("samples", "SM", "view.samples", "Project samples (Alt+S)");
     }
     qApp->installEventFilter(this);
     m_status = new QLabel(this); statusBar()->addWidget(m_status, 1); m_undoLabel = new QLabel(this); m_undoLabel->setStyleSheet("color:#8a919a;"); statusBar()->addPermanentWidget(m_undoLabel);
@@ -61,6 +62,7 @@ void MainWindow::buildDocks() {
     m_pianoRoll = new PianoRollPanel(m_app, this); m_dPiano = mkDock(m_workspace, "Piano Roll", "dockPianoRoll", m_pianoRoll, Qt::TopDockWidgetArea);
     m_rack = new ChannelRackPanel(m_app, this); m_dRack = mkDock(this, "Channel Rack", "dockRack", m_rack, Qt::BottomDockWidgetArea);
     m_mixer = new MixerPanel(m_app, this); m_pages->addWidget(m_mixer); m_dMixer = nullptr;
+    m_samples = new ProjectSamplesPanel(m_app, this); m_dSamples = mkDock(this, "Project Samples", "dockSamples", m_samples, Qt::RightDockWidgetArea); m_dSamples->setFloating(true); m_dSamples->hide();
     m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); m_dPlaylist->raise();
     m_rack->setMinimumHeight(180); m_dRack->setMinimumHeight(200); resizeDocks({m_dBrowser}, {260}, Qt::Horizontal); resizeDocks({m_dRack}, {330}, Qt::Vertical);
     connect(m_browser, &BrowserPanel::openEditor, this, [this](Id id) { openEditor(id); });
@@ -107,6 +109,7 @@ void MainWindow::buildMenus() {
     auto addDockAction = [&](const QString& id, QDockWidget* d, const QKeySequence& k, bool inWorkspace) { auto* a = reg.add(id, d->windowTitle(), "View", k, [this, d, inWorkspace] { bool shown = d->isVisible() && !d->visibleRegion().isEmpty() && (!inWorkspace || m_pages->currentWidget() == m_workspace); if (shown) { if (inWorkspace && m_dPlaylist->isVisible() && m_dPiano->isVisible() && !d->isFloating()) { d->hide(); } else d->hide(); } else { if (inWorkspace) showWorkspaceDock(d); else { d->show(); d->raise(); d->widget()->setFocus(); } } syncWindowButtons(); }, this); view->addAction(a); };
     addDockAction("view.playlist", m_dPlaylist, QKeySequence("F5"), true); addDockAction("view.rack", m_dRack, QKeySequence("F6"), false); addDockAction("view.pianoRoll", m_dPiano, QKeySequence("F7"), true); addDockAction("view.browser", m_dBrowser, QKeySequence("F8"), false);
     view->addAction(reg.add("view.mixer", "Mixer", "View", QKeySequence("F9"), [this] { showMixerPage(m_pages->currentWidget() != m_mixer); }, this));
+    view->addAction(reg.add("view.samples", "Project samples", "View", QKeySequence("Alt+S"), [this] { if (m_dSamples->isVisible()) m_dSamples->hide(); else { if (m_dSamples->isFloating() && m_dSamples->width() < 200) m_dSamples->resize(600, 320); m_dSamples->show(); m_dSamples->raise(); } }, this));
     view->addAction(reg.add("view.closeAll", "Close all windows", "View", QKeySequence("F12"), [this] { closeAllWindows(); }, this));
     view->addSeparator(); view->addAction(reg.add("view.resetLayout", "Reset workspace layout", "View", QKeySequence(), [this] { resetLayout(); }, this));
     auto* opt = mb->addMenu("&Options");
@@ -115,7 +118,7 @@ void MainWindow::buildMenus() {
 }
 
 void MainWindow::onChanged(uint32_t flags) {
-    m_transport->refresh(flags); m_rack->refresh(flags); m_pianoRoll->refresh(flags); m_playlist->refresh(flags); m_mixer->refresh(flags); m_browser->refresh(flags);
+    m_transport->refresh(flags); m_rack->refresh(flags); m_pianoRoll->refresh(flags); m_playlist->refresh(flags); m_mixer->refresh(flags); m_browser->refresh(flags); m_samples->refresh(flags);
     for (auto it = m_editors.begin(); it != m_editors.end();) { Id id = it->first; bool exists = m_app.project().channel(id) != nullptr; for (auto& t : m_app.project().mixerTracks) for (auto& e : t.effects) if (e.id == id) exists = true; if (!exists) { it->second->close(); it = m_editors.erase(it); } else ++it; }
 }
 void MainWindow::uiTick() { m_transport->uiTick(); m_rack->uiTick(); m_pianoRoll->uiTick(); m_playlist->uiTick(); m_mixer->uiTick(); m_browser->uiTick(); syncWindowButtons(); }
@@ -143,10 +146,10 @@ void MainWindow::applyDefaultLayout() {
 }
 void MainWindow::showMixerPage(bool on) { m_pages->setCurrentWidget(on ? static_cast<QWidget*>(m_mixer) : static_cast<QWidget*>(m_workspace)); if (on && m_dRack->isFloating()) m_dRack->hide(); syncWindowButtons(); }
 void MainWindow::showWorkspaceDock(QDockWidget* d) { showMixerPage(false); d->show(); d->raise(); d->widget()->setFocus(); }
-void MainWindow::closeAllWindows() { for (auto& [id, w] : m_editors) w->close(); if (m_dRack->isFloating()) m_dRack->hide(); showMixerPage(false); }
+void MainWindow::closeAllWindows() { for (auto& [id, w] : m_editors) w->close(); if (m_dRack->isFloating()) m_dRack->hide(); if (m_dSamples->isFloating()) m_dSamples->hide(); showMixerPage(false); }
 void MainWindow::syncWindowButtons() {
     auto set = [this](const QString& k, bool on) { auto it = m_winButtons.find(k); if (it != m_winButtons.end() && it->second->isChecked() != on) it->second->setChecked(on); };
-    bool mixer = m_pages->currentWidget() == m_mixer; set("mixer", mixer); set("playlist", !mixer && m_dPlaylist->isVisible() && !m_dPlaylist->visibleRegion().isEmpty()); set("pianoroll", !mixer && m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty()); set("rack", m_dRack->isVisible()); set("browser", m_dBrowser->isVisible());
+    bool mixer = m_pages->currentWidget() == m_mixer; set("mixer", mixer); set("playlist", !mixer && m_dPlaylist->isVisible() && !m_dPlaylist->visibleRegion().isEmpty()); set("pianoroll", !mixer && m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty()); set("rack", m_dRack->isVisible()); set("browser", m_dBrowser->isVisible()); set("samples", m_dSamples->isVisible());
 }
 void MainWindow::startupChecks() { if (m_app.hasRecoveryFile()) { auto r = QMessageBox::question(this, "Recover project", "An autosaved recovery file from a previous session was found. Recover it?", QMessageBox::Yes | QMessageBox::No); if (r == QMessageBox::Yes) m_app.recoverAutosave(); else QFile::remove(m_app.autosavePath()); } }
 void MainWindow::closeEvent(QCloseEvent* e) { if (!m_forceClose && !maybeSave()) { e->ignore(); return; } QSettings s; s.setValue("ui/geometry", saveGeometry()); s.setValue("ui/state", saveState()); s.setValue("ui/workspace", m_workspace->saveState()); for (auto& [id, w] : m_editors) w->close(); e->accept(); }
@@ -182,7 +185,7 @@ Automation: right-click any knob or fader &gt; "Create automation clip". Edit po
 Recording: choose an input on a mixer strip, arm it (R), press Record. Live MIDI / typing keyboard plays the selected channel; with Record on, notes go into the current pattern.<br>
 Typing keyboard: Z-M lower octave, Q-P upper octave, Ctrl+[ / Ctrl+] change octave.<br><br>
 <b>Transport</b>: Space play/stop, Ctrl+Space play/pause, Stop twice = back to start, R record, L song/pattern mode, Ctrl+M metronome, Ctrl+P count-in, Ctrl+T typing keyboard on/off, Num +/- next/previous pattern.<br>
-<b>Windows</b>: F5 Playlist, F6 Channel Rack, F7 Piano Roll, F8 Browser, F9 Mixer (full page), F10 MIDI settings, F11 song info, F12 close all, Esc closes the focused window. Tools: P pencil, B brush, E select, D delete, C slice, T mute. Shortcuts are customisable under Options.)");
+<b>Windows</b>: F5 Playlist, F6 Channel Rack, F7 Piano Roll, F8 Browser, F9 Mixer (full page), Alt+S project samples, F10 MIDI settings, F11 song info, F12 close all, Esc closes the focused window. Tools: P pencil, B brush, E select, D delete, C slice, T mute. Shortcuts are customisable under Options.)");
 }
 
 } // namespace mt

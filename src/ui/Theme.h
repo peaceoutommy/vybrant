@@ -1,32 +1,36 @@
-// Original dark theme used across the UI (no third-party artwork).
+// Original dark theme used across the UI (no third-party artwork). Flat, low-contrast surfaces with one warm accent.
 #pragma once
 #include <QColor>
 #include <QString>
 #include <QFont>
 #include <QPainter>
+#include <QIcon>
 
 namespace mt::theme {
-inline QColor bg() { return QColor(0x1b, 0x1e, 0x23); }
-inline QColor panel() { return QColor(0x24, 0x28, 0x2e); }
-inline QColor panelLight() { return QColor(0x2d, 0x32, 0x39); }
-inline QColor border() { return QColor(0x3a, 0x40, 0x48); }
-inline QColor grid() { return QColor(0x2f, 0x34, 0x3b); }
-inline QColor gridStrong() { return QColor(0x40, 0x46, 0x4f); }
-inline QColor text() { return QColor(0xd6, 0xda, 0xe0); }
-inline QColor textDim() { return QColor(0x8a, 0x91, 0x9a); }
-inline QColor accent() { return QColor(0xf2, 0xa9, 0x3b); }
-inline QColor accent2() { return QColor(0x4e, 0xa3, 0xf1); }
-inline QColor green() { return QColor(0x5d, 0xc2, 0x6d); }
-inline QColor red() { return QColor(0xe2, 0x5c, 0x5c); }
-inline QColor playhead() { return QColor(0xff, 0xd7, 0x6a); }
-inline QColor selection() { return QColor(0xf2, 0xa9, 0x3b, 90); }
-inline QFont smallFont() { QFont f; f.setPointSizeF(8.0); return f; }
-inline QFont uiFont() { QFont f; f.setPointSizeF(9.0); return f; }
-inline QFont boldFont() { QFont f; f.setPointSizeF(9.0); f.setBold(true); return f; }
+inline QColor bg() { return QColor(0x15, 0x17, 0x1b); }
+inline QColor panel() { return QColor(0x1c, 0x1f, 0x24); }
+inline QColor panelLight() { return QColor(0x24, 0x28, 0x2e); }
+inline QColor border() { return QColor(0x2b, 0x30, 0x37); }
+inline QColor grid() { return QColor(0x22, 0x26, 0x2b); }
+inline QColor gridStrong() { return QColor(0x30, 0x36, 0x3d); }
+inline QColor text() { return QColor(0xd3, 0xd7, 0xdd); }
+inline QColor textDim() { return QColor(0x7e, 0x86, 0x91); }
+inline QColor accent() { return QColor(0xf0, 0xa1, 0x3a); }
+inline QColor accent2() { return QColor(0x55, 0xa0, 0xf0); }
+inline QColor green() { return QColor(0x5f, 0xc0, 0x74); }
+inline QColor red() { return QColor(0xe0, 0x5a, 0x5a); }
+inline QColor playhead() { return QColor(0xff, 0xd2, 0x66); }
+inline QColor selection() { return QColor(0xf0, 0xa1, 0x3a, 70); }
+inline QFont smallFont() { QFont f; f.setPointSizeF(7.5); return f; }
+inline QFont uiFont() { QFont f; f.setPointSizeF(8.5); return f; }
+inline QFont boldFont() { QFont f; f.setPointSizeF(8.5); f.setBold(true); return f; }
 QString stylesheet();
 inline void drawPanel(QPainter& p, const QRectF& r, const QColor& c, qreal radius = 3.0) { p.setPen(Qt::NoPen); p.setBrush(c); p.drawRoundedRect(r, radius, radius); }
 inline QColor lighter(const QColor& c, int f = 130) { return c.lighter(f); }
 inline QColor withAlpha(QColor c, int a) { c.setAlpha(a); return c; }
 QString noteName(int midi);
 QString tickToBBT(int64_t tick, int tsNum, int tsDen);
+// Painted glyph icons (play, stop, record, metronome, loop...) so the toolbar has no text-heavy buttons
+enum class Glyph { Play, Stop, Record, Metronome, Pause };
+QIcon glyphIcon(Glyph g, const QColor& color, int size = 14);
 }

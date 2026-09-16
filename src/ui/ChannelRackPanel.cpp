@@ -22,7 +22,7 @@ namespace mt {
 RackView::RackView(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setAcceptDrops(true); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); }
 Pattern* RackView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
 const Step* RackView::stepAt(Id ch, int step) const { Pattern* p = pattern(); if (!p) return nullptr; auto* d = p->channelData(ch); if (!d || step < 0 || step >= (int)d->steps.size()) return nullptr; return &d->steps[step]; }
-int RackView::stepW() const { return 22; }
+int RackView::stepW() const { return 20; }
 int RackView::stepX(int step) const { return m_leftW + 6 + step * stepW() + (step / 4) * 4; }
 QRect RackView::rowRect(int row) const { return QRect(0, row * m_rowH, width(), m_rowH); }
 QSize RackView::sizeHint() const { Pattern* p = pattern(); int steps = p ? p->stepCount : 16; int rows = (int)m_app.project().channels.size(); return QSize(stepX(steps) + 12, rows * m_rowH + (m_graphMode >= 0 ? m_graphH : 0) + 4); }
@@ -32,7 +32,7 @@ void RackView::uiTick() { auto tv = m_app.engine().transport(); int ps = -1; Pat
 RackView::HitInfo RackView::hitTest(const QPoint& pt) const {
     HitInfo h; int rows = (int)m_app.project().channels.size(); int row = pt.y() / m_rowH; if (row < 0 || row >= rows) { if (m_graphMode >= 0 && pt.y() >= rows * m_rowH && pt.y() < rows * m_rowH + m_graphH) { h.hit = Graph; Pattern* p = pattern(); int steps = p ? p->stepCount : 16; for (int s = 0; s < steps; ++s) if (pt.x() >= stepX(s) && pt.x() < stepX(s) + stepW()) h.step = s; } return h; }
     h.row = row; int x = pt.x();
-    if (x < 14) h.hit = Grip; else if (x < 32) h.hit = Enable; else if (x < 132) h.hit = Name; else if (x < 152) h.hit = Mute; else if (x < 172) h.hit = Solo; else if (x < 200) h.hit = Pan; else if (x < 228) h.hit = Vol; else if (x < m_leftW) h.hit = Mixer;
+    if (x < 10) h.hit = Grip; else if (x < 24) h.hit = Enable; else if (x < 118) h.hit = Name; else if (x < 134) h.hit = Mute; else if (x < 150) h.hit = Solo; else if (x < 172) h.hit = Pan; else if (x < 194) h.hit = Vol; else if (x < m_leftW) h.hit = Mixer;
     else { Pattern* p = pattern(); int steps = p ? p->stepCount : 16; for (int s = 0; s < steps; ++s) if (x >= stepX(s) && x < stepX(s) + stepW()) { h.hit = StepCell; h.step = s; break; } }
     return h;
 }
@@ -43,35 +43,30 @@ void RackView::paintEvent(QPaintEvent*) {
     const auto& chans = proj.channels;
     for (int r = 0; r < (int)chans.size(); ++r) {
         const Channel& c = chans[r]; QRect rr = rowRect(r); bool selected = c.id == proj.selectedChannelId;
-        p.fillRect(rr.adjusted(0, 1, 0, -1), selected ? theme::panelLight() : theme::panel());
+        p.fillRect(rr.adjusted(0, 0, 0, -1), selected ? QColor(0x22, 0x26, 0x2c) : (r % 2 ? QColor(0x1a, 0x1d, 0x22) : QColor(0x18, 0x1b, 0x20)));
         if (m_reorderTarget == r && m_dragging && m_press.hit == Grip) { p.setPen(QPen(theme::accent(), 2)); p.drawLine(rr.left(), rr.top(), rr.right(), rr.top()); }
-        // grip
-        p.setPen(theme::border()); for (int i = 0; i < 3; ++i) p.drawLine(4, rr.top() + 9 + i * 4, 10, rr.top() + 9 + i * 4);
-        // enable led
-        QRectF led(17, rr.top() + 9, 10, 10); p.setPen(Qt::NoPen); p.setBrush(c.enabled ? theme::green() : theme::bg()); p.drawEllipse(led); p.setPen(QPen(theme::border(), 1)); p.setBrush(Qt::NoBrush); p.drawEllipse(led);
-        // name button
-        QRectF nb(34, rr.top() + 3, 96, m_rowH - 6); p.setPen(Qt::NoPen); p.setBrush(c.color.darker(selected ? 110 : 160)); p.drawRoundedRect(nb, 3, 3); p.setPen(QPen(selected ? theme::accent() : c.color, selected ? 2 : 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(nb, 3, 3);
-        p.setPen(theme::text()); p.setFont(theme::uiFont()); p.drawText(nb.adjusted(4, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(c.name, Qt::ElideRight, (int)nb.width() - 6));
-        // mute / solo
-        auto smallBtn = [&](QRectF r, const QString& t, bool on, QColor col) { p.setPen(QPen(theme::border(), 1)); p.setBrush(on ? col : theme::bg()); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, t); };
-        smallBtn(QRectF(134, rr.top() + 6, 16, 16), "M", c.mute, theme::red()); smallBtn(QRectF(154, rr.top() + 6, 16, 16), "S", c.solo, theme::accent());
-        // knobs
-        auto knob = [&](QRectF r, float v, bool bipolar) { p.setPen(QPen(theme::border(), 1)); p.setBrush(theme::bg()); p.drawEllipse(r); QRectF a = r.adjusted(2, 2, -2, -2); p.setPen(QPen(theme::accent2(), 2, Qt::SolidLine, Qt::RoundCap)); if (bipolar) p.drawArc(a, 90 * 16, (int)(-270 * (v - 0.5) * 16)); else p.drawArc(a, 225 * 16, (int)(-270 * v * 16)); };
+        p.setPen(QColor(0x3a, 0x40, 0x48)); for (int i = 0; i < 3; ++i) p.drawLine(3, rr.top() + 8 + i * 4, 7, rr.top() + 8 + i * 4);
+        QRectF led(13, rr.top() + 8.5, 7, 7); p.setPen(Qt::NoPen); p.setBrush(c.enabled ? theme::green() : QColor(0x2b, 0x30, 0x37)); p.drawEllipse(led);
+        // name tag: flat panel with a colour bar, accent outline when selected
+        QRectF nb(26, rr.top() + 3, 90, m_rowH - 6); p.setPen(Qt::NoPen); p.setBrush(selected ? QColor(0x2c, 0x31, 0x39) : QColor(0x23, 0x27, 0x2d)); p.drawRoundedRect(nb, 3, 3); p.setBrush(c.color); p.drawRoundedRect(QRectF(nb.left(), nb.top(), 4, nb.height()), 2, 2);
+        if (selected) { p.setPen(QPen(theme::accent(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(nb, 3, 3); }
+        p.setPen(c.enabled ? theme::text() : theme::textDim()); p.setFont(theme::uiFont()); p.drawText(nb.adjusted(8, 0, -3, 0), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(c.name, Qt::ElideRight, (int)nb.width() - 11));
+        auto smallBtn = [&](QRectF r, const QString& t, bool on, QColor col) { p.setPen(QPen(on ? col.darker(120) : theme::border(), 1)); p.setBrush(on ? col : QColor(0x1c, 0x1f, 0x24)); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, t); };
+        smallBtn(QRectF(120, rr.top() + 5, 13, 14), "M", c.mute, theme::red()); smallBtn(QRectF(136, rr.top() + 5, 13, 14), "S", c.solo, theme::accent());
+        auto knob = [&](QRectF r, float v, bool bipolar) { p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x1e, 0x21, 0x26)); p.drawEllipse(r); QRectF a = r.adjusted(1.5, 1.5, -1.5, -1.5); p.setPen(QPen(theme::accent2(), 1.5, Qt::SolidLine, Qt::RoundCap)); if (bipolar) p.drawArc(a, 90 * 16, (int)(-270 * (v - 0.5) * 16)); else p.drawArc(a, 225 * 16, (int)(-270 * v * 16)); };
         float pan = m_app.engine().registry().channelIfExists(c.id) ? m_app.engine().registry().channelIfExists(c.id)->pan.load() : c.pan; float vol = m_app.engine().registry().channelIfExists(c.id) ? m_app.engine().registry().channelIfExists(c.id)->volume.load() : c.volume;
-        knob(QRectF(176, rr.top() + 4, 20, 20), (pan + 1) * 0.5f, true); knob(QRectF(204, rr.top() + 4, 20, 20), vol, false);
-        // mixer track number
-        QRectF mb(232, rr.top() + 5, 26, m_rowH - 10); p.setPen(QPen(theme::border(), 1)); p.setBrush(theme::bg()); p.drawRoundedRect(mb, 2, 2); int mi = proj.mixerIndex(c.mixerTrackId); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(mb, Qt::AlignCenter, mi <= 0 ? "M" : QString::number(mi));
-        // steps
+        knob(QRectF(154, rr.top() + 4, 16, 16), (pan + 1) * 0.5f, true); knob(QRectF(176, rr.top() + 4, 16, 16), vol, false);
+        QRectF mb(198, rr.top() + 5, 24, m_rowH - 10); p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x11, 0x13, 0x16)); p.drawRoundedRect(mb, 2, 2); int mi = proj.mixerIndex(c.mixerTrackId); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(mb, Qt::AlignCenter, mi <= 0 ? "M" : QString::number(mi));
         const PatternChannelData* d = pat ? pat->channelData(c.id) : nullptr;
         for (int s = 0; s < steps; ++s) {
-            QRectF sr(stepX(s), rr.top() + 5, stepW() - 2, m_rowH - 10); bool beatStart = (s / 4) % 2 == 0; const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr; bool on = st && st->enabled;
-            QColor base = beatStart ? QColor(0x3b, 0x41, 0x4a) : QColor(0x30, 0x35, 0x3d); if (m_playStep == s) base = base.lighter(150);
-            p.setPen(Qt::NoPen); p.setBrush(on ? c.color.lighter(st->velocity > 0.9f ? 125 : (int)(70 + st->velocity * 60)) : base); p.drawRoundedRect(sr, 2, 2);
+            QRectF sr(stepX(s), rr.top() + 4, stepW() - 2, m_rowH - 8); bool beatA = (s / 4) % 2 == 0; const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr; bool on = st && st->enabled;
+            QColor base = beatA ? QColor(0x2a, 0x2f, 0x37) : QColor(0x23, 0x27, 0x2d); if (m_playStep == s) base = base.lighter(140);
+            p.setPen(Qt::NoPen); p.setBrush(on ? c.color.lighter(st->velocity > 0.9f ? 115 : (int)(70 + st->velocity * 50)) : base); p.drawRoundedRect(sr, 2.5, 2.5);
+            if (on) { p.setPen(QPen(theme::withAlpha(Qt::white, 40), 1)); p.setBrush(Qt::NoBrush); p.drawLine(QPointF(sr.left() + 2, sr.top() + 1), QPointF(sr.right() - 2, sr.top() + 1)); }
             if (on && st->probability < 1.f) { p.setPen(QPen(theme::bg(), 1, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(sr.adjusted(1, 1, -1, -1), 2, 2); }
             if (on && std::fabs(st->pitch) > 0.01f) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(sr, Qt::AlignCenter, QString::number((int)st->pitch)); }
         }
-        // notes indicator (piano roll content)
-        if (d && !d->notes.empty()) { p.setPen(theme::accent()); p.setFont(theme::smallFont()); p.drawText(QRect(stepX(steps) + 2, rr.top(), 40, m_rowH), Qt::AlignVCenter, QString("♪%1").arg(d->notes.size())); }
+        if (d && !d->notes.empty()) { p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(stepX(steps) + 2, rr.top(), 40, m_rowH), Qt::AlignVCenter, QString("\u266A%1").arg(d->notes.size())); }
     }
     // graph editor
     if (m_graphMode >= 0) {
@@ -177,8 +172,8 @@ void RackView::dropEvent(QDropEvent* e) {
 // ---------------------------------------------------------------- panel
 ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
-    auto* top = new QHBoxLayout(); top->setSpacing(6);
-    m_patName = new QLabel(this); m_patName->setStyleSheet("font-weight:bold; color:#f2a93b; padding-left:4px;"); top->addWidget(m_patName);
+    auto* top = new QHBoxLayout(); top->setSpacing(5); top->setContentsMargins(2, 0, 2, 0);
+    m_patName = new QLabel(this); m_patName->setStyleSheet("font-weight:bold; color:#f0a13a; padding-left:4px;"); top->addWidget(m_patName);
     auto* add = new QToolButton(this); add->setText("+ Channel"); add->setPopupMode(QToolButton::InstantPopup); auto* addMenu = new QMenu(add); for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument)) addMenu->addAction(i->name, [this, k = i->key] { m_app.addChannel(k == "native.drumsampler" ? ChannelType::DrumSampler : k == "native.sampler" ? ChannelType::Sampler : k == "native.midiout" ? ChannelType::MidiOut : k == "native.tonegen" ? ChannelType::AudioGenerator : ChannelType::Synth, k); }); auto* plugMenu = addMenu->addMenu("Plugin instruments"); connect(plugMenu, &QMenu::aboutToShow, this, [this, plugMenu] { plugMenu->clear(); for (auto& p : m_app.pluginDb().plugins()) if (!p.failed && !p.hidden && p.category == "Instrument") plugMenu->addAction(p.name + " [" + p.format.toUpper() + "]", [this, p] { m_app.addPluginChannel(p); }); if (plugMenu->isEmpty()) plugMenu->addAction("(none scanned)")->setEnabled(false); }); add->setMenu(addMenu); top->addWidget(add);
     top->addSpacing(10); auto* l1 = new QLabel("Steps", this); l1->setStyleSheet("color:#8a919a;"); top->addWidget(l1); m_steps = new DragValue(this); m_steps->setRange(4, 128, 1, 0); m_steps->setMinimumWidth(48); top->addWidget(m_steps);
     auto* l2 = new QLabel("Res", this); l2->setStyleSheet("color:#8a919a;"); top->addWidget(l2); m_resolution = new QComboBox(this); m_resolution->addItems({"1/4 (quarter)", "1/8", "1/8T", "1/16", "1/32"}); top->addWidget(m_resolution);

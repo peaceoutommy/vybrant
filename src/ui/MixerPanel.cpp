@@ -37,21 +37,21 @@ void ProcessorPicker::rebuild(const QString& f) {
 }
 
 // ---------------------------------------------------------------- slot list
-EffectSlotList::EffectSlotList(App& app, Id trackId, QWidget* parent) : QWidget(parent), m_app(app), m_track(trackId) { setAcceptDrops(true); setMinimumHeight(3 * 18); setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding); }
+EffectSlotList::EffectSlotList(App& app, Id trackId, QWidget* parent) : QWidget(parent), m_app(app), m_track(trackId) { setAcceptDrops(true); setMinimumHeight(3 * 18); setMaximumHeight(10 * 18 + 2); setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding); }
 void EffectSlotList::refresh() { update(); }
 void EffectSlotList::paintEvent(QPaintEvent*) {
-    QPainter p(this); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t) return;
+    QPainter p(this); p.fillRect(rect(), QColor(0x11, 0x13, 0x16)); const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t) return;
     int rows = height() / 18; p.setFont(theme::smallFont());
     for (int r = 0; r < rows; ++r) {
         int slot = r + m_scroll; QRect rr(1, r * 18 + 1, width() - 2, 16);
         if (slot < (int)t->effects.size()) {
             const EffectSlot& e = t->effects[slot]; bool crashed = false; if (auto* pd = m_app.project().plugin(e.pluginInstanceId)) crashed = pd->crashed || pd->missing; bool available = m_app.processor(e.id) != nullptr;
-            QColor c = e.bypass ? theme::panelLight() : (e.pluginInstanceId ? QColor(0x5c, 0x4a, 0x2a) : QColor(0x2a, 0x4a, 0x3a)); if (crashed || !available) c = QColor(0x5a, 0x2a, 0x2a);
+            QColor c = e.bypass ? QColor(0x22, 0x26, 0x2b) : (e.pluginInstanceId ? QColor(0x4a, 0x3c, 0x22) : QColor(0x22, 0x3c, 0x30)); if (crashed || !available) c = QColor(0x4a, 0x24, 0x24);
             p.setPen(Qt::NoPen); p.setBrush(c); p.drawRoundedRect(rr, 2, 2);
             p.setPen(Qt::NoPen); p.setBrush(e.bypass ? theme::textDim() : theme::green()); p.drawEllipse(QRect(rr.left() + 3, rr.top() + 5, 6, 6));
             p.setPen(e.bypass ? theme::textDim() : theme::text()); p.drawText(rr.adjusted(12, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(e.name.isEmpty() ? e.processorKey : e.name, Qt::ElideRight, rr.width() - 14));
             if (m_dragging && m_dragSlot == slot) { p.setPen(QPen(theme::accent(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rr, 2, 2); }
-        } else { p.setPen(QPen(theme::border(), 1, Qt::DotLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rr, 2, 2); }
+        } else { p.setPen(QPen(QColor(0x22, 0x26, 0x2b), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rr, 2, 2); }
     }
 }
 void EffectSlotList::pick(int slot) {
@@ -113,14 +113,14 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent) : QWidget(parent),
 }
 void MixerStrip::refresh() {
     const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t) return; m_updating = true;
-    m_name->setText(t->name); m_name->setStyleSheet(QString("font-weight:bold; padding:2px; border-radius:3px; background:%1; color:%2;").arg(t->color.darker(m_selected ? 100 : 170).name(), m_selected ? "#1b1e23" : "#d6dae0"));
+    m_name->setText(t->name); m_name->setStyleSheet(QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:3px; background:%1; color:%2; border-bottom: 2px solid %3;").arg(m_selected ? "#2c3139" : "#1e2126", m_selected ? "#f0a13a" : "#c8ccd3", t->color.name()));
     m_input->setText(t->inputChannel >= 0 ? QString("In %1").arg(t->inputChannel + 1) : "In: -"); m_pan->setValue((t->pan + 1) * 0.5f); m_fader->setValue(t->volume / 1.25f); m_mute->setChecked(t->mute); m_solo->setChecked(t->solo); m_arm->setChecked(t->armed);
     const MixerTrack* out = m_app.project().mixerTrack(t->outputTrackId); m_route->setText(t->isMaster ? "→ Out" : QString("→ %1").arg(out ? (out->isMaster ? "Mst" : QString::number(m_app.project().mixerIndex(out->id))) : "?"));
     int ns = (int)t->sends.size(); m_sends->setText(ns ? QString("S%1").arg(ns) : "S");
     auto& tc = m_app.engine().registry().track(m_track); int d = tc.generatorDelay.delay; m_latency->setText(d > 0 ? QString("+%1").arg(d) : ""); m_slots->refresh(); m_updating = false; update();
 }
 void MixerStrip::uiTick() { auto* tc = m_app.engine().registry().trackIfExists(m_track); if (!tc) return; bool clip = tc->meter.clipped.exchange(false); m_meter->setLevels(tc->meter.peakL.load(), tc->meter.peakR.load(), clip); m_updating = true; m_fader->setValue(tc->volume.load() / 1.25f); m_pan->setValue((tc->pan.load() + 1) * 0.5f); m_updating = false; }
-void MixerStrip::paintEvent(QPaintEvent*) { QPainter p(this); p.fillRect(rect(), m_selected ? theme::panelLight() : theme::panel()); p.setPen(theme::border()); p.drawRect(rect().adjusted(0, 0, -1, -1)); }
+void MixerStrip::paintEvent(QPaintEvent*) { QPainter p(this); p.fillRect(rect(), m_selected ? QColor(0x20, 0x24, 0x2a) : QColor(0x1a, 0x1d, 0x22)); p.setPen(theme::border()); p.drawLine(width() - 1, 0, width() - 1, height()); }
 void MixerStrip::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::LeftButton) Q_EMIT selected(m_track); QWidget::mousePressEvent(e); }
 void MixerStrip::mouseDoubleClickEvent(QMouseEvent* e) { if (m_name->geometry().contains(e->pos())) { const MixerTrack* t = m_app.project().mixerTrack(m_track); bool ok; QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t ? t->name : "", &ok); if (ok && !n.isEmpty()) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { x.name = n; }); } }
 void MixerStrip::showRouteMenu() { QMenu m; const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t || t->isMaster) { m.addAction("Master goes to the audio device")->setEnabled(false); m.exec(m_route->mapToGlobal(QPoint(0, m_route->height()))); return; } for (auto& o : m_app.project().mixerTracks) { if (o.id == m_track) continue; auto* a = m.addAction(o.name, [this, id = o.id] { m_app.routeTrack(m_track, id); }); a->setCheckable(true); a->setChecked(o.id == t->outputTrackId); } m.exec(m_route->mapToGlobal(QPoint(0, m_route->height()))); }

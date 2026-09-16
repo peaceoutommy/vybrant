@@ -4,6 +4,7 @@
 #include <QInputDialog>
 #include <QMenu>
 #include <QMouseEvent>
+#include <QFrame>
 
 namespace mt {
 
@@ -13,28 +14,33 @@ int TransportBar::snapDivisionFromIndex(int idx) { if (idx < 0 || idx >= (int)(s
 int TransportBar::indexFromSnapDivision(int div) { for (int i = 1; i < 9; ++i) if (kSnapItems[i].div == div) return i; return div == 0 ? 9 : 5; }
 
 TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
-    auto* lay = new QHBoxLayout(this); lay->setContentsMargins(6, 3, 6, 3); lay->setSpacing(6);
-    auto mkBtn = [&](const QString& text, const QString& tip, bool checkable) { auto* b = new QToolButton(this); b->setText(text); b->setToolTip(tip); b->setCheckable(checkable); b->setToolButtonStyle(Qt::ToolButtonTextOnly); b->setFocusPolicy(Qt::NoFocus); b->setMinimumWidth(std::max(30, b->fontMetrics().horizontalAdvance(text) + 18)); lay->addWidget(b); return b; };
-    m_play = mkBtn("▶", "Play / Pause (Space)", true); m_stop = mkBtn("■", "Stop", false); m_record = mkBtn("●", "Record (R)", true); m_record->setStyleSheet("QToolButton:checked { background: #e25c5c; color: white; border-color: #e25c5c; }");
-    lay->addSpacing(8);
-    m_patMode = mkBtn("PAT", "Pattern mode: play the selected pattern", true); m_songMode = mkBtn("SONG", "Song mode: play the playlist", true);
-    lay->addSpacing(8); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); lay->addLayout(m_winLayout); lay->addSpacing(8);
-    auto mkLabel = [&](const QString& t) { auto* l = new QLabel(t, this); l->setStyleSheet("color:#8a919a;"); lay->addWidget(l); return l; };
-    mkLabel("BPM"); m_bpm = new DragValue(this); m_bpm->setRange(20, 999, 0.1, 1); m_bpm->setMinimumWidth(70); m_bpm->setToolTip("Tempo (drag / wheel / double-click)"); lay->addWidget(m_bpm);
-    m_tsNum = new DragValue(this); m_tsNum->setRange(1, 32, 1, 0); m_tsNum->setMinimumWidth(34); m_tsNum->setToolTip("Time signature numerator"); lay->addWidget(m_tsNum); mkLabel("/"); m_tsDen = new DragValue(this); m_tsDen->setRange(1, 32, 1, 0); m_tsDen->setMinimumWidth(34); m_tsDen->setToolTip("Time signature denominator"); lay->addWidget(m_tsDen);
-    m_position = new QLabel("001:1:000", this); m_position->setStyleSheet("QLabel { background:#15181c; color:#f2a93b; border:1px solid #3a4048; border-radius:3px; padding:2px 8px; font-family: monospace; font-size: 12pt; }"); m_position->setToolTip("Position (bar:beat:tick) - click to jump"); lay->addWidget(m_position);
-    lay->addSpacing(8);
-    m_loop = nullptr; m_metro = mkBtn("⏱", "Metronome", true); m_countIn = mkBtn("C-IN", "Count-in before recording", true); m_punch = mkBtn("PUNCH", "Punch in/out recording between loop points", true); m_loopRec = mkBtn("TAKES", "Loop recording: new take on every loop pass", true);
-    lay->addSpacing(8);
-    mkLabel("Snap"); m_snap = makeSnapCombo(this); lay->addWidget(m_snap);
-    mkLabel("Rec"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("Recording mode"); lay->addWidget(m_recMode);
-    lay->addSpacing(8);
-    mkLabel("Pattern"); m_pattern = new QComboBox(this); m_pattern->setMinimumWidth(140); m_pattern->setToolTip("Selected pattern (edited in Channel Rack / Piano Roll, played in pattern mode)"); lay->addWidget(m_pattern);
-    m_newPattern = mkBtn("+", "New pattern", false); m_newPattern->setMinimumWidth(22);
+    auto* lay = new QHBoxLayout(this); lay->setContentsMargins(6, 2, 6, 2); lay->setSpacing(3);
+    auto sep = [&] { auto* f = new QFrame(this); f->setFrameShape(QFrame::VLine); f->setStyleSheet("color:#2b3037;"); f->setFixedHeight(18); lay->addSpacing(3); lay->addWidget(f); lay->addSpacing(3); };
+    auto mkBtn = [&](const QString& text, const QString& tip, bool checkable) { auto* b = new QToolButton(this); b->setText(text); b->setToolTip(tip); b->setCheckable(checkable); b->setToolButtonStyle(Qt::ToolButtonTextOnly); b->setFocusPolicy(Qt::NoFocus); b->setFont(theme::smallFont()); b->setFixedSize(std::max(24, b->fontMetrics().horizontalAdvance(text) + 22), 22); lay->addWidget(b); return b; };
+    auto mkIcon = [&](theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xd3, 0xd7, 0xdd)) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, c)); b->setIconSize(QSize(14, 14)); b->setToolTip(tip); b->setCheckable(checkable); b->setFocusPolicy(Qt::NoFocus); b->setFixedSize(26, 22); lay->addWidget(b); return b; };
+    auto mkLabel = [&](const QString& t) { auto* l = new QLabel(t, this); l->setStyleSheet("color:#7e8691; font-size:7.5pt; padding-left:2px;"); lay->addWidget(l); return l; };
+    m_play = mkIcon(theme::Glyph::Play, "Play / Stop (Space)", true); m_play->setStyleSheet("QToolButton:checked { background: #1f3a24; border-color: #2f5a36; }");
+    m_stop = mkIcon(theme::Glyph::Stop, "Stop (twice: back to start)", false);
+    m_record = mkIcon(theme::Glyph::Record, "Record (R)", true, QColor(0xe0, 0x5a, 0x5a)); m_record->setStyleSheet("QToolButton:checked { background: #4a1f1f; border-color: #7a2c2c; }");
+    sep();
+    m_patMode = mkBtn("PAT", "Pattern mode: play the selected pattern (L toggles)", true); m_songMode = mkBtn("SONG", "Song mode: play the playlist (L toggles)", true);
+    sep(); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); lay->addLayout(m_winLayout); sep();
+    mkLabel("BPM"); m_bpm = new DragValue(this); m_bpm->setRange(20, 999, 0.1, 1); m_bpm->setFixedSize(62, 22); m_bpm->setToolTip("Tempo: drag or wheel over the digits (whole units left of the point, decimals right of it), double-click to type"); lay->addWidget(m_bpm);
+    m_tsNum = new DragValue(this); m_tsNum->setRange(1, 32, 1, 0); m_tsNum->setFixedSize(26, 22); m_tsNum->setToolTip("Beats per bar"); lay->addWidget(m_tsNum); auto* slash = new QLabel("/", this); slash->setStyleSheet("color:#7e8691;"); lay->addWidget(slash); m_tsDen = new DragValue(this); m_tsDen->setRange(1, 32, 1, 0); m_tsDen->setFixedSize(26, 22); m_tsDen->setToolTip("Beat unit"); lay->addWidget(m_tsDen);
+    lay->addSpacing(4);
+    m_position = new QLabel("001:1:000", this); m_position->setStyleSheet("QLabel { background:#111316; color:#f0a13a; border:1px solid #2b3037; border-radius:3px; padding:1px 8px; font-family: monospace; font-size: 10.5pt; }"); m_position->setFixedHeight(22); m_position->setToolTip("Position (bar:beat:tick) - click to jump"); lay->addWidget(m_position);
+    sep();
+    m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true); m_countIn = mkBtn("C-IN", "Count-in before recording (Ctrl+P)", true); m_punch = mkBtn("PUNCH", "Punch in/out recording between the loop points", true); m_loopRec = mkBtn("TAKES", "Loop recording: a new take on every loop pass", true); m_loop = nullptr;
+    sep();
+    mkLabel("Snap"); m_snap = makeSnapCombo(this); m_snap->setFixedHeight(22); lay->addWidget(m_snap);
+    mkLabel("Rec"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(22); lay->addWidget(m_recMode);
+    sep();
+    mkLabel("Pattern"); m_pattern = new QComboBox(this); m_pattern->setMinimumWidth(120); m_pattern->setFixedHeight(22); m_pattern->setToolTip("Selected pattern (edited in the Channel Rack / Piano Roll, played in pattern mode)"); lay->addWidget(m_pattern);
+    m_newPattern = mkBtn("+", "New pattern (F4)", false);
     lay->addStretch(1);
-    m_midiLed = new QLabel("MIDI", this); m_midiLed->setStyleSheet("color:#4e5866; font-weight:bold;"); lay->addWidget(m_midiLed);
-    m_stats = new QLabel(this); m_stats->setStyleSheet("color:#8a919a; font-family: monospace;"); m_stats->setToolTip("CPU load of the audio callback / xruns / buffer / latency compensation"); lay->addWidget(m_stats);
-    m_masterVol = new Knob(this, 26); m_masterVol->setLabel("Master"); m_masterVol->valueText = [](float v) { return QString::number(gainToDb(v * 1.25f / 0.8f), 'f', 1) + " dB"; }; lay->addWidget(m_masterVol);
+    m_midiLed = new QLabel("MIDI", this); m_midiLed->setStyleSheet("color:#3a4048; font-weight:bold; font-size:7.5pt;"); lay->addWidget(m_midiLed);
+    m_stats = new QLabel(this); m_stats->setStyleSheet("color:#7e8691; font-family: monospace; font-size:7.5pt;"); m_stats->setToolTip("Audio callback load / xruns / sample rate & buffer / output latency / delay compensation"); lay->addWidget(m_stats);
+    m_masterVol = new Knob(this, 20); m_masterVol->setShowLabel(false); m_masterVol->setToolTip("Master volume"); m_masterVol->valueText = [](float v) { return QString("Master %1 dB").arg(gainToDb(v * 1.25f / 0.8f), 0, 'f', 1); }; lay->addWidget(m_masterVol);
 
     connect(m_play, &QToolButton::clicked, this, [this] { if (m_app.engine().isPlaying()) m_app.pause(); else m_app.play(); });
     connect(m_stop, &QToolButton::clicked, this, [this] { m_app.stop(); });
@@ -76,8 +82,8 @@ void TransportBar::uiTick() {
     m_play->setChecked(tv.playing); m_record->setChecked(tv.recording);
     m_position->setText(tv.countingIn ? "COUNT-IN" : theme::tickToBBT((int64_t)tv.positionTicks, tv.tsNum, tv.tsDen));
     auto& e = m_app.engine(); double lat = e.deviceRunning() ? m_app.devices().reportedOutputLatency() * 1000 : 0;
-    m_stats->setText(QString("CPU %1%  xruns %2  %3 Hz / %4  lat %5 ms  PDC %6").arg((int)(e.cpuLoad() * 100), 3).arg(e.xruns()).arg((int)e.sampleRate()).arg(m_app.devices().config().bufferSize).arg(lat, 0, 'f', 1).arg(e.totalLatencySamples()));
-    int act = m_app.midi().activityCounter(); m_midiLed->setStyleSheet(act != m_lastMidiActivity ? "color:#5dc26d; font-weight:bold;" : "color:#4e5866; font-weight:bold;"); m_lastMidiActivity = act;
+    m_stats->setText(QString("%1% \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6").arg((int)(e.cpuLoad() * 100), 2).arg(e.xruns()).arg(e.sampleRate() / 1000.0, 0, 'g', 3).arg(m_app.devices().config().bufferSize).arg(lat, 0, 'f', 1).arg(e.totalLatencySamples()));
+    int act = m_app.midi().activityCounter(); m_midiLed->setStyleSheet(act != m_lastMidiActivity ? "color:#5fc074; font-weight:bold; font-size:7.5pt;" : "color:#3a4048; font-weight:bold; font-size:7.5pt;"); m_lastMidiActivity = act;
     if (auto* m = m_app.project().master()) { float v = m_app.engine().registry().track(m->id).volume.load(); m_masterVol->setValue(v / 1.25f); }
     m_updating = false;
 }

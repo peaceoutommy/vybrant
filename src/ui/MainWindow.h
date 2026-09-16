@@ -12,7 +12,7 @@
 #include <set>
 
 namespace mt {
-class TransportBar; class BrowserPanel; class ChannelRackPanel; class PianoRollPanel; class PlaylistPanel; class MixerPanel; class PluginWindow;
+class TransportBar; class BrowserPanel; class ProjectSamplesPanel; class ChannelRackPanel; class PianoRollPanel; class PlaylistPanel; class MixerPanel; class PluginWindow;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -29,7 +29,7 @@ private:
     bool doOpen(const QString& path = QString()); bool doSave(); bool doSaveAs();
     int typingNote(int key) const;
     App& m_app; TransportBar* m_transport; BrowserPanel* m_browser; ChannelRackPanel* m_rack; PianoRollPanel* m_pianoRoll; PlaylistPanel* m_playlist; MixerPanel* m_mixer;
-    QMainWindow* m_workspace = nullptr; QStackedWidget* m_pages = nullptr; std::map<QString, QToolButton*> m_winButtons; bool m_typingKeyboard = true; bool m_forceClose = false; QByteArray m_defaultWorkspaceState; QDockWidget *m_dBrowser, *m_dRack, *m_dPiano, *m_dPlaylist, *m_dMixer; QLabel *m_status, *m_undoLabel; QTimer m_timer; std::map<Id, PluginWindow*> m_editors; std::set<int> m_heldKeys; int m_octave = 4; QByteArray m_defaultState;
+    QMainWindow* m_workspace = nullptr; QStackedWidget* m_pages = nullptr; std::map<QString, QToolButton*> m_winButtons; bool m_typingKeyboard = true; bool m_forceClose = false; QByteArray m_defaultWorkspaceState; QDockWidget *m_dBrowser, *m_dRack, *m_dPiano, *m_dPlaylist, *m_dMixer, *m_dSamples; ProjectSamplesPanel* m_samples; QLabel *m_status, *m_undoLabel; QTimer m_timer; std::map<Id, PluginWindow*> m_editors; std::set<int> m_heldKeys; int m_octave = 4; QByteArray m_defaultState;
 };
 
 } // namespace mt

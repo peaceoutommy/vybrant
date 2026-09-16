@@ -34,7 +34,7 @@ private:
     Pattern* pattern() const; const Step* stepAt(Id ch, int step) const;
     void showChannelMenu(int row, const QPoint& global);
     void applyGraphAt(const QPoint& p, bool commit);
-    App& m_app; int m_rowH = 28, m_leftW = 262, m_graphH = 90; int m_graphMode = -1;
+    App& m_app; int m_rowH = 24, m_leftW = 238, m_graphH = 90; int m_graphMode = -1;
     // drag state
     HitInfo m_press; bool m_paintValue = false; bool m_erasing = false; int m_dragRow = -1; QPoint m_lastPos; float m_knobStart = 0; int m_reorderTarget = -1; int m_playStep = -1; bool m_dragging = false;
 };
