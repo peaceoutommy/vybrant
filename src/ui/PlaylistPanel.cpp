@@ -175,7 +175,7 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         if (e->modifiers() & Qt::ShiftModifier && e->modifiers() & Qt::ControlModifier) { std::vector<Clip> copies; for (auto& x : proj.clips) if (m_selected.count(x.id)) { Clip d = x; d.id = proj.newId(); copies.push_back(d); } m_selected.clear(); for (auto& d : copies) { proj.clips.push_back(d); m_selected.insert(d.id); } m_duplicated = true; m_dragClip = copies.empty() ? 0 : copies.front().id; }
         m_drag = edge == 1 ? ResizingR : edge == -1 ? ResizingL : Moving; invalidate(); return;
     }
-    if (m_tool == Select || (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) { if (!(e->modifiers() & Qt::ControlModifier)) m_selected.clear(); m_drag = Rubber; m_rubber = QRect(e->pos(), QSize(0, 0)); invalidate(); return; }
+    if (m_tool == Select || (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) { if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); m_selBase = m_selected; m_drag = Rubber; m_rubber = QRect(e->pos(), QSize(0, 0)); invalidate(); return; }
     // draw tool on empty: place the selected pattern
     if (trackIdx >= 0) { auto& t = proj.playlistTracks[trackIdx]; if (t.locked) return; Tick at = std::max<Tick>(0, snap(xToTick(e->pos().x()))); Id id = m_app.addPatternClip(t.id, proj.selectedPatternId, at); if (id) { m_selected = {id}; beginEdit(); m_dragClip = id; m_pressTick = xToTick(e->pos().x()); m_pressTrack = trackIdx; m_drag = Moving; } }
     else m_selected.clear(); invalidate();
@@ -186,7 +186,7 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == Pan) { int dx = e->pos().x() - m_lastPos.x(), dy = e->pos().y() - m_lastPos.y(); m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(dx / m_ppt)); m_scrollY = std::max(0, m_scrollY - dy); m_lastPos = e->pos(); updateScrollbars(); invalidate(); return; }
     if (m_drag == LoopRange) { Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x()))); if (std::abs(e->pos().x() - m_pressPos.x()) > 3) { Tick a = std::min(m_loopDragStart, t), b = std::max(m_loopDragStart, t); if (b > a) { proj.transport.loopStart = a; proj.transport.loopEnd = b; proj.transport.loopEnabled = true; m_app.engine().setLoop(true, a, b); invalidate(); } } return; }
     if (m_drag == TrackHeight) { int h = clamp(m_heightStart + (e->pos().y() - m_pressPos.y()), 24, 300); proj.playlistTracks[m_heightTrack].height = h; updateScrollbars(); invalidate(); return; }
-    if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); for (auto& c : proj.clips) { if (r.intersects(clipRect(c))) m_selected.insert(c.id); else if (!(e->modifiers() & Qt::ControlModifier)) m_selected.erase(c.id); } invalidate(); return; }
+    if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); m_selected = m_selBase; for (auto& c : proj.clips) if (r.intersects(clipRect(c))) m_selected.insert(c.id); invalidate(); return; }
     if (m_drag == Erasing) { if (Clip* c = clipAt(e->pos())) { m_app.deleteClips({c->id}); m_erasedAny = true; } return; }
     if (m_drag == AutoPoint) { auto* l = proj.lane(m_autoLane); const Clip* c = proj.clip(m_dragClip); if (!l || !c || m_autoPoint < 0 || m_autoPoint >= (int)l->points.size()) return; auto& pt = l->points[m_autoPoint]; pt.value = autoValueAtY(*c, e->pos().y()); Tick lo = m_autoPoint > 0 ? l->points[m_autoPoint - 1].time : 0, hi = m_autoPoint + 1 < (int)l->points.size() ? l->points[m_autoPoint + 1].time : LLONG_MAX; if (m_autoPoint > 0 && m_autoPoint + 1 < (int)l->points.size()) pt.time = clamp(snap(autoTickAtX(*c, e->pos().x())), lo, hi); invalidate(); return; }
     if (m_drag == FadeIn || m_drag == FadeOut) { Clip* c = proj.clip(m_dragClip); if (!c) return; Tick t = xToTick(e->pos().x()); if (m_drag == FadeIn) c->fadeIn = clamp<Tick>(t - c->start, 0, c->length); else c->fadeOut = clamp<Tick>(c->start + c->length - t, 0, c->length); invalidate(); return; }
@@ -214,7 +214,7 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
     case Seek: m_app.seek(std::max<Tick>(0, snapRound(xToTick(e->pos().x())))); break;
     case TrackHeight: { int h = proj.playlistTracks[m_heightTrack].height; proj.playlistTracks[m_heightTrack].height = m_heightStart; m_app.editTrack(proj.playlistTracks[m_heightTrack].id, "Track height", [h](PlaylistTrack& t) { t.height = h; }); break; }
     case AutoPoint: { auto* l = proj.lane(m_autoLane); if (l) { AutomationLane after = *l; *l = m_laneBefore; m_app.editLane(m_autoLane, "Move automation point", [after](AutomationLane& x) { x = after; }); } break; }
-    case Rubber: if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ControlModifier)) m_selected.clear(); break;
+    case Rubber: if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); break;
     case Erasing: if (!m_erasedAny && (e->pos() - m_pressPos).manhattanLength() < 4 && e->button() == Qt::RightButton) { m_drag = NoDrag; showAreaMenu(e->pos(), e->globalPosition().toPoint()); } break;
     default: break;
     }

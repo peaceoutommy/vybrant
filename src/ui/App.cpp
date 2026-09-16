@@ -33,7 +33,7 @@ App::App(QObject* parent) : QObject(parent) {
     connect(m_recorder.get(), &RecordingEngine::takesFinished, this, &App::onTakesFinished);
     connect(m_midi.get(), &MidiEngine::ccReceived, this, &App::onCcReceived);
     connect(&m_autosaveTimer, &QTimer::timeout, this, &App::autosave);
-    m_autosaveTimer.start(QSettings().value("general/autosaveMinutes", 2).toInt() * 60 * 1000);
+    { auto as = autosaveSettings(); if (as.enabled && as.intervalMinutes > 0) m_autosaveTimer.start(as.intervalMinutes * 60 * 1000); }
 }
 App::~App() { m_midi->stop(); m_engine->stopDevice(); s_app = nullptr; }
 
@@ -90,7 +90,22 @@ bool App::saveProjectAs(const QString& path) {
     Q_EMIT statusMessage("Saved " + path, 3000); return true;
 }
 bool App::saveTemplate(const QString& name) { m_engine->syncStateToProject(project()); QString err; return ProjectSerializer::save(project(), templatesDir() + "/" + name + ".mtp", &err); }
-void App::autosave() { if (!m_model.isDirty()) return; m_engine->syncStateToProject(project()); Project copy = project(); copy.settings.projectDir = m_model.filePath().isEmpty() ? QString() : QFileInfo(m_model.filePath()).absolutePath(); QJsonObject root = ProjectSerializer::toJson(copy); root["autosaveOf"] = m_model.filePath(); QFile f(autosavePath()); if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); Q_EMIT statusMessage("Autosaved", 1500); } }
+App::AutosaveSettings App::autosaveSettings() const { QSettings s; AutosaveSettings a; a.enabled = s.value("autosave/enabled", true).toBool(); a.intervalMinutes = s.value("autosave/intervalMinutes", 5).toInt(); a.maxCopies = s.value("autosave/maxCopies", 10).toInt(); return a; }
+void App::setAutosaveSettings(const AutosaveSettings& a) { QSettings s; s.setValue("autosave/enabled", a.enabled); s.setValue("autosave/intervalMinutes", a.intervalMinutes); s.setValue("autosave/maxCopies", a.maxCopies); s.sync(); m_autosaveTimer.stop(); if (a.enabled && a.intervalMinutes > 0) m_autosaveTimer.start(a.intervalMinutes * 60 * 1000); }
+QString App::backupDir() const { if (m_model.filePath().isEmpty()) return QString(); return QFileInfo(m_model.filePath()).absolutePath() + "/Backup"; }
+QStringList App::backups() const { QString d = backupDir(); if (d.isEmpty()) return {}; QString base = QFileInfo(m_model.filePath()).completeBaseName(); QStringList out; for (auto& f : QDir(d).entryList({base + "_*.mtp"}, QDir::Files, QDir::Name | QDir::Reversed)) out << d + "/" + f; return out; }
+bool App::writeBackupNow(QString* error) {
+    if (m_model.filePath().isEmpty()) { if (error) *error = "Save the project first"; return false; }
+    QString dir = backupDir(); QDir().mkpath(dir); QString base = QFileInfo(m_model.filePath()).completeBaseName();
+    QString path = QString("%1/%2_%3.mtp").arg(dir, base, QDateTime::currentDateTime().toString("yyyy-MM-dd_HH-mm-ss"));
+    m_engine->syncStateToProject(project()); Project copy = project(); copy.settings.projectDir = QFileInfo(m_model.filePath()).absolutePath();
+    if (!ProjectSerializer::save(copy, path, error)) return false;
+    // recycle: keep only the newest N copies
+    int keep = std::max(1, autosaveSettings().maxCopies); QStringList all = backups(); for (int i = keep; i < all.size(); ++i) QFile::remove(all[i]);
+    return true;
+}
+void App::autosave() { if (!m_model.isDirty()) return;
+    if (!m_model.filePath().isEmpty()) { QString err; if (writeBackupNow(&err)) Q_EMIT statusMessage(QString("Autosaved backup (%1 kept)").arg(std::min((int)backups().size(), autosaveSettings().maxCopies)), 2500); else Q_EMIT statusMessage("Autosave failed: " + err, 4000); } m_engine->syncStateToProject(project()); Project copy = project(); copy.settings.projectDir = m_model.filePath().isEmpty() ? QString() : QFileInfo(m_model.filePath()).absolutePath(); QJsonObject root = ProjectSerializer::toJson(copy); root["autosaveOf"] = m_model.filePath(); QFile f(autosavePath()); if (f.open(QIODevice::WriteOnly)) { f.write(QJsonDocument(root).toJson(QJsonDocument::Compact)); if (m_model.filePath().isEmpty()) Q_EMIT statusMessage("Autosaved recovery copy", 1500); } }
 bool App::hasRecoveryFile() const { return QFileInfo::exists(autosavePath()); }
 bool App::recoverAutosave() {
     QFile f(autosavePath()); if (!f.open(QIODevice::ReadOnly)) return false; auto root = QJsonDocument::fromJson(f.readAll()).object(); QString orig = root["autosaveOf"].toString();

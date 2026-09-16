@@ -115,7 +115,7 @@ void RackView::mousePressEvent(QMouseEvent* e) {
     case Vol: m_knobStart = c.volume; if (e->button() == Qt::RightButton) { QMenu m; m.addAction("Create automation clip", [this, id = c.id] { m_app.createAutomationLane({ParamTarget::ChannelVolume, id, 0, 0}, QString()); }); m.addAction("Link to MIDI controller...", [this, id = c.id, n = c.name] { m_app.startMidiLearn({ParamTarget::ChannelVolume, id, 0, 0}, n + " Volume"); }); m.addAction("Reset", [this, id = c.id] { m_app.setChannelVolume(id, 0.8f, true); }); m.exec(e->globalPosition().toPoint()); m_dragging = false; } break;
     case Mixer: { if (e->button() == Qt::RightButton) { QMenu m; for (auto& t : proj.mixerTracks) { auto* a = m.addAction(t.name, [this, id = c.id, tid = t.id] { m_app.setChannelMixerTrack(id, tid); }); a->setCheckable(true); a->setChecked(t.id == c.mixerTrackId); } m.exec(e->globalPosition().toPoint()); m_dragging = false; } break; }
     case StepCell: { Pattern* pat = pattern(); if (!pat) break; if (auto* pd = pat->channelData(c.id); pd && !pd->notes.empty()) { if (e->button() == Qt::LeftButton) Q_EMIT openPianoRoll(c.id); else { QMenu m; m.addAction("Open in piano roll", [this, id = c.id] { Q_EMIT openPianoRoll(id); }); m.addAction("Clear (steps and notes)", [this, id = c.id, pid = pat->id] { m_app.editPattern(pid, "Clear channel in pattern", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (auto& s : d.steps) s.enabled = false; d.notes.clear(); }); }); m.exec(e->globalPosition().toPoint()); } m_dragging = false; break; } const Step* st = stepAt(c.id, m_press.step); bool on = st && st->enabled; if (e->button() == Qt::RightButton) { m_erasing = true; if (on) m_app.setStep(pat->id, c.id, m_press.step, false); } else if (e->modifiers() & Qt::ShiftModifier) { /* shift+click: audition */ m_app.noteOn(c.rootNote); m_app.noteOff(c.rootNote); } else { m_erasing = false; m_paintValue = !on; m_app.setStep(pat->id, c.id, m_press.step, m_paintValue); } break; }
-    case Name: if (e->button() == Qt::LeftButton) { /* selection handled above; drag-and-drop of channel name could start here */ } break;
+    case Name: if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier)) Q_EMIT openPianoRoll(c.id); break;
     default: break;
     }
 }
@@ -184,6 +184,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
         m.addSeparator(); m.addAction("Clear selection\tEsc", [this] { m_multi.clear(); update(); });
         m.exec(global); return;
     }
+    m.addAction("Piano roll", [this, id] { Q_EMIT openPianoRoll(id); });
     m.addAction("Open editor", [this, id] { Q_EMIT openEditor(id); });
     m.addAction("Rename...", [this, id, c] { bool ok; QString n = QInputDialog::getText(this, "Rename channel", "Name:", QLineEdit::Normal, c.name, &ok); if (ok && !n.isEmpty()) m_app.renameChannel(id, n); });
     m.addAction("Color...", [this, id, c] { QColor col = QColorDialog::getColor(c.color, this, "Channel color"); if (col.isValid()) m_app.setChannelColor(id, col); });

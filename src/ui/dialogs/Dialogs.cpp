@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QFormLayout>
 #include <QDialogButtonBox>
+#include <QSpinBox>
 #include <QPushButton>
 #include <QFileDialog>
 #include <QHeaderView>
@@ -127,6 +128,18 @@ ShortcutsDialog::ShortcutsDialog(App& app, QWidget* parent) : QDialog(parent), m
     m_table->resizeColumnsToContents();
     auto* hl = new QHBoxLayout(); auto* reset = new QPushButton("Reset selected to default", this); hl->addWidget(reset); hl->addStretch(1); auto* bb = new QDialogButtonBox(QDialogButtonBox::Close, this); hl->addWidget(bb); lay->addLayout(hl); connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(reset, &QPushButton::clicked, this, [this] { int r = m_table->currentRow(); if (r < 0) return; QString id = m_table->item(r, 1)->data(Qt::UserRole).toString(); m_app.commands().resetShortcut(id); if (auto* e = qobject_cast<QKeySequenceEdit*>(m_table->cellWidget(r, 2))) e->setKeySequence(m_app.commands().action(id)->shortcut()); });
+}
+
+// ---------------------------------------------------------------- autosave
+AutosaveDialog::AutosaveDialog(App& app, QWidget* parent) : QDialog(parent) {
+    setWindowTitle("Autosave / backups"); auto* form = new QFormLayout(this); auto a = app.autosaveSettings();
+    auto* enabled = new QCheckBox("Enable autosave backups", this); enabled->setChecked(a.enabled); form->addRow(enabled);
+    auto* interval = new QSpinBox(this); interval->setRange(1, 120); interval->setValue(a.intervalMinutes); interval->setSuffix(" min"); form->addRow("Save a backup every", interval);
+    auto* copies = new QSpinBox(this); copies->setRange(1, 200); copies->setValue(a.maxCopies); form->addRow("Keep the newest", copies);
+    auto* info = new QLabel("Backups are written to a <b>Backup</b> folder next to the project file (name_date_time.mtp) whenever the project has unsaved changes; the oldest copies are recycled once the limit is reached. Ctrl+S always saves over the project itself. Unsaved (untitled) projects get a crash-recovery copy instead.", this); info->setWordWrap(true); info->setStyleSheet("color:#7e8691;"); form->addRow(info);
+    auto* now = new QPushButton("Write a backup now", this); form->addRow(now); connect(now, &QPushButton::clicked, this, [&app, this] { QString err; if (app.writeBackupNow(&err)) QMessageBox::information(this, "Backup", "Backup written to " + app.backupDir()); else QMessageBox::warning(this, "Backup", err); });
+    auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this); form->addRow(bb); connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    connect(bb, &QDialogButtonBox::accepted, this, [&app, this, enabled, interval, copies] { App::AutosaveSettings s; s.enabled = enabled->isChecked(); s.intervalMinutes = interval->value(); s.maxCopies = copies->value(); app.setAutosaveSettings(s); accept(); });
 }
 
 // ---------------------------------------------------------------- project info

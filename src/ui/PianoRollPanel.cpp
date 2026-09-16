@@ -33,6 +33,15 @@ PianoRollView::Layout PianoRollView::layout() const { Layout l; int w = width() 
 void PianoRollView::resizeEvent(QResizeEvent*) { m_hbar->setGeometry(layout().keyW, height() - 14, width() - layout().keyW - 14, 14); m_vbar->setGeometry(width() - 14, layout().rulerH, 14, height() - layout().rulerH - 14); updateScrollbars(); invalidate(); }
 Pattern* PianoRollView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
 PatternChannelData* PianoRollView::data() const { Pattern* p = pattern(); if (!p || !m_channel) return nullptr; return &p->ensureChannel(m_channel); }
+// Channels that only have step-sequencer steps are shown as "virtual" notes (one per step); they only become real
+// notes (and the steps are cleared) when the user actually modifies something in the piano roll.
+std::vector<Note> PianoRollView::stepsAsNotes() const {
+    std::vector<Note> v; Pattern* p = pattern(); PatternChannelData* d = data(); const Channel* ch = m_app.project().channel(m_channel); if (!p || !d || !ch) return v; Tick st = p->stepTicks();
+    for (size_t i = 0; i < d->steps.size(); ++i) { const Step& sp = d->steps[i]; if (!sp.enabled) continue; Note n; n.id = kVirtualBase + (Id)i; n.pitch = clamp((int)std::lround(ch->rootNote + sp.pitch), 0, 127); n.start = (Tick)i * st + (Tick)(sp.offset * st); n.duration = st; n.velocity = sp.velocity; n.pan = sp.pan; v.push_back(n); }
+    return v;
+}
+bool PianoRollView::stepMode() const { PatternChannelData* d = data(); if (!d || !d->notes.empty()) return false; for (auto& s : d->steps) if (s.enabled) return true; return false; }
+const std::vector<Note>& PianoRollView::notesView() const { PatternChannelData* d = data(); static const std::vector<Note> none; if (!d) return none; if (!d->notes.empty()) return d->notes; m_virtual = stepsAsNotes(); return m_virtual; }
 Tick PianoRollView::xToTick(int x) const { return m_scrollTick + (Tick)((x - layout().keyW) / m_ppt); }
 int PianoRollView::tickToX(Tick t) const { return layout().keyW + (int)((t - m_scrollTick) * m_ppt); }
 int PianoRollView::yToPitch(int y) const { return m_topPitch - (y - layout().rulerH) / m_rowH; }
@@ -43,7 +52,7 @@ Tick PianoRollView::snapNear(Tick t) const { if (m_altHeld) return t; Tick s = s
 bool PianoRollView::inScale(int pitch) const { if (m_scale <= 0) return true; return kScales[m_scale][((pitch - m_scaleRoot) % 12 + 12) % 12] != 0; }
 void PianoRollView::updateScrollbars() { m_updatingBars = true; Pattern* p = pattern(); Tick len = p ? p->effectiveLength(m_app.project().transport.timeSig) : PPQ * 16; Tick visible = (Tick)(layout().grid.width() / m_ppt); m_hbar->setRange(0, (int)std::max<Tick>(0, (len + PPQ * 8 - visible) * 16 / PPQ)); m_hbar->setPageStep((int)(visible * 16 / PPQ)); m_hbar->setValue((int)(m_scrollTick * 16 / PPQ)); int rows = layout().grid.height() / m_rowH; m_vbar->setRange(0, std::max(0, 127 - rows)); m_vbar->setPageStep(rows); m_vbar->setValue(127 - m_topPitch); m_updatingBars = false; }
 void PianoRollView::refresh() { updateScrollbars(); invalidate(); }
-void PianoRollView::zoomToFit() { Pattern* p = pattern(); if (!p) return; Tick len = std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), PPQ); m_ppt = std::max(0.01, (double)layout().grid.width() / (len + PPQ)); m_scrollTick = 0; int lo = 127, hi = 0; if (auto* d = data()) for (auto& n : d->notes) { lo = std::min(lo, n.pitch); hi = std::max(hi, n.pitch); } if (lo <= hi) m_topPitch = std::min(127, hi + 4); refresh(); }
+void PianoRollView::zoomToFit() { Pattern* p = pattern(); if (!p) return; Tick len = std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), PPQ); m_ppt = std::max(0.01, (double)layout().grid.width() / (len + PPQ)); m_scrollTick = 0; int lo = 127, hi = 0; for (auto& n : notesView()) { lo = std::min(lo, n.pitch); hi = std::max(hi, n.pitch); } if (lo <= hi) m_topPitch = std::min(127, hi + 4); refresh(); }
 void PianoRollView::uiTick() {
     auto tv = m_app.engine().transport(); double pt = -1; Pattern* p = pattern();
     if (p && tv.playing && !tv.countingIn) { if (!tv.songMode) pt = tv.positionTicks; else { for (auto& c : m_app.project().clips) if (c.type == ClipType::Pattern && c.sourceId == p->id && tv.positionTicks >= c.start && tv.positionTicks < c.start + c.length) { Tick len = std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), 1); pt = std::fmod(tv.positionTicks - c.start + c.sourceOffset, (double)len); break; } } }
@@ -66,7 +75,7 @@ void PianoRollView::renderCache() {
     if (m_ghost && pat) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; const Channel* ch = m_app.project().channel(oc.id); QColor c = ch ? ch->color : theme::textDim(); c.setAlpha(70); for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; p.fillRect(r.adjusted(0, 1, -1, -1), c); } }
     // notes
     const Channel* ch = m_app.project().channel(m_channel); QColor base = ch ? ch->color : theme::accent();
-    if (d) for (auto& n : d->notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; bool sel = m_selected.count(n.id); QColor c = base.lighter((int)(55 + n.velocity * 65)); if (n.muted) c = c.darker(200); p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(base.darker(160), 1)); p.setBrush(c); p.drawRoundedRect(r.adjusted(0, 1, -1, -1), 2, 2); if (r.width() > 28 && m_rowH >= 10) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(r.adjusted(3, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft, theme::noteName(n.pitch)); } }
+    bool virt = stepMode(); if (d) for (auto& n : notesView()) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; bool sel = m_selected.count(n.id); QColor c = base.lighter((int)(55 + n.velocity * 65)); if (n.muted) c = c.darker(200); p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(base.darker(160), 1, virt ? Qt::DashLine : Qt::SolidLine)); p.setBrush(virt ? theme::withAlpha(c, 170) : c); p.drawRoundedRect(r.adjusted(0, 1, -1, -1), 2, 2); if (r.width() > 28 && m_rowH >= 10) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(r.adjusted(3, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft, theme::noteName(n.pitch)); } }
     p.setClipping(false);
     // ruler
     p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont());
@@ -80,8 +89,9 @@ void PianoRollView::renderCache() {
     p.setClipping(false);
     // velocity lane
     p.fillRect(L.vel, QColor(0x15, 0x18, 0x1c)); p.setPen(theme::border()); p.drawLine(L.vel.left(), L.vel.top(), L.vel.right(), L.vel.top()); p.setClipRect(L.vel);
-    if (d) for (auto& n : d->notes) { int x = tickToX(n.start); if (x < L.vel.left() - 4 || x > L.vel.right()) continue; int h = (int)(n.velocity * (L.vel.height() - 6)); bool sel = m_selected.count(n.id); p.setPen(sel ? Qt::white : base); p.setBrush(sel ? base.lighter(150) : base); p.drawRect(QRect(x, L.vel.bottom() - h, 5, h)); }
+    if (d) for (auto& n : notesView()) { int x = tickToX(n.start); if (x < L.vel.left() - 4 || x > L.vel.right()) continue; int h = (int)(n.velocity * (L.vel.height() - 6)); bool sel = m_selected.count(n.id); p.setPen(sel ? Qt::white : base); p.setBrush(sel ? base.lighter(150) : base); p.drawRect(QRect(x, L.vel.bottom() - h, 5, h)); }
     p.setClipping(false);
+    if (virt) { p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(L.grid.left() + 6, L.grid.top() + 3, 500, 14), Qt::AlignLeft, "Showing the channel's step-sequencer steps - editing anything here turns them into piano roll notes"); }
     m_cacheValid = true;
 }
 void PianoRollView::paintEvent(QPaintEvent*) {
@@ -95,16 +105,24 @@ void PianoRollView::paintEvent(QPaintEvent*) {
 
 // ---------------------------------------------------------------- editing helpers
 Note* PianoRollView::noteAt(const QPoint& pt, bool* nearEdge) const {
-    PatternChannelData* d = data(); if (!d) return nullptr; Note* found = nullptr;
-    for (auto it = d->notes.rbegin(); it != d->notes.rend(); ++it) { QRect r(tickToX(it->start), pitchToY(it->pitch), std::max(3, (int)(it->duration * m_ppt)), m_rowH); if (r.contains(pt)) { found = &*it; if (nearEdge) *nearEdge = (r.right() - pt.x()) <= 6 && r.width() > 10; break; } }
+    PatternChannelData* d = data(); if (!d) return nullptr; Note* found = nullptr; auto& notes = const_cast<std::vector<Note>&>(notesView());
+    for (auto it = notes.rbegin(); it != notes.rend(); ++it) { QRect r(tickToX(it->start), pitchToY(it->pitch), std::max(3, (int)(it->duration * m_ppt)), m_rowH); if (r.contains(pt)) { found = &*it; if (nearEdge) *nearEdge = (r.right() - pt.x()) <= 6 && r.width() > 10; break; } }
     return found;
 }
-void PianoRollView::beginEdit() { PatternChannelData* d = data(); if (!d) return; m_before = *d; m_editing = true; }
+void PianoRollView::beginEdit() { PatternChannelData* d = data(); if (!d) return; m_before = *d; m_editing = true; if (stepMode()) { d->notes = stepsAsNotes(); for (auto& s : d->steps) s.enabled = false; } }
 void PianoRollView::commitEdit(const QString& desc) {
     PatternChannelData* d = data(); if (!d || !m_editing) return; m_editing = false; PatternChannelData after = *d; *d = m_before; Id ch = m_channel; Id pid = pattern()->id;
     // only push if something changed
-    bool same = after.notes.size() == m_before.notes.size(); if (same) for (size_t i = 0; i < after.notes.size(); ++i) { auto& a = after.notes[i]; auto& b = m_before.notes[i]; if (a.id != b.id || a.pitch != b.pitch || a.start != b.start || a.duration != b.duration || a.velocity != b.velocity || a.pan != b.pan || a.muted != b.muted || a.finePitch != b.finePitch) { same = false; break; } }
+    bool same = after.notes.size() == m_before.notes.size() && after.steps.size() == m_before.steps.size(); if (same) for (size_t i = 0; i < after.steps.size(); ++i) if (after.steps[i].enabled != m_before.steps[i].enabled) { same = false; break; } if (same) for (size_t i = 0; i < after.notes.size(); ++i) { auto& a = after.notes[i]; auto& b = m_before.notes[i]; if (a.id != b.id || a.pitch != b.pitch || a.start != b.start || a.duration != b.duration || a.velocity != b.velocity || a.pan != b.pan || a.muted != b.muted || a.finePitch != b.finePitch) { same = false; break; } }
+    if (!same && m_before.notes.empty()) { // before = steps only: unchanged if 'after' is exactly the step conversion
+        *d = m_before; std::vector<Note> conv = stepsAsNotes(); bool eq = conv.size() == after.notes.size() && std::all_of(after.steps.begin(), after.steps.end(), [](const Step& s) { return !s.enabled; });
+        if (eq) for (size_t i = 0; i < conv.size(); ++i) { auto& a = after.notes[i]; auto& b = conv[i]; if (a.id != b.id || a.pitch != b.pitch || a.start != b.start || a.duration != b.duration || a.velocity != b.velocity || a.pan != b.pan) { eq = false; break; } }
+        if (eq) same = true;
+    }
     if (same) { invalidate(); return; }
+    // real notes get proper project ids
+    for (auto& n : after.notes) if (n.id >= kVirtualBase) n.id = m_app.project().newId();
+    m_selected.clear();
     m_app.editPattern(pid, desc, [after, ch](Pattern& p) { p.ensureChannel(ch) = after; });
 }
 void PianoRollView::cancelEdit() { PatternChannelData* d = data(); if (d && m_editing) *d = m_before; m_editing = false; invalidate(); }
@@ -129,7 +147,7 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
             std::vector<Note> copies; for (auto& x : d->notes) if (m_selected.count(x.id)) { Note c = x; c.id = m_app.project().newId(); copies.push_back(c); } m_selected.clear(); for (auto& c : copies) { m_selected.insert(c.id); d->notes.push_back(c); } m_duplicated = true; }
         m_drag = edge ? Resizing : Moving; previewNote(n->pitch, true); m_previewPitch = n->pitch; invalidate(); return;
     }
-    if (m_tool == Select || (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) { if (!(e->modifiers() & Qt::ControlModifier)) m_selected.clear(); m_drag = Rubber; m_rubber = QRect(e->pos(), QSize(0, 0)); invalidate(); return; }
+    if (m_tool == Select || (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) { if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); m_selBase = m_selected; m_drag = Rubber; m_rubber = QRect(e->pos(), QSize(0, 0)); invalidate(); return; }
     // draw: create note (+ chord)
     beginEdit(); int pitch = clamp(yToPitch(e->pos().y()), 0, 127); Tick t = std::max<Tick>(0, snap(xToTick(e->pos().x()))); m_selected.clear();
     std::vector<int> intervals = m_chord > 0 && m_chord < (int)kChords.size() ? kChords[m_chord] : std::vector<int>{0};
@@ -145,7 +163,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     if (!d) return;
     if (m_drag == Velocity) { float v = clamp((float)(L.vel.bottom() - e->pos().y()) / (L.vel.height() - 6), 0.f, 1.f); Tick t = xToTick(e->pos().x()); bool any = !m_selected.empty(); for (auto& n : d->notes) { int x = tickToX(n.start); if (any ? m_selected.count(n.id) : (std::abs(x - e->pos().x()) <= 4)) n.velocity = v; } m_lastVelocity = v; (void)t; invalidate(); return; }
     if (m_drag == Erasing) { if (Note* n = noteAt(e->pos())) { std::erase_if(d->notes, [id = n->id](const Note& x) { return x.id == id; }); m_erasedAny = true; invalidate(); } return; }
-    if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); for (auto& n : d->notes) { QRect nr(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.intersects(nr)) m_selected.insert(n.id); else if (!(e->modifiers() & Qt::ControlModifier)) m_selected.erase(n.id); } invalidate(); return; }
+    if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); m_selected = m_selBase; for (auto& n : notesView()) { QRect nr(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.intersects(nr)) m_selected.insert(n.id); } invalidate(); return; }
     if (m_drag == Moving || m_drag == Creating) {
         Tick dt = xToTick(e->pos().x()) - m_pressTick; int dp = clamp(yToPitch(e->pos().y()), 0, 127) - m_pressPitch;
         if (m_drag == Creating) dp = 0;
@@ -171,7 +189,7 @@ void PianoRollView::mouseReleaseEvent(QMouseEvent* e) {
     bool showMenu = m_drag == Erasing && !m_erasedAny && e->button() == Qt::RightButton && (e->pos() - m_pressPos).manhattanLength() < 4;
     switch (m_drag) { case Moving: commitEdit(m_duplicated ? "Duplicate notes" : "Move notes"); break; case Creating: commitEdit("Draw note"); break; case Resizing: commitEdit("Resize notes"); break; case Velocity: commitEdit("Edit velocity"); break; case Erasing: commitEdit("Erase notes"); break; default: break; }
     if (showMenu) { m_drag = NoDrag; showAreaMenu(e->pos(), e->globalPosition().toPoint()); return; }
-    if (m_drag == Rubber) { if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ControlModifier)) m_selected.clear(); }
+    if (m_drag == Rubber) { if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); }
     m_drag = NoDrag; m_dragNote = 0; invalidate();
 }
 void PianoRollView::mouseDoubleClickEvent(QMouseEvent* e) { Layout L = layout(); if (L.grid.contains(e->pos())) {
@@ -221,9 +239,9 @@ void PianoRollView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
 }
 
 // ---------------------------------------------------------------- tools
-void PianoRollView::selectAll() { PatternChannelData* d = data(); if (!d) return; for (auto& n : d->notes) m_selected.insert(n.id); invalidate(); }
+void PianoRollView::selectAll() { if (!data()) return; for (auto& n : notesView()) m_selected.insert(n.id); invalidate(); }
 void PianoRollView::deleteSelected() { PatternChannelData* d = data(); if (!d) return; if (m_selected.empty() && m_timeSel) { beginEdit(); std::erase_if(d->notes, [this](const Note& n) { return n.start >= m_selStart && n.start < m_selEnd; }); commitEdit("Delete notes in selection"); return; } if (m_selected.empty()) return; beginEdit(); std::erase_if(d->notes, [this](const Note& n) { return m_selected.count(n.id) > 0; }); m_selected.clear(); commitEdit("Delete notes"); }
-void PianoRollView::copySelected() { PatternChannelData* d = data(); if (!d) return; m_clipboard.clear(); Tick minS = LLONG_MAX; for (auto& n : d->notes) if (m_selected.count(n.id)) { m_clipboard.push_back(n); minS = std::min(minS, n.start); } for (auto& n : m_clipboard) n.start -= minS; }
+void PianoRollView::copySelected() { if (!data()) return; m_clipboard.clear(); Tick minS = LLONG_MAX; for (auto& n : notesView()) if (m_selected.count(n.id)) { m_clipboard.push_back(n); minS = std::min(minS, n.start); } for (auto& n : m_clipboard) n.start -= minS; }
 void PianoRollView::cutSelected() { copySelected(); deleteSelected(); }
 void PianoRollView::paste() { PatternChannelData* d = data(); if (!d || m_clipboard.empty()) return; beginEdit(); Tick at = m_playTick >= 0 ? snap((Tick)m_playTick, true) : (m_hoverPos.x() > 0 ? snap(xToTick(m_hoverPos.x()), true) : m_scrollTick); m_selected.clear(); for (auto n : m_clipboard) { n.id = m_app.project().newId(); n.start += at; d->notes.push_back(n); m_selected.insert(n.id); } commitEdit("Paste notes"); }
 void PianoRollView::duplicateSelected() {

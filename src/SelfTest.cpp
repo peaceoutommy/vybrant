@@ -86,3 +86,10 @@ int runUiTest(QMainWindow* win, const QString& png) {
 }
 }
 namespace mt { int runDuplicateTest(App& app) { Id id = app.project().channels[2].id; for (int i = 0; i < 5; ++i) { Id d = app.duplicateChannel(id); if (!d || !app.project().channel(d)) { std::printf("duplicate failed\n"); return 1; } id = d; } auto* pat = app.project().pattern(app.project().selectedPatternId); std::printf("duplicated 5x: %zu channels, pattern has %zu channel rows\n", app.project().channels.size(), pat->channels.size()); return 0; } }
+#include <QThread>
+namespace mt { int runBackupTest(App& app) {
+    QTemporaryDir tmp; QString path = tmp.path() + "/song.mtp"; if (!app.saveProjectAs(path)) { std::printf("save failed\n"); return 1; }
+    App::AutosaveSettings s; s.enabled = true; s.intervalMinutes = 5; s.maxCopies = 3; app.setAutosaveSettings(s);
+    for (int i = 0; i < 5; ++i) { app.model().setDirty(true); QString err; if (!app.writeBackupNow(&err)) { std::printf("backup failed: %s\n", err.toUtf8().constData()); return 1; } QThread::msleep(1100); }
+    auto b = app.backups(); std::printf("backups kept: %d (limit 3), dir %s\n", (int)b.size(), app.backupDir().toUtf8().constData()); for (auto& f : b) std::printf("  %s\n", QFileInfo(f).fileName().toUtf8().constData());
+    return b.size() == 3 ? 0 : 1; } }

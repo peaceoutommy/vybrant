@@ -43,6 +43,9 @@ public:
     QStringList recentFiles() const; QStringList templates() const; QString templatesDir() const; QString autosavePath() const; bool hasRecoveryFile() const; bool recoverAutosave();
     void collectSamples(); std::vector<AudioSource*> missingSamples(); void relinkSample(Id sourceId, const QString& newPath); int searchMissingIn(const QString& dir);
     QString projectTitle() const;
+    // Autosave / backups (FL-style): every N minutes a numbered copy goes to <project folder>/Backup, keeping the newest M
+    struct AutosaveSettings { int intervalMinutes = 5; int maxCopies = 10; bool enabled = true; };
+    AutosaveSettings autosaveSettings() const; void setAutosaveSettings(const AutosaveSettings& s); QString backupDir() const; QStringList backups() const; bool writeBackupNow(QString* error = nullptr);
     bool checkPluginAvailability(QStringList* missing);
 
     // ---- transport

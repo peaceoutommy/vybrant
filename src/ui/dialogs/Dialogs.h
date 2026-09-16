@@ -69,6 +69,12 @@ private:
     App& m_app; QTableWidget* m_table;
 };
 
+class AutosaveDialog : public QDialog {
+    Q_OBJECT
+public:
+    explicit AutosaveDialog(App& app, QWidget* parent = nullptr);
+};
+
 class ProjectInfoDialog : public QDialog {
     Q_OBJECT
 public:
