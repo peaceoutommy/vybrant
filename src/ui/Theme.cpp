@@ -43,6 +43,10 @@ QLabel { background: transparent; }
 QString noteName(int midi) { static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}; return QString("%1%2").arg(names[((midi % 12) + 12) % 12]).arg(midi / 12 - 1); }
 QString tickToBBT(int64_t tick, int tsNum, int tsDen) { TimeSignature ts{tsNum, tsDen}; int64_t bar = ts.ticksPerBar(), beat = ts.ticksPerBeat(); if (tick < 0) tick = 0; return QString("%1:%2:%3").arg(tick / bar + 1, 3, 10, QChar('0')).arg((tick % bar) / beat + 1).arg(tick % beat, 3, 10, QChar('0')); }
 
+QCursor deleteCursor() {
+    static QCursor cur = [] { QPixmap pm(24, 24); pm.fill(Qt::transparent); QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(Qt::black, 3.5, Qt::SolidLine, Qt::RoundCap)); p.drawLine(6, 6, 18, 18); p.drawLine(18, 6, 6, 18); p.setPen(QPen(QColor(0xe0, 0x5a, 0x5a), 2, Qt::SolidLine, Qt::RoundCap)); p.drawLine(6, 6, 18, 18); p.drawLine(18, 6, 6, 18); return QCursor(pm, 12, 12); }();
+    return cur;
+}
 QIcon glyphIcon(Glyph g, const QColor& color, int size) {
     QPixmap pm(size * 2, size * 2); pm.setDevicePixelRatio(2); pm.fill(Qt::transparent); QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(Qt::NoPen); p.setBrush(color); double s = size;
     switch (g) {

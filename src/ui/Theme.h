@@ -5,6 +5,7 @@
 #include <QFont>
 #include <QPainter>
 #include <QIcon>
+#include <QCursor>
 
 namespace mt::theme {
 inline QColor bg() { return QColor(0x15, 0x17, 0x1b); }
@@ -33,4 +34,5 @@ QString tickToBBT(int64_t tick, int tsNum, int tsDen);
 // Painted glyph icons (play, stop, record, metronome, loop...) so the toolbar has no text-heavy buttons
 enum class Glyph { Play, Stop, Record, Metronome, Pause, Playlist, PianoRoll, ChannelRack, Mixer, Browser, Samples, Plugins, Settings, CountIn, Punch, Takes, Help };
 QIcon glyphIcon(Glyph g, const QColor& color, int size = 14);
+QCursor deleteCursor();   // eraser cursor shown while right-drag deleting
 }

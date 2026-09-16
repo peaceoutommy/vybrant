@@ -43,7 +43,7 @@ private:
     static constexpr Id kVirtualBase = (Id)1 << 60; std::vector<Note> stepsAsNotes() const; bool stepMode() const; const std::vector<Note>& notesView() const; mutable std::vector<Note> m_virtual; std::set<Id> m_selBase;
     Tick xToTick(int x) const; int tickToX(Tick t) const; int yToPitch(int y) const; int pitchToY(int pitch) const; Tick snap(Tick t, bool force = false) const; Tick snapNear(Tick t) const; Tick snapTicks() const;
     Note* noteAt(const QPoint& p, bool* nearEdge = nullptr) const;
-    void beginEdit(); void commitEdit(const QString& desc); void cancelEdit();
+    void beginEdit(); void commitEdit(const QString& desc); void cancelEdit(); void seekToPatternTick(Tick t);
     void invalidate() { m_cacheValid = false; update(); }
     void renderCache(); void updateScrollbars();
     void previewNote(int pitch, bool on); void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
