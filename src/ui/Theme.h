@@ -31,6 +31,6 @@ inline QColor withAlpha(QColor c, int a) { c.setAlpha(a); return c; }
 QString noteName(int midi);
 QString tickToBBT(int64_t tick, int tsNum, int tsDen);
 // Painted glyph icons (play, stop, record, metronome, loop...) so the toolbar has no text-heavy buttons
-enum class Glyph { Play, Stop, Record, Metronome, Pause };
+enum class Glyph { Play, Stop, Record, Metronome, Pause, Playlist, PianoRoll, ChannelRack, Mixer, Browser, Samples, Plugins, Settings, CountIn, Punch, Takes, Help };
 QIcon glyphIcon(Glyph g, const QColor& color, int size = 14);
 }

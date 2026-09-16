@@ -5,6 +5,9 @@
 #include <QMenu>
 #include <QMouseEvent>
 #include <QFrame>
+#include <QApplication>
+#include <QEvent>
+#include <QPainter>
 
 namespace mt {
 
@@ -14,39 +17,48 @@ int TransportBar::snapDivisionFromIndex(int idx) { if (idx < 0 || idx >= (int)(s
 int TransportBar::indexFromSnapDivision(int div) { for (int i = 1; i < 9; ++i) if (kSnapItems[i].div == div) return i; return div == 0 ? 9 : 5; }
 
 TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
-    auto* lay = new QHBoxLayout(this); lay->setContentsMargins(6, 2, 6, 2); lay->setSpacing(3);
-    auto sep = [&] { auto* f = new QFrame(this); f->setFrameShape(QFrame::VLine); f->setStyleSheet("color:#2b3037;"); f->setFixedHeight(18); lay->addSpacing(3); lay->addWidget(f); lay->addSpacing(3); };
-    auto mkBtn = [&](const QString& text, const QString& tip, bool checkable) { auto* b = new QToolButton(this); b->setText(text); b->setToolTip(tip); b->setCheckable(checkable); b->setToolButtonStyle(Qt::ToolButtonTextOnly); b->setFocusPolicy(Qt::NoFocus); b->setFont(theme::smallFont()); b->setFixedSize(std::max(24, b->fontMetrics().horizontalAdvance(text) + 22), 22); lay->addWidget(b); return b; };
-    auto mkIcon = [&](theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xd3, 0xd7, 0xdd)) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, c)); b->setIconSize(QSize(14, 14)); b->setToolTip(tip); b->setCheckable(checkable); b->setFocusPolicy(Qt::NoFocus); b->setFixedSize(26, 22); lay->addWidget(b); return b; };
+    auto* rows = new QVBoxLayout(this); rows->setContentsMargins(6, 2, 6, 2); rows->setSpacing(2);
+    auto* lay = new QHBoxLayout(); lay->setSpacing(3); rows->addLayout(lay);
+    auto* row2 = new QHBoxLayout(); row2->setSpacing(3); rows->addLayout(row2);
+    auto sepIn = [&](QHBoxLayout* l) { auto* f = new QFrame(this); f->setFrameShape(QFrame::VLine); f->setStyleSheet("color:#2b3037;"); f->setFixedHeight(18); l->addSpacing(4); l->addWidget(f); l->addSpacing(4); };
+    auto sep = [&] { sepIn(lay); };
+    auto mkIconIn = [&](QHBoxLayout* l, theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xc8, 0xcc, 0xd3)) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, c)); b->setIconSize(QSize(14, 14)); b->setToolTip(tip); b->setCheckable(checkable); b->setFocusPolicy(Qt::NoFocus); b->setFixedSize(26, 22); l->addWidget(b); return b; };
+    auto mkIcon = [&](theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xc8, 0xcc, 0xd3)) { return mkIconIn(lay, g, tip, checkable, c); };
     auto mkLabel = [&](const QString& t) { auto* l = new QLabel(t, this); l->setStyleSheet("color:#7e8691; font-size:7.5pt; padding-left:2px;"); lay->addWidget(l); return l; };
+    // ---- row 1: mode + transport + tempo + time
+    m_mode = new ModeSwitch(this); lay->addWidget(m_mode);
     m_play = mkIcon(theme::Glyph::Play, "Play / Stop (Space)", true); m_play->setStyleSheet("QToolButton:checked { background: #1f3a24; border-color: #2f5a36; }");
-    m_stop = mkIcon(theme::Glyph::Stop, "Stop (twice: back to start)", false);
+    m_stop = mkIcon(theme::Glyph::Stop, "Stop (press twice to return to the start)", false);
     m_record = mkIcon(theme::Glyph::Record, "Record (R)", true, QColor(0xe0, 0x5a, 0x5a)); m_record->setStyleSheet("QToolButton:checked { background: #4a1f1f; border-color: #7a2c2c; }");
     sep();
-    m_patMode = mkBtn("PAT", "Pattern mode: play the selected pattern (L toggles)", true); m_songMode = mkBtn("SONG", "Song mode: play the playlist (L toggles)", true);
-    sep(); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); lay->addLayout(m_winLayout); sep();
-    mkLabel("BPM"); m_bpm = new DragValue(this); m_bpm->setRange(20, 999, 0.1, 1); m_bpm->setFixedSize(62, 22); m_bpm->setToolTip("Tempo: drag or wheel over the digits (whole units left of the point, decimals right of it), double-click to type"); lay->addWidget(m_bpm);
-    m_tsNum = new DragValue(this); m_tsNum->setRange(1, 32, 1, 0); m_tsNum->setFixedSize(26, 22); m_tsNum->setToolTip("Beats per bar"); lay->addWidget(m_tsNum); auto* slash = new QLabel("/", this); slash->setStyleSheet("color:#7e8691;"); lay->addWidget(slash); m_tsDen = new DragValue(this); m_tsDen->setRange(1, 32, 1, 0); m_tsDen->setFixedSize(26, 22); m_tsDen->setToolTip("Beat unit"); lay->addWidget(m_tsDen);
-    lay->addSpacing(4);
-    m_position = new QLabel("001:1:000", this); m_position->setStyleSheet("QLabel { background:#111316; color:#f0a13a; border:1px solid #2b3037; border-radius:3px; padding:1px 8px; font-family: monospace; font-size: 10.5pt; }"); m_position->setFixedHeight(22); m_position->setToolTip("Position (bar:beat:tick) - click to jump"); lay->addWidget(m_position);
+    m_bpm = new DragValue(this); m_bpm->setRange(20, 999, 0.1, 1); m_bpm->setFixedSize(74, 26); m_bpm->setToolTip("Tempo (BPM): drag or wheel - over the whole number for 1 BPM steps, over the decimal for 0.1 - double-click to type"); lay->addWidget(m_bpm);
+    auto* bpmLbl = mkLabel("BPM"); (void)bpmLbl;
+    m_tsNum = new DragValue(this); m_tsNum->setRange(1, 32, 1, 0); m_tsNum->setFixedSize(26, 22); m_tsNum->setToolTip("Time signature: beats per bar"); lay->addWidget(m_tsNum); auto* slash = new QLabel("/", this); slash->setStyleSheet("color:#7e8691;"); lay->addWidget(slash); m_tsDen = new DragValue(this); m_tsDen->setRange(1, 32, 1, 0); m_tsDen->setFixedSize(26, 22); m_tsDen->setToolTip("Time signature: beat unit"); lay->addWidget(m_tsDen);
     sep();
-    m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true); m_countIn = mkBtn("C-IN", "Count-in before recording (Ctrl+P)", true); m_punch = mkBtn("PUNCH", "Punch in/out recording between the loop points", true); m_loopRec = mkBtn("TAKES", "Loop recording: a new take on every loop pass", true); m_loop = nullptr;
+    m_position = new QLabel("001:1:000", this); m_position->setStyleSheet("QLabel { background:#111316; color:#f0a13a; border:1px solid #2b3037; border-radius:3px; padding:1px 8px; font-family: monospace; font-size: 11pt; }"); m_position->setFixedHeight(26); m_position->setToolTip("Song position in bars : beats : ticks - click to jump to a bar"); lay->addWidget(m_position);
+    m_timeSec = new QLabel("0:00.0", this); m_timeSec->setStyleSheet("color:#7e8691; font-family: monospace; font-size:8pt;"); m_timeSec->setToolTip("Song position in minutes : seconds"); lay->addWidget(m_timeSec);
     sep();
-    mkLabel("Snap"); m_snap = makeSnapCombo(this); m_snap->setFixedHeight(22); lay->addWidget(m_snap);
-    mkLabel("Rec"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(22); lay->addWidget(m_recMode);
+    m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true); m_countIn = mkIcon(theme::Glyph::CountIn, "Count-in: one bar of clicks before recording starts (Ctrl+P)", true); m_punch = mkIcon(theme::Glyph::Punch, "Punch in/out: only record between the loop points", true); m_loopRec = mkIcon(theme::Glyph::Takes, "Loop recording: every pass of the loop becomes a new take", true); m_loop = nullptr;
     sep();
-    mkLabel("Pattern"); m_pattern = new QComboBox(this); m_pattern->setMinimumWidth(120); m_pattern->setFixedHeight(22); m_pattern->setToolTip("Selected pattern (edited in the Channel Rack / Piano Roll, played in pattern mode)"); lay->addWidget(m_pattern);
-    m_newPattern = mkBtn("+", "New pattern (F4)", false);
+    mkLabel("Snap"); m_snap = makeSnapCombo(this); m_snap->setFixedHeight(22); m_snap->setToolTip("Global snap grid for the transport and editors"); lay->addWidget(m_snap);
+    mkLabel("Record"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(22); lay->addWidget(m_recMode);
     lay->addStretch(1);
-    m_midiLed = new QLabel("MIDI", this); m_midiLed->setStyleSheet("color:#3a4048; font-weight:bold; font-size:7.5pt;"); lay->addWidget(m_midiLed);
-    m_stats = new QLabel(this); m_stats->setStyleSheet("color:#7e8691; font-family: monospace; font-size:7.5pt;"); m_stats->setToolTip("Audio callback load / xruns / sample rate & buffer / output latency / delay compensation"); lay->addWidget(m_stats);
-    m_masterVol = new Knob(this, 20); m_masterVol->setShowLabel(false); m_masterVol->setToolTip("Master volume"); m_masterVol->valueText = [](float v) { return QString("Master %1 dB").arg(gainToDb(v * 1.25f / 0.8f), 0, 'f', 1); }; lay->addWidget(m_masterVol);
+    m_masterVol = new Knob(this, 22); m_masterVol->setShowLabel(false); m_masterVol->setToolTip("Master volume"); m_masterVol->valueText = [](float v) { return QString("Master %1 dB").arg(gainToDb(v * 1.25f / 0.8f), 0, 'f', 1); }; lay->addWidget(m_masterVol);
+    // ---- row 2: hint bar, window buttons, pattern selector, status
+    m_hint = new QLabel(this); m_hint->setStyleSheet("QLabel { color:#8e97a3; font-size:8pt; padding:0 6px; background:#111316; border:1px solid #2b3037; border-radius:3px; }"); m_hint->setFixedHeight(22); m_hint->setMinimumWidth(240); m_hint->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); row2->addWidget(m_hint, 1);
+    sepIn(row2); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); row2->addLayout(m_winLayout); sepIn(row2);
+    auto* plbl = new QLabel("Pattern", this); plbl->setStyleSheet("color:#7e8691; font-size:7.5pt; padding-left:2px;"); row2->addWidget(plbl);
+    m_pattern = new QComboBox(this); m_pattern->setMinimumWidth(130); m_pattern->setFixedHeight(22); m_pattern->setToolTip("Selected pattern: edited in the Channel Rack and Piano Roll, played in pattern mode"); row2->addWidget(m_pattern);
+    m_newPattern = new QToolButton(this); m_newPattern->setText("+"); m_newPattern->setToolTip("New pattern (F4)"); m_newPattern->setFixedSize(22, 22); m_newPattern->setFocusPolicy(Qt::NoFocus); row2->addWidget(m_newPattern);
+    sepIn(row2);
+    m_midiLed = new QLabel("MIDI", this); m_midiLed->setStyleSheet("color:#3a4048; font-weight:bold; font-size:7.5pt;"); m_midiLed->setToolTip("Lights up when MIDI input arrives"); row2->addWidget(m_midiLed);
+    m_stats = new QLabel(this); m_stats->setStyleSheet("color:#7e8691; font-family: monospace; font-size:7.5pt;"); m_stats->setToolTip("Audio engine: callback CPU load, dropouts (xruns), sample rate / buffer size, output latency, delay compensation"); row2->addWidget(m_stats);
+    qApp->installEventFilter(this); m_position->installEventFilter(this); setHint(QString());
 
+    connect(m_mode, &ModeSwitch::modeChanged, this, [this](bool song) { if (!m_updating) m_app.setSongMode(song); });
     connect(m_play, &QToolButton::clicked, this, [this] { if (m_app.engine().isPlaying()) m_app.pause(); else m_app.play(); });
     connect(m_stop, &QToolButton::clicked, this, [this] { m_app.stop(); });
     connect(m_record, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) m_app.record(on); });
-    connect(m_patMode, &QToolButton::clicked, this, [this] { m_app.setSongMode(false); });
-    connect(m_songMode, &QToolButton::clicked, this, [this] { m_app.setSongMode(true); });
     connect(m_bpm, &DragValue::valueChanged, this, [this](double v) { if (!m_updating) m_app.setBpm(v, false); });
     connect(m_bpm, &DragValue::editingFinished, this, [this] { if (!m_updating) m_app.setBpm(m_bpm->value(), true); });
     connect(m_tsNum, &DragValue::editingFinished, this, [this] { if (!m_updating) m_app.setTimeSig((int)m_tsNum->value(), (int)m_tsDen->value()); });
@@ -72,7 +84,7 @@ void TransportBar::rebuildPatternCombo() {
 void TransportBar::refresh(uint32_t flags) {
     m_updating = true; const auto& t = m_app.project().transport;
     m_bpm->setValue(t.bpm); m_tsNum->setValue(t.timeSig.numerator); m_tsDen->setValue(t.timeSig.denominator); m_metro->setChecked(t.metronome); m_countIn->setChecked(t.countIn); m_punch->setChecked(t.punchEnabled); m_loopRec->setChecked(t.loopRecord);
-    m_patMode->setChecked(!t.songMode); m_songMode->setChecked(t.songMode); m_snap->setCurrentIndex(t.snap ? indexFromSnapDivision(t.snapDivision) : 9); m_recMode->setCurrentIndex(t.recordMode);
+    m_mode->setSong(t.songMode); m_snap->setCurrentIndex(t.snap ? indexFromSnapDivision(t.snapDivision) : 9); m_recMode->setCurrentIndex(t.recordMode);
     if (flags & (ChangePatterns | ChangeStructure | ChangeMeta | ChangeAll)) rebuildPatternCombo();
     if (auto* m = m_app.project().master()) m_masterVol->setValue(m->volume / 1.25f);
     m_updating = false;
@@ -80,7 +92,7 @@ void TransportBar::refresh(uint32_t flags) {
 void TransportBar::uiTick() {
     auto tv = m_app.engine().transport(); m_updating = true;
     m_play->setChecked(tv.playing); m_record->setChecked(tv.recording);
-    m_position->setText(tv.countingIn ? "COUNT-IN" : theme::tickToBBT((int64_t)tv.positionTicks, tv.tsNum, tv.tsDen));
+    m_position->setText(tv.countingIn ? "COUNT-IN" : theme::tickToBBT((int64_t)tv.positionTicks, tv.tsNum, tv.tsDen)); double secs = ticksToSeconds((Tick)tv.positionTicks, tv.bpm); m_timeSec->setText(QString("%1:%2").arg((int)secs / 60).arg(secs - (int)secs / 60 * 60, 4, 'f', 1, QChar('0')));
     auto& e = m_app.engine(); double lat = e.deviceRunning() ? m_app.devices().reportedOutputLatency() * 1000 : 0;
     m_stats->setText(QString("%1% \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6").arg((int)(e.cpuLoad() * 100), 2).arg(e.xruns()).arg(e.sampleRate() / 1000.0, 0, 'g', 3).arg(m_app.devices().config().bufferSize).arg(lat, 0, 'f', 1).arg(e.totalLatencySamples()));
     int act = m_app.midi().activityCounter(); m_midiLed->setStyleSheet(act != m_lastMidiActivity ? "color:#5fc074; font-weight:bold; font-size:7.5pt;" : "color:#3a4048; font-weight:bold; font-size:7.5pt;"); m_lastMidiActivity = act;
@@ -90,9 +102,19 @@ void TransportBar::uiTick() {
 
 } // namespace mt
 
+
 namespace mt {
+void ModeSwitch::paintEvent(QPaintEvent*) {
+    QPainter p(this); p.setRenderHint(QPainter::Antialiasing); QRectF r = rect().adjusted(0, 0, -1, -1); p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x11, 0x13, 0x16)); p.drawRoundedRect(r, 3, 3);
+    auto half = [&](QRectF hr, const QString& t, bool on) { if (on) { p.setPen(Qt::NoPen); p.setBrush(QColor(0x3a, 0x2e, 0x18)); p.drawRoundedRect(hr.adjusted(1, 1, -1, -1), 2, 2); } p.setPen(on ? theme::accent() : theme::textDim()); QFont f = theme::smallFont(); f.setBold(on); p.setFont(f); p.drawText(hr, Qt::AlignCenter, t); };
+    half(QRectF(0, 0, width(), height() / 2.0), "PAT", !m_song); half(QRectF(0, height() / 2.0, width(), height() / 2.0), "SONG", m_song);
+}
+void ModeSwitch::mousePressEvent(QMouseEvent* e) { bool song = e->pos().y() >= height() / 2; if (song != m_song) { m_song = song; update(); Q_EMIT modeChanged(song); } }
+void TransportBar::setHint(const QString& text) { m_hint->setText(text.isEmpty() ? "Hover over any control for a description - F1 for the quick guide" : text); }
+// Hint bar: shows the tooltip of whatever control the mouse is over (like FL's hint panel)
 bool TransportBar::eventFilter(QObject* o, QEvent* e) {
     if (o == m_position && e->type() == QEvent::MouseButtonPress) { bool ok; const auto& ts = m_app.project().transport.timeSig; int bar = QInputDialog::getInt(this, "Jump to bar", "Bar:", (int)(m_app.engine().positionTicks() / ts.ticksPerBar()) + 1, 1, 9999, 1, &ok); if (ok) m_app.seek((Tick)(bar - 1) * ts.ticksPerBar()); return true; }
+    if (e->type() == QEvent::Enter || e->type() == QEvent::Leave) { auto* w = qobject_cast<QWidget*>(o); if (w && !w->toolTip().isEmpty() && !qobject_cast<QMenu*>(w)) { if (e->type() == QEvent::Enter) setHint(w->toolTip().left(160).replace('\n', ' ')); else setHint(QString()); } }
     return QWidget::eventFilter(o, e);
 }
 }

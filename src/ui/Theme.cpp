@@ -2,6 +2,7 @@
 #include "core/Types.h"
 #include <QPixmap>
 #include <QPainterPath>
+#include <cmath>
 
 namespace mt::theme {
 
@@ -49,6 +50,18 @@ QIcon glyphIcon(Glyph g, const QColor& color, int size) {
     case Glyph::Stop: p.drawRoundedRect(QRectF(s * 0.22, s * 0.22, s * 0.56, s * 0.56), 1.5, 1.5); break;
     case Glyph::Record: p.drawEllipse(QRectF(s * 0.2, s * 0.2, s * 0.6, s * 0.6)); break;
     case Glyph::Pause: p.drawRoundedRect(QRectF(s * 0.22, s * 0.18, s * 0.2, s * 0.64), 1, 1); p.drawRoundedRect(QRectF(s * 0.58, s * 0.18, s * 0.2, s * 0.64), 1, 1); break;
+    case Glyph::Playlist: { p.setBrush(color); p.drawRoundedRect(QRectF(s * 0.12, s * 0.2, s * 0.45, s * 0.16), 1, 1); p.drawRoundedRect(QRectF(s * 0.35, s * 0.42, s * 0.53, s * 0.16), 1, 1); p.drawRoundedRect(QRectF(s * 0.2, s * 0.64, s * 0.4, s * 0.16), 1, 1); break; }
+    case Glyph::PianoRoll: { p.setPen(QPen(color, 1.2)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(QRectF(s * 0.12, s * 0.15, s * 0.76, s * 0.7), 1.5, 1.5); for (int i = 1; i < 4; ++i) p.drawLine(QPointF(s * 0.12, s * (0.15 + 0.175 * i)), QPointF(s * 0.88, s * (0.15 + 0.175 * i))); p.setPen(Qt::NoPen); p.setBrush(color); p.drawRect(QRectF(s * 0.12, s * 0.15, s * 0.2, s * 0.7)); p.drawRoundedRect(QRectF(s * 0.42, s * 0.36, s * 0.34, s * 0.12), 1, 1); p.drawRoundedRect(QRectF(s * 0.55, s * 0.53, s * 0.28, s * 0.12), 1, 1); break; }
+    case Glyph::ChannelRack: { for (int r = 0; r < 3; ++r) for (int c = 0; c < 4; ++c) { bool on = (r + c) % 2 == 0; p.setBrush(on ? color : theme::withAlpha(color, 90)); p.drawRoundedRect(QRectF(s * (0.12 + c * 0.2), s * (0.18 + r * 0.24), s * 0.15, s * 0.17), 1, 1); } break; }
+    case Glyph::Mixer: { p.setPen(QPen(color, 1.5)); for (int i = 0; i < 3; ++i) { double x = s * (0.25 + i * 0.25); p.drawLine(QPointF(x, s * 0.15), QPointF(x, s * 0.85)); } p.setPen(Qt::NoPen); p.setBrush(color); double ys[3] = {0.55, 0.3, 0.65}; for (int i = 0; i < 3; ++i) p.drawRoundedRect(QRectF(s * (0.25 + i * 0.25) - s * 0.11, s * ys[i] - s * 0.07, s * 0.22, s * 0.14), 1, 1); break; }
+    case Glyph::Browser: { QPainterPath path; path.moveTo(s * 0.1, s * 0.25); path.lineTo(s * 0.38, s * 0.25); path.lineTo(s * 0.46, s * 0.35); path.lineTo(s * 0.9, s * 0.35); path.lineTo(s * 0.9, s * 0.8); path.lineTo(s * 0.1, s * 0.8); path.closeSubpath(); p.drawPath(path); break; }
+    case Glyph::Samples: { p.setPen(QPen(color, 1.5, Qt::SolidLine, Qt::RoundCap)); double hs[7] = {0.3, 0.7, 0.45, 0.85, 0.5, 0.65, 0.35}; for (int i = 0; i < 7; ++i) { double x = s * (0.15 + i * 0.117); p.drawLine(QPointF(x, s * (0.5 - hs[i] * 0.35)), QPointF(x, s * (0.5 + hs[i] * 0.35))); } break; }
+    case Glyph::Plugins: { p.drawRoundedRect(QRectF(s * 0.2, s * 0.4, s * 0.6, s * 0.35), 2, 2); p.drawRect(QRectF(s * 0.32, s * 0.15, s * 0.1, s * 0.3)); p.drawRect(QRectF(s * 0.58, s * 0.15, s * 0.1, s * 0.3)); p.drawRect(QRectF(s * 0.45, s * 0.72, s * 0.1, s * 0.15)); break; }
+    case Glyph::Settings: { p.setPen(QPen(color, 2.2)); p.setBrush(Qt::NoBrush); p.drawEllipse(QRectF(s * 0.3, s * 0.3, s * 0.4, s * 0.4)); for (int i = 0; i < 8; ++i) { double a = i * M_PI / 4; p.drawLine(QPointF(s * 0.5 + std::cos(a) * s * 0.28, s * 0.5 + std::sin(a) * s * 0.28), QPointF(s * 0.5 + std::cos(a) * s * 0.42, s * 0.5 + std::sin(a) * s * 0.42)); } break; }
+    case Glyph::CountIn: { QFont f; f.setPointSizeF(s * 0.5); f.setBold(true); p.setFont(f); p.setPen(color); p.drawText(QRectF(0, 0, s, s), Qt::AlignCenter, "3·2"); break; }
+    case Glyph::Punch: { p.setPen(QPen(color, 1.5)); p.drawLine(QPointF(s * 0.15, s * 0.5), QPointF(s * 0.85, s * 0.5)); p.setPen(Qt::NoPen); p.drawRect(QRectF(s * 0.3, s * 0.25, s * 0.08, s * 0.5)); p.drawRect(QRectF(s * 0.62, s * 0.25, s * 0.08, s * 0.5)); p.setBrush(QColor(0xe0, 0x5a, 0x5a)); p.drawEllipse(QRectF(s * 0.42, s * 0.42, s * 0.16, s * 0.16)); break; }
+    case Glyph::Takes: { p.setPen(QPen(color, 1.5)); p.setBrush(Qt::NoBrush); p.drawArc(QRectF(s * 0.2, s * 0.2, s * 0.6, s * 0.6), 30 * 16, 300 * 16); QPainterPath a; a.moveTo(s * 0.72, s * 0.12); a.lineTo(s * 0.82, s * 0.36); a.lineTo(s * 0.58, s * 0.36); a.closeSubpath(); p.setPen(Qt::NoPen); p.setBrush(color); p.drawPath(a); break; }
+    case Glyph::Help: { QFont f; f.setPointSizeF(s * 0.65); f.setBold(true); p.setFont(f); p.setPen(color); p.drawText(QRectF(0, 0, s, s), Qt::AlignCenter, "?"); break; }
     case Glyph::Metronome: { QPainterPath path; path.moveTo(s * 0.35, s * 0.15); path.lineTo(s * 0.65, s * 0.15); path.lineTo(s * 0.85, s * 0.85); path.lineTo(s * 0.15, s * 0.85); path.closeSubpath(); p.setBrush(Qt::NoBrush); p.setPen(QPen(color, 1.5)); p.drawPath(path); p.drawLine(QPointF(s * 0.5, s * 0.8), QPointF(s * 0.7, s * 0.3)); break; }
     }
     return QIcon(pm);
