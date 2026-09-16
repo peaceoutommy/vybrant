@@ -1,0 +1,199 @@
+#include "ui/ChannelRackPanel.h"
+#include "ui/Theme.h"
+#include "dsp/NativeRegistry.h"
+#include <QPainter>
+#include <QMouseEvent>
+#include <QWheelEvent>
+#include <QContextMenuEvent>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QMimeData>
+#include <QMenu>
+#include <QInputDialog>
+#include <QColorDialog>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QUrl>
+#include <QToolTip>
+
+namespace mt {
+
+// ---------------------------------------------------------------- RackView
+RackView::RackView(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setAcceptDrops(true); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); }
+Pattern* RackView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
+const Step* RackView::stepAt(Id ch, int step) const { Pattern* p = pattern(); if (!p) return nullptr; auto* d = p->channelData(ch); if (!d || step < 0 || step >= (int)d->steps.size()) return nullptr; return &d->steps[step]; }
+int RackView::stepW() const { return 22; }
+int RackView::stepX(int step) const { return m_leftW + 6 + step * stepW() + (step / 4) * 4; }
+QRect RackView::rowRect(int row) const { return QRect(0, row * m_rowH, width(), m_rowH); }
+QSize RackView::sizeHint() const { Pattern* p = pattern(); int steps = p ? p->stepCount : 16; int rows = (int)m_app.project().channels.size(); return QSize(stepX(steps) + 12, rows * m_rowH + (m_graphMode >= 0 ? m_graphH : 0) + 4); }
+void RackView::refresh() { updateGeometry(); resize(sizeHint()); update(); }
+void RackView::uiTick() { auto tv = m_app.engine().transport(); int ps = -1; Pattern* p = pattern(); if (p && tv.playing && !tv.countingIn) { Tick local = (Tick)tv.positionTicks; if (tv.songMode) { local = -1; for (auto& c : m_app.project().clips) if (c.type == ClipType::Pattern && c.sourceId == p->id && tv.positionTicks >= c.start && tv.positionTicks < c.start + c.length) { local = ((Tick)tv.positionTicks - c.start + c.sourceOffset) % std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), 1); break; } } if (local >= 0) ps = (int)(local / p->stepTicks()); } if (ps != m_playStep) { m_playStep = ps; update(); } }
+
+RackView::HitInfo RackView::hitTest(const QPoint& pt) const {
+    HitInfo h; int rows = (int)m_app.project().channels.size(); int row = pt.y() / m_rowH; if (row < 0 || row >= rows) { if (m_graphMode >= 0 && pt.y() >= rows * m_rowH && pt.y() < rows * m_rowH + m_graphH) { h.hit = Graph; Pattern* p = pattern(); int steps = p ? p->stepCount : 16; for (int s = 0; s < steps; ++s) if (pt.x() >= stepX(s) && pt.x() < stepX(s) + stepW()) h.step = s; } return h; }
+    h.row = row; int x = pt.x();
+    if (x < 14) h.hit = Grip; else if (x < 32) h.hit = Enable; else if (x < 132) h.hit = Name; else if (x < 152) h.hit = Mute; else if (x < 172) h.hit = Solo; else if (x < 200) h.hit = Pan; else if (x < 228) h.hit = Vol; else if (x < m_leftW) h.hit = Mixer;
+    else { Pattern* p = pattern(); int steps = p ? p->stepCount : 16; for (int s = 0; s < steps; ++s) if (x >= stepX(s) && x < stepX(s) + stepW()) { h.hit = StepCell; h.step = s; break; } }
+    return h;
+}
+
+void RackView::paintEvent(QPaintEvent*) {
+    QPainter p(this); p.fillRect(rect(), theme::bg()); p.setRenderHint(QPainter::Antialiasing);
+    Pattern* pat = pattern(); int steps = pat ? pat->stepCount : 16; auto& proj = m_app.project();
+    const auto& chans = proj.channels;
+    for (int r = 0; r < (int)chans.size(); ++r) {
+        const Channel& c = chans[r]; QRect rr = rowRect(r); bool selected = c.id == proj.selectedChannelId;
+        p.fillRect(rr.adjusted(0, 1, 0, -1), selected ? theme::panelLight() : theme::panel());
+        if (m_reorderTarget == r && m_dragging && m_press.hit == Grip) { p.setPen(QPen(theme::accent(), 2)); p.drawLine(rr.left(), rr.top(), rr.right(), rr.top()); }
+        // grip
+        p.setPen(theme::border()); for (int i = 0; i < 3; ++i) p.drawLine(4, rr.top() + 9 + i * 4, 10, rr.top() + 9 + i * 4);
+        // enable led
+        QRectF led(17, rr.top() + 9, 10, 10); p.setPen(Qt::NoPen); p.setBrush(c.enabled ? theme::green() : theme::bg()); p.drawEllipse(led); p.setPen(QPen(theme::border(), 1)); p.setBrush(Qt::NoBrush); p.drawEllipse(led);
+        // name button
+        QRectF nb(34, rr.top() + 3, 96, m_rowH - 6); p.setPen(Qt::NoPen); p.setBrush(c.color.darker(selected ? 110 : 160)); p.drawRoundedRect(nb, 3, 3); p.setPen(QPen(selected ? theme::accent() : c.color, selected ? 2 : 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(nb, 3, 3);
+        p.setPen(theme::text()); p.setFont(theme::uiFont()); p.drawText(nb.adjusted(4, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(c.name, Qt::ElideRight, (int)nb.width() - 6));
+        // mute / solo
+        auto smallBtn = [&](QRectF r, const QString& t, bool on, QColor col) { p.setPen(QPen(theme::border(), 1)); p.setBrush(on ? col : theme::bg()); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, t); };
+        smallBtn(QRectF(134, rr.top() + 6, 16, 16), "M", c.mute, theme::red()); smallBtn(QRectF(154, rr.top() + 6, 16, 16), "S", c.solo, theme::accent());
+        // knobs
+        auto knob = [&](QRectF r, float v, bool bipolar) { p.setPen(QPen(theme::border(), 1)); p.setBrush(theme::bg()); p.drawEllipse(r); QRectF a = r.adjusted(2, 2, -2, -2); p.setPen(QPen(theme::accent2(), 2, Qt::SolidLine, Qt::RoundCap)); if (bipolar) p.drawArc(a, 90 * 16, (int)(-270 * (v - 0.5) * 16)); else p.drawArc(a, 225 * 16, (int)(-270 * v * 16)); };
+        float pan = m_app.engine().registry().channelIfExists(c.id) ? m_app.engine().registry().channelIfExists(c.id)->pan.load() : c.pan; float vol = m_app.engine().registry().channelIfExists(c.id) ? m_app.engine().registry().channelIfExists(c.id)->volume.load() : c.volume;
+        knob(QRectF(176, rr.top() + 4, 20, 20), (pan + 1) * 0.5f, true); knob(QRectF(204, rr.top() + 4, 20, 20), vol, false);
+        // mixer track number
+        QRectF mb(232, rr.top() + 5, 26, m_rowH - 10); p.setPen(QPen(theme::border(), 1)); p.setBrush(theme::bg()); p.drawRoundedRect(mb, 2, 2); int mi = proj.mixerIndex(c.mixerTrackId); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(mb, Qt::AlignCenter, mi <= 0 ? "M" : QString::number(mi));
+        // steps
+        const PatternChannelData* d = pat ? pat->channelData(c.id) : nullptr;
+        for (int s = 0; s < steps; ++s) {
+            QRectF sr(stepX(s), rr.top() + 5, stepW() - 2, m_rowH - 10); bool beatStart = (s / 4) % 2 == 0; const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr; bool on = st && st->enabled;
+            QColor base = beatStart ? QColor(0x3b, 0x41, 0x4a) : QColor(0x30, 0x35, 0x3d); if (m_playStep == s) base = base.lighter(150);
+            p.setPen(Qt::NoPen); p.setBrush(on ? c.color.lighter(st->velocity > 0.9f ? 125 : (int)(70 + st->velocity * 60)) : base); p.drawRoundedRect(sr, 2, 2);
+            if (on && st->probability < 1.f) { p.setPen(QPen(theme::bg(), 1, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(sr.adjusted(1, 1, -1, -1), 2, 2); }
+            if (on && std::fabs(st->pitch) > 0.01f) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(sr, Qt::AlignCenter, QString::number((int)st->pitch)); }
+        }
+        // notes indicator (piano roll content)
+        if (d && !d->notes.empty()) { p.setPen(theme::accent()); p.setFont(theme::smallFont()); p.drawText(QRect(stepX(steps) + 2, rr.top(), 40, m_rowH), Qt::AlignVCenter, QString("♪%1").arg(d->notes.size())); }
+    }
+    // graph editor
+    if (m_graphMode >= 0) {
+        int top = (int)chans.size() * m_rowH; QRect g(0, top, width(), m_graphH); p.fillRect(g, QColor(0x15, 0x18, 0x1c)); p.setPen(theme::border()); p.drawLine(0, top, width(), top);
+        static const char* names[] = {"Velocity", "Pan", "Pitch", "Probability", "Shift"}; p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(6, top + 4, m_leftW, 16), Qt::AlignLeft, QString("Graph: %1  (selected channel; drag bars, right-click resets)").arg(names[m_graphMode]));
+        const Channel* sel = proj.channel(proj.selectedChannelId); const PatternChannelData* d = (pat && sel) ? pat->channelData(sel->id) : nullptr;
+        bool bipolar = m_graphMode == 1 || m_graphMode == 2 || m_graphMode == 4; int mid = top + m_graphH / 2; int bottom = top + m_graphH - 4;
+        if (bipolar) { p.setPen(theme::gridStrong()); p.drawLine(m_leftW, mid, width(), mid); }
+        for (int s = 0; s < steps; ++s) {
+            const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr; float v = 0; if (st) switch (m_graphMode) { case 0: v = st->velocity; break; case 1: v = st->pan; break; case 2: v = st->pitch / 24.f; break; case 3: v = st->probability; break; case 4: v = st->offset * 2.f; break; }
+            QRectF bar; if (bipolar) { int h = (int)(v * (m_graphH / 2 - 8)); bar = QRectF(stepX(s), h >= 0 ? mid - h : mid, stepW() - 2, std::abs(h)); } else { int h = (int)(v * (m_graphH - 24)); bar = QRectF(stepX(s), bottom - h, stepW() - 2, h); }
+            p.setPen(Qt::NoPen); p.setBrush(st && st->enabled ? (sel ? sel->color : theme::accent()) : theme::gridStrong()); p.drawRect(bar); p.setPen(theme::border()); p.drawLine(stepX(s), bottom, stepX(s) + stepW() - 2, bottom);
+        }
+    }
+}
+
+void RackView::mousePressEvent(QMouseEvent* e) {
+    m_press = hitTest(e->pos()); m_lastPos = e->pos(); m_dragging = true; auto& proj = m_app.project(); if (m_press.row >= 0 && m_press.row < (int)proj.channels.size()) { const Channel& c = proj.channels[m_press.row]; m_app.selectChannel(c.id); }
+    if (m_press.hit == Grip) { m_dragRow = m_press.row; m_reorderTarget = m_press.row; return; }
+    if (m_press.hit == Graph) { if (e->button() == Qt::RightButton) { Pattern* pat = pattern(); const Channel* sel = proj.channel(proj.selectedChannelId); if (pat && sel && m_press.step >= 0) m_app.setStepProperty(pat->id, sel->id, m_press.step, m_graphMode, m_graphMode == 0 ? 0.8f : (m_graphMode == 3 ? 1.f : 0.f), true); } else applyGraphAt(e->pos(), false); return; }
+    if (m_press.row < 0) return;
+    const Channel& c = proj.channels[m_press.row];
+    switch (m_press.hit) {
+    case Enable: m_app.setChannelEnabled(c.id, !c.enabled); break;
+    case Mute: if (e->button() == Qt::LeftButton) m_app.setChannelMute(c.id, !c.mute); break;
+    case Solo: m_app.setChannelSolo(c.id, !c.solo); break;
+    case Pan: m_knobStart = c.pan; if (e->button() == Qt::RightButton) { QMenu m; m.addAction("Create automation clip", [this, id = c.id] { m_app.createAutomationLane({ParamTarget::ChannelPan, id, 0, 0}, QString()); }); m.addAction("Link to MIDI controller...", [this, id = c.id, n = c.name] { m_app.startMidiLearn({ParamTarget::ChannelPan, id, 0, 0}, n + " Pan"); }); m.addAction("Reset", [this, id = c.id] { m_app.setChannelPan(id, 0, true); }); m.exec(e->globalPosition().toPoint()); m_dragging = false; } break;
+    case Vol: m_knobStart = c.volume; if (e->button() == Qt::RightButton) { QMenu m; m.addAction("Create automation clip", [this, id = c.id] { m_app.createAutomationLane({ParamTarget::ChannelVolume, id, 0, 0}, QString()); }); m.addAction("Link to MIDI controller...", [this, id = c.id, n = c.name] { m_app.startMidiLearn({ParamTarget::ChannelVolume, id, 0, 0}, n + " Volume"); }); m.addAction("Reset", [this, id = c.id] { m_app.setChannelVolume(id, 0.8f, true); }); m.exec(e->globalPosition().toPoint()); m_dragging = false; } break;
+    case Mixer: { if (e->button() == Qt::RightButton) { QMenu m; for (auto& t : proj.mixerTracks) { auto* a = m.addAction(t.name, [this, id = c.id, tid = t.id] { m_app.setChannelMixerTrack(id, tid); }); a->setCheckable(true); a->setChecked(t.id == c.mixerTrackId); } m.exec(e->globalPosition().toPoint()); m_dragging = false; } break; }
+    case StepCell: { Pattern* pat = pattern(); if (!pat) break; const Step* st = stepAt(c.id, m_press.step); bool on = st && st->enabled; if (e->button() == Qt::RightButton) { m_erasing = true; if (on) m_app.setStep(pat->id, c.id, m_press.step, false); } else if (e->modifiers() & Qt::ShiftModifier) { /* shift+click: audition */ m_app.noteOn(c.rootNote); m_app.noteOff(c.rootNote); } else { m_erasing = false; m_paintValue = !on; m_app.setStep(pat->id, c.id, m_press.step, m_paintValue); } break; }
+    case Name: if (e->button() == Qt::LeftButton) { /* selection handled above; drag-and-drop of channel name could start here */ } break;
+    default: break;
+    }
+}
+void RackView::mouseMoveEvent(QMouseEvent* e) {
+    if (!m_dragging) { HitInfo h = hitTest(e->pos()); if (h.hit == StepCell) { auto& proj = m_app.project(); if (h.row >= 0) { const Step* st = stepAt(proj.channels[h.row].id, h.step); if (st && st->enabled) QToolTip::showText(e->globalPosition().toPoint(), QString("Step %1  vel %2  pan %3  pitch %4  prob %5%  shift %6").arg(h.step + 1).arg(st->velocity, 0, 'f', 2).arg(st->pan, 0, 'f', 2).arg(st->pitch, 0, 'f', 0).arg((int)(st->probability * 100)).arg(st->offset, 0, 'f', 2), this); } } return; }
+    auto& proj = m_app.project(); int dy = m_lastPos.y() - e->pos().y();
+    if (m_press.hit == Grip) { int row = clamp(e->pos().y() / m_rowH, 0, (int)proj.channels.size() - 1); m_reorderTarget = row; update(); return; }
+    if (m_press.hit == Graph) { applyGraphAt(e->pos(), false); return; }
+    if (m_press.row < 0 || m_press.row >= (int)proj.channels.size()) return;
+    const Channel& c = proj.channels[m_press.row]; float sens = (e->modifiers() & Qt::ShiftModifier) ? 0.001f : 0.01f;
+    if (m_press.hit == Pan) { float v = clamp(c.pan + dy * sens * 2, -1.f, 1.f); m_app.setChannelPan(c.id, v, false); update(); QToolTip::showText(e->globalPosition().toPoint(), QString("Pan %1").arg(v, 0, 'f', 2), this); }
+    else if (m_press.hit == Vol) { float v = clamp(c.volume + dy * sens, 0.f, 1.f); m_app.setChannelVolume(c.id, v, false); update(); QToolTip::showText(e->globalPosition().toPoint(), QString("Volume %1 dB").arg(gainToDb(v / 0.8f), 0, 'f', 1), this); }
+    else if (m_press.hit == Mixer) { if (std::abs(dy) >= 4) { int mi = proj.mixerIndex(c.mixerTrackId); mi = clamp(mi + (dy > 0 ? 1 : -1), 0, (int)proj.mixerTracks.size() - 1); m_app.setChannelMixerTrack(c.id, proj.mixerTracks[mi].id); m_lastPos = e->pos(); } return; }
+    else if (m_press.hit == StepCell) { HitInfo h = hitTest(e->pos()); if (h.hit == StepCell && h.row >= 0) { Pattern* pat = pattern(); if (!pat) return; const Channel& rc = proj.channels[h.row]; const Step* st = stepAt(rc.id, h.step); bool on = st && st->enabled; if (m_erasing) { if (on) m_app.setStep(pat->id, rc.id, h.step, false); } else if (on != m_paintValue) m_app.setStep(pat->id, rc.id, h.step, m_paintValue); } }
+    m_lastPos = e->pos();
+}
+void RackView::mouseReleaseEvent(QMouseEvent*) {
+    if (!m_dragging) return; m_dragging = false; auto& proj = m_app.project();
+    if (m_press.hit == Grip && m_dragRow >= 0 && m_reorderTarget != m_dragRow && m_dragRow < (int)proj.channels.size()) m_app.moveChannel(proj.channels[m_dragRow].id, m_reorderTarget);
+    m_dragRow = -1; m_reorderTarget = -1;
+    if (m_press.row >= 0 && m_press.row < (int)proj.channels.size()) { const Channel& c = proj.channels[m_press.row]; if (m_press.hit == Pan && std::fabs(c.pan - m_knobStart) > 1e-6f) { float v = c.pan; const_cast<Channel&>(c).pan = m_knobStart; m_app.setChannelPan(c.id, v, true); } if (m_press.hit == Vol && std::fabs(c.volume - m_knobStart) > 1e-6f) { float v = c.volume; const_cast<Channel&>(c).volume = m_knobStart; m_app.setChannelVolume(c.id, v, true); } }
+    if (m_press.hit == Graph) applyGraphAt(m_lastPos, true);
+    m_press = HitInfo(); update();
+}
+void RackView::applyGraphAt(const QPoint& pt, bool commit) {
+    auto& proj = m_app.project(); Pattern* pat = pattern(); const Channel* sel = proj.channel(proj.selectedChannelId); if (!pat || !sel) return; m_lastPos = pt;
+    HitInfo h = hitTest(pt); int step = h.step; if (step < 0) { int steps = pat->stepCount; for (int s = 0; s < steps; ++s) if (pt.x() < stepX(s) + stepW()) { step = s; break; } if (step < 0) step = steps - 1; }
+    int top = (int)proj.channels.size() * m_rowH; int bottom = top + m_graphH - 4; int mid = top + m_graphH / 2; bool bipolar = m_graphMode == 1 || m_graphMode == 2 || m_graphMode == 4; float v;
+    if (bipolar) v = clamp((float)(mid - pt.y()) / (m_graphH / 2 - 8), -1.f, 1.f); else v = clamp((float)(bottom - pt.y()) / (m_graphH - 24), 0.f, 1.f);
+    float value = v; if (m_graphMode == 2) value = std::round(v * 24.f); if (m_graphMode == 4) value = v * 0.5f;
+    if (!commit && !(stepAt(sel->id, step) && stepAt(sel->id, step)->enabled) && m_graphMode != 0) return;
+    m_app.setStepProperty(pat->id, sel->id, step, m_graphMode, value, commit); update();
+}
+void RackView::mouseDoubleClickEvent(QMouseEvent* e) { HitInfo h = hitTest(e->pos()); auto& proj = m_app.project(); if (h.row < 0 || h.row >= (int)proj.channels.size()) return; const Channel& c = proj.channels[h.row]; if (h.hit == Name) Q_EMIT openEditor(c.id); if (h.hit == Pan) m_app.setChannelPan(c.id, 0, true); if (h.hit == Vol) m_app.setChannelVolume(c.id, 0.8f, true); }
+void RackView::wheelEvent(QWheelEvent* e) {
+    HitInfo h = hitTest(e->position().toPoint()); auto& proj = m_app.project(); if (h.row < 0 || h.row >= (int)proj.channels.size()) { e->ignore(); return; } const Channel& c = proj.channels[h.row]; int d = e->angleDelta().y() > 0 ? 1 : -1;
+    if (h.hit == StepCell) { Pattern* pat = pattern(); const Step* st = stepAt(c.id, h.step); if (pat && st && st->enabled) { if (e->modifiers() & Qt::ControlModifier) m_app.setStepProperty(pat->id, c.id, h.step, 2, st->pitch + d, true); else m_app.setStepProperty(pat->id, c.id, h.step, 0, st->velocity + d * 0.05f, true); } e->accept(); return; }
+    if (h.hit == Vol) { m_app.setChannelVolume(c.id, clamp(c.volume + d * 0.02f, 0.f, 1.f), true); e->accept(); return; }
+    if (h.hit == Pan) { m_app.setChannelPan(c.id, clamp(c.pan + d * 0.05f, -1.f, 1.f), true); e->accept(); return; }
+    if (h.hit == Mixer) { int mi = clamp(proj.mixerIndex(c.mixerTrackId) + d, 0, (int)proj.mixerTracks.size() - 1); m_app.setChannelMixerTrack(c.id, proj.mixerTracks[mi].id); e->accept(); return; }
+    e->ignore();
+}
+void RackView::contextMenuEvent(QContextMenuEvent* e) { HitInfo h = hitTest(e->pos()); if (h.hit == Name || h.hit == Enable || h.hit == Grip) showChannelMenu(h.row, e->globalPos()); else if (h.row < 0 && h.hit == None) { QMenu m; auto* add = m.addMenu("Add channel"); for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument)) add->addAction(i->name, [this, k = i->key] { m_app.addChannel(k == "native.drumsampler" ? ChannelType::DrumSampler : k == "native.sampler" ? ChannelType::Sampler : k == "native.midiout" ? ChannelType::MidiOut : k == "native.tonegen" ? ChannelType::AudioGenerator : ChannelType::Synth, k); }); m.exec(e->globalPos()); } }
+void RackView::showChannelMenu(int row, const QPoint& global) {
+    auto& proj = m_app.project(); if (row < 0 || row >= (int)proj.channels.size()) return; Channel c = proj.channels[row]; Id id = c.id; QMenu m(this);
+    m.addAction("Open editor", [this, id] { Q_EMIT openEditor(id); });
+    m.addAction("Rename...", [this, id, c] { bool ok; QString n = QInputDialog::getText(this, "Rename channel", "Name:", QLineEdit::Normal, c.name, &ok); if (ok && !n.isEmpty()) m_app.renameChannel(id, n); });
+    m.addAction("Color...", [this, id, c] { QColor col = QColorDialog::getColor(c.color, this, "Channel color"); if (col.isValid()) m_app.setChannelColor(id, col); });
+    m.addAction("Duplicate", [this, id] { m_app.duplicateChannel(id); }); m.addAction("Delete", [this, id] { m_app.deleteChannel(id); });
+    m.addSeparator(); auto* inst = m.addMenu("Change instrument"); for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument)) inst->addAction(i->name, [this, id, k = i->key] { m_app.changeChannelInstrument(id, k); });
+    auto* plug = inst->addMenu("Plugins"); for (auto& p : m_app.pluginDb().plugins()) if (!p.failed && !p.hidden && p.category == "Instrument") plug->addAction(p.name, [this, id, p] { PluginInstanceData d = PluginHost::makeInstanceData(p, m_app.project().newId()); m_app.model().insert<PluginInstanceData>(d, "Add plugin"); m_app.changeChannelInstrument(id, "plugin", d.id); });
+    auto* route = m.addMenu("Route to mixer track"); for (auto& t : proj.mixerTracks) { auto* a = route->addAction(t.name, [this, id, tid = t.id] { m_app.setChannelMixerTrack(id, tid); }); a->setCheckable(true); a->setChecked(t.id == c.mixerTrackId); }
+    m.addSeparator(); m.addAction("Move up", [this, id, row] { m_app.moveChannel(id, std::max(0, row - 1)); }); m.addAction("Move down", [this, id, row] { m_app.moveChannel(id, row + 1); });
+    m.addSeparator(); m.addAction("Fill every 2 steps", [this, id] { Pattern* p = pattern(); if (!p) return; m_app.editPattern(p->id, "Fill steps", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (int i = 0; i < (int)d.steps.size(); ++i) d.steps[i].enabled = (i % 2 == 0); }); });
+    m.addAction("Fill every 4 steps", [this, id] { Pattern* p = pattern(); if (!p) return; m_app.editPattern(p->id, "Fill steps", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (int i = 0; i < (int)d.steps.size(); ++i) d.steps[i].enabled = (i % 4 == 0); }); });
+    m.addAction("Clear steps", [this, id] { Pattern* p = pattern(); if (!p) return; m_app.editPattern(p->id, "Clear steps", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (auto& s : d.steps) s.enabled = false; }); });
+    m.addAction("Send steps to piano roll", [this, id] { Pattern* p = pattern(); if (!p) return; const Channel* ch = m_app.project().channel(id); int root = ch ? ch->rootNote : 60; m_app.editPattern(p->id, "Steps to notes", [id, root](Pattern& pp) { auto& d = pp.ensureChannel(id); Tick st = pp.stepTicks(); for (int i = 0; i < (int)d.steps.size(); ++i) if (d.steps[i].enabled) { Note n; n.id = (Id)(i + 1) * 7919 + (Id)pp.id * 31; n.pitch = root + (int)d.steps[i].pitch; n.start = i * st; n.duration = st; n.velocity = d.steps[i].velocity; n.pan = d.steps[i].pan; d.notes.push_back(n); d.steps[i].enabled = false; } }); });
+    m.exec(global);
+}
+void RackView::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) e->acceptProposedAction(); }
+void RackView::dragMoveEvent(QDragMoveEvent* e) { e->acceptProposedAction(); }
+void RackView::dropEvent(QDropEvent* e) {
+    HitInfo h = hitTest(e->position().toPoint()); auto& proj = m_app.project(); Id target = (h.row >= 0 && h.row < (int)proj.channels.size()) ? proj.channels[h.row].id : 0;
+    QString payload = QString::fromUtf8(e->mimeData()->data("application/x-musicthingy-item")); QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
+    if (e->mimeData()->hasUrls()) { for (auto& u : e->mimeData()->urls()) { QString p = u.toLocalFile(); if (!AudioFile::isAudioFile(p)) continue; if (target) { m_app.setChannelSample(target, p); target = 0; } else m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), p); } e->acceptProposedAction(); return; }
+    if (kind == "native") { auto* info = NativeRegistry::instance().info(val); if (info && info->kind == ProcessorKind::Instrument) { if (target) m_app.changeChannelInstrument(target, val); else m_app.addChannel(val == "native.drumsampler" ? ChannelType::DrumSampler : val == "native.sampler" ? ChannelType::Sampler : val == "native.midiout" ? ChannelType::MidiOut : val == "native.tonegen" ? ChannelType::AudioGenerator : ChannelType::Synth, val); } else if (info) { Id tr = target ? proj.channel(target)->mixerTrackId : proj.masterId(); m_app.addEffect(tr, val); } }
+    else if (kind == "plugin") { for (auto& p : m_app.pluginDb().plugins()) if (p.key() == val) { if (p.category == "Instrument") { if (target) { PluginInstanceData d = PluginHost::makeInstanceData(p, proj.newId()); m_app.model().insert<PluginInstanceData>(d, "Add plugin"); m_app.changeChannelInstrument(target, "plugin", d.id); } else m_app.addPluginChannel(p); } else { Id tr = target ? proj.channel(target)->mixerTrackId : proj.masterId(); m_app.addPluginEffect(tr, p); } } }
+    else if (kind == "preset" && target) m_app.loadPreset(target, val);
+    e->acceptProposedAction();
+}
+
+// ---------------------------------------------------------------- panel
+ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
+    auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
+    auto* top = new QHBoxLayout(); top->setSpacing(6);
+    m_patName = new QLabel(this); m_patName->setStyleSheet("font-weight:bold; color:#f2a93b; padding-left:4px;"); top->addWidget(m_patName);
+    auto* add = new QToolButton(this); add->setText("+ Channel"); add->setPopupMode(QToolButton::InstantPopup); auto* addMenu = new QMenu(add); for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument)) addMenu->addAction(i->name, [this, k = i->key] { m_app.addChannel(k == "native.drumsampler" ? ChannelType::DrumSampler : k == "native.sampler" ? ChannelType::Sampler : k == "native.midiout" ? ChannelType::MidiOut : k == "native.tonegen" ? ChannelType::AudioGenerator : ChannelType::Synth, k); }); auto* plugMenu = addMenu->addMenu("Plugin instruments"); connect(plugMenu, &QMenu::aboutToShow, this, [this, plugMenu] { plugMenu->clear(); for (auto& p : m_app.pluginDb().plugins()) if (!p.failed && !p.hidden && p.category == "Instrument") plugMenu->addAction(p.name + " [" + p.format.toUpper() + "]", [this, p] { m_app.addPluginChannel(p); }); if (plugMenu->isEmpty()) plugMenu->addAction("(none scanned)")->setEnabled(false); }); add->setMenu(addMenu); top->addWidget(add);
+    top->addSpacing(10); auto* l1 = new QLabel("Steps", this); l1->setStyleSheet("color:#8a919a;"); top->addWidget(l1); m_steps = new DragValue(this); m_steps->setRange(4, 128, 1, 0); m_steps->setMinimumWidth(48); top->addWidget(m_steps);
+    auto* l2 = new QLabel("Res", this); l2->setStyleSheet("color:#8a919a;"); top->addWidget(l2); m_resolution = new QComboBox(this); m_resolution->addItems({"1/4 (quarter)", "1/8", "1/8T", "1/16", "1/32"}); top->addWidget(m_resolution);
+    m_swing = new Knob(this, 22); m_swing->setLabel("Swing"); m_swing->setShowLabel(false); m_swing->setToolTip("Swing"); m_swing->valueText = [](float v) { return QString("Swing %1%").arg((int)(v * 100)); }; top->addWidget(m_swing); auto* l3 = new QLabel("Swing", this); l3->setStyleSheet("color:#8a919a;"); top->addWidget(l3);
+    top->addSpacing(10); auto* l4 = new QLabel("Graph", this); l4->setStyleSheet("color:#8a919a;"); top->addWidget(l4); m_graph = new QComboBox(this); m_graph->addItems({"Off", "Velocity", "Pan", "Pitch", "Probability", "Shift"}); m_graph->setToolTip("Graph editor: edit per-step values of the selected channel"); top->addWidget(m_graph);
+    top->addStretch(1); lay->addLayout(top);
+    m_scroll = new QScrollArea(this); m_view = new RackView(app, this); m_scroll->setWidget(m_view); m_scroll->setWidgetResizable(false); m_scroll->setFrameShape(QFrame::NoFrame); lay->addWidget(m_scroll);
+    connect(m_view, &RackView::openEditor, this, &ChannelRackPanel::openEditor);
+    connect(m_steps, &DragValue::editingFinished, this, [this] { if (m_updating) return; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { int n = (int)m_steps->value(); m_app.editPattern(p->id, "Pattern steps", [n](Pattern& pp) { pp.stepCount = n; for (auto& c : pp.channels) if ((int)c.steps.size() < n) c.steps.resize(n); }); } });
+    connect(m_resolution, &QComboBox::currentIndexChanged, this, [this](int i) { if (m_updating) return; static const int spb[] = {1, 2, 3, 4, 8}; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) m_app.editPattern(p->id, "Step resolution", [v = spb[i]](Pattern& pp) { pp.stepsPerBeat = v; }); });
+    connect(m_swing, &Knob::dragFinished, this, [this] { if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) m_app.editPattern(p->id, "Swing", [v = m_swing->value()](Pattern& pp) { pp.swing = v; }, 3100); });
+    connect(m_graph, &QComboBox::currentIndexChanged, this, [this](int i) { m_view->setGraphMode(i - 1); m_view->refresh(); });
+    refresh(ChangeAll);
+}
+void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }
+void ChannelRackPanel::uiTick() { m_view->uiTick(); }
+
+} // namespace mt

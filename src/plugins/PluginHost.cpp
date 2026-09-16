@@ -1,0 +1,138 @@
+#include "plugins/PluginHost.h"
+#include "plugins/Vst3Plugin.h"
+#include "plugins/Vst2Plugin.h"
+#include "core/Log.h"
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QTextStream>
+#include <dlfcn.h>
+#include <QTimer>
+#include <QFileInfo>
+#include <functional>
+
+namespace mt {
+
+// ---------------------------------------------------------------- database
+PluginDatabase::PluginDatabase(QObject* parent) : QObject(parent) { m_dirs = defaultDirectories(); }
+QString PluginDatabase::databasePath() { QString d = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation); QDir().mkpath(d); return d + "/plugins.json"; }
+QStringList PluginDatabase::defaultDirectories() {
+    QString home = QDir::homePath(); QStringList d = {home + "/.vst3", "/usr/lib/vst3", "/usr/local/lib/vst3", home + "/.vst", "/usr/lib/vst", "/usr/local/lib/vst", home + "/.lxvst", "/usr/lib/lxvst", "/usr/local/lib/lxvst"};
+    QString env = qEnvironmentVariable("VST_PATH"); for (auto& p : env.split(':', Qt::SkipEmptyParts)) d << p; env = qEnvironmentVariable("VST3_PATH"); for (auto& p : env.split(':', Qt::SkipEmptyParts)) d << p;
+    d.removeDuplicates(); return d;
+}
+void PluginDatabase::load() {
+    QFile f(databasePath()); if (!f.open(QIODevice::ReadOnly)) return;
+    auto doc = QJsonDocument::fromJson(f.readAll()); auto root = doc.object(); m_plugins.clear();
+    for (auto v : root["plugins"].toArray()) { auto o = v.toObject(); PluginInfo p; p.format = o["format"].toString(); p.path = o["path"].toString(); p.uid = o["uid"].toString(); p.name = o["name"].toString(); p.vendor = o["vendor"].toString(); p.category = o["category"].toString(); p.subCategories = o["subCategories"].toString(); p.version = o["version"].toString(); p.numInputs = o["numInputs"].toInt(); p.numOutputs = o["numOutputs"].toInt(); p.hasEditor = o["hasEditor"].toBool(); p.favorite = o["favorite"].toBool(); p.hidden = o["hidden"].toBool(); p.failed = o["failed"].toBool(); p.failReason = o["failReason"].toString(); p.lastScanned = o["lastScanned"].toString(); m_plugins.push_back(p); }
+    auto dirs = root["directories"].toArray(); if (!dirs.isEmpty()) { m_dirs.clear(); for (auto v : dirs) m_dirs << v.toString(); }
+    Q_EMIT changed();
+}
+void PluginDatabase::save() const {
+    QJsonArray arr; for (auto& p : m_plugins) arr.append(QJsonObject{{"format", p.format}, {"path", p.path}, {"uid", p.uid}, {"name", p.name}, {"vendor", p.vendor}, {"category", p.category}, {"subCategories", p.subCategories}, {"version", p.version}, {"numInputs", p.numInputs}, {"numOutputs", p.numOutputs}, {"hasEditor", p.hasEditor}, {"favorite", p.favorite}, {"hidden", p.hidden}, {"failed", p.failed}, {"failReason", p.failReason}, {"lastScanned", p.lastScanned}});
+    QJsonArray dirs; for (auto& d : m_dirs) dirs.append(d);
+    QFile f(databasePath()); if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(QJsonObject{{"plugins", arr}, {"directories", dirs}}).toJson());
+}
+const PluginInfo* PluginDatabase::find(const QString& format, const QString& uid) const { for (auto& p : m_plugins) if (p.format == format && p.uid == uid) return &p; return nullptr; }
+const PluginInfo* PluginDatabase::findByPath(const QString& path, const QString& uid) const { for (auto& p : m_plugins) if (p.path == path && (uid.isEmpty() || p.uid == uid)) return &p; return nullptr; }
+void PluginDatabase::addOrUpdate(const PluginInfo& info) { for (auto& p : m_plugins) if (p.format == info.format && p.path == info.path && p.uid == info.uid) { bool fav = p.favorite, hid = p.hidden; p = info; p.favorite = fav; p.hidden = hid; Q_EMIT changed(); return; } m_plugins.push_back(info); Q_EMIT changed(); }
+void PluginDatabase::markFailed(const QString& path, const QString& reason) { bool found = false; for (auto& p : m_plugins) if (p.path == path) { p.failed = true; p.failReason = reason; found = true; } if (!found) { PluginInfo p; p.path = path; p.name = QFileInfo(path).completeBaseName(); p.format = path.endsWith(".vst3") ? "vst3" : "vst2"; p.failed = true; p.failReason = reason; p.lastScanned = QDateTime::currentDateTime().toString(Qt::ISODate); m_plugins.push_back(p); } Q_EMIT changed(); }
+void PluginDatabase::setFavorite(const QString& key, bool f) { for (auto& p : m_plugins) if (p.key() == key) p.favorite = f; save(); Q_EMIT changed(); }
+void PluginDatabase::setHidden(const QString& key, bool h) { for (auto& p : m_plugins) if (p.key() == key) p.hidden = h; save(); Q_EMIT changed(); }
+void PluginDatabase::removeMissing() { std::erase_if(m_plugins, [](const PluginInfo& p) { return !QFileInfo::exists(p.path); }); save(); Q_EMIT changed(); }
+
+// ---------------------------------------------------------------- scanner
+PluginScanner::PluginScanner(PluginDatabase& db, QObject* parent) : QObject(parent), m_db(db) {}
+
+QStringList PluginScanner::candidateFiles(const QStringList& dirs) {
+    QStringList out;
+    std::function<void(const QString&, int)> walk = [&](const QString& dir, int depth) {
+        QDir d(dir); if (!d.exists() || depth > 6) return;
+        for (auto& fi : d.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot)) {
+            if (fi.isDir()) { if (fi.fileName().endsWith(".vst3", Qt::CaseInsensitive)) out << fi.absoluteFilePath(); else walk(fi.absoluteFilePath(), depth + 1); }
+            else if (fi.suffix() == "so" && !dir.contains("/Contents/")) out << fi.absoluteFilePath();
+            else if (fi.suffix().compare("vst3", Qt::CaseInsensitive) == 0) out << fi.absoluteFilePath();
+        }
+    };
+    for (auto& d : dirs) walk(d, 0);
+    out.removeDuplicates(); return out;
+}
+
+void PluginScanner::scan(bool rescanAll) {
+    if (isScanning()) return;
+    m_cancel = false; m_queue.clear(); m_done = 0;
+    for (auto& f : candidateFiles(m_db.directories())) { if (!rescanAll) { if (auto* p = m_db.findByPath(f)) { if (!p->failed || true) { if (QFileInfo(f).lastModified().toString(Qt::ISODate) <= p->lastScanned) continue; } } } m_queue << f; }
+    m_total = m_queue.size();
+    if (m_queue.isEmpty()) { Q_EMIT finished(); return; }
+    for (int i = 0; i < 4; ++i) launchNext();
+}
+void PluginScanner::cancel() { m_cancel = true; m_queue.clear(); for (auto* p : m_running) p->kill(); }
+
+void PluginScanner::launchNext() {
+    if (m_queue.isEmpty()) { if (m_running.empty()) { m_db.save(); Q_EMIT finished(); } return; }
+    QString path = m_queue.takeFirst();
+    auto* proc = new QProcess(this); m_running.push_back(proc);
+    Q_EMIT progress(m_done, m_total, path);
+    connect(proc, &QProcess::finished, this, [this, proc, path](int code, QProcess::ExitStatus st) {
+        QString out = QString::fromUtf8(proc->readAllStandardOutput()); QString err = QString::fromUtf8(proc->readAllStandardError());
+        if (st != QProcess::NormalExit || code != 0) { m_db.markFailed(path, st != QProcess::NormalExit ? "Crashed during scan" : ("Scan failed: " + err.trimmed().left(200))); }
+        else {
+            int n = 0;
+            for (auto& line : out.split('\n', Qt::SkipEmptyParts)) { auto doc = QJsonDocument::fromJson(line.toUtf8()); if (!doc.isObject()) continue; auto o = doc.object(); PluginInfo p; p.format = o["format"].toString(); p.path = path; p.uid = o["uid"].toString(); p.name = o["name"].toString(); p.vendor = o["vendor"].toString(); p.category = o["category"].toString(); p.subCategories = o["subCategories"].toString(); p.version = o["version"].toString(); p.numInputs = o["numInputs"].toInt(); p.numOutputs = o["numOutputs"].toInt(); p.hasEditor = o["hasEditor"].toBool(); p.lastScanned = QDateTime::currentDateTime().toString(Qt::ISODate); m_db.addOrUpdate(p); ++n; }
+            if (n == 0) m_db.markFailed(path, "No plugin classes found");
+        }
+        std::erase(m_running, proc); proc->deleteLater(); m_done++;
+        if (!m_cancel) launchNext(); else if (m_running.empty()) Q_EMIT finished();
+    });
+    proc->start(QCoreApplication::applicationFilePath(), {"--scan-plugin", path});
+    QTimer::singleShot(45000, proc, [proc] { if (proc->state() == QProcess::Running) proc->kill(); });
+}
+
+int PluginScanner::scanChildMain(const QString& path) {
+    QTextStream out(stdout);
+    auto emitJson = [&](const QJsonObject& o) { out << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)) << "\n"; out.flush(); };
+    bool isVst3 = path.endsWith(".vst3", Qt::CaseInsensitive) || QFileInfo(path).isDir();
+    if (isVst3) {
+        QString err; auto mod = Vst3Module::load(path, &err); if (!mod) { QTextStream(stderr) << err << "\n"; return 2; }
+        auto classes = mod->classes(); if (classes.empty()) { QTextStream(stderr) << "No classes\n"; return 3; }
+        for (auto& c : classes) {
+            QJsonObject o{{"format", "vst3"}, {"uid", c.cid}, {"name", c.name}, {"vendor", c.vendor}, {"category", c.category}, {"subCategories", c.subCategories}, {"version", c.version}};
+            // Instantiate to validate & learn bus/editor info
+            QString ierr; auto inst = Vst3Plugin::create(path, c.cid, &ierr);
+            if (inst) { o["hasEditor"] = inst->hasCustomEditor(); o["numInputs"] = inst->wantsSidechain() ? 4 : (inst->kind() == ProcessorKind::Instrument ? 0 : 2); o["numOutputs"] = 2; }
+            else { QTextStream(stderr) << ierr << "\n"; continue; }
+            emitJson(o);
+        }
+        return 0;
+    }
+    // Try VST2; a .so exporting GetPluginFactory is also accepted as VST3
+    void* h = dlopen(path.toLocal8Bit().constData(), RTLD_NOW | RTLD_LOCAL); bool hasVst3 = h && dlsym(h, "GetPluginFactory"); if (h) dlclose(h);
+    if (hasVst3) { QString err; auto mod = Vst3Module::load(path, &err); if (mod) { for (auto& c : mod->classes()) emitJson(QJsonObject{{"format", "vst3"}, {"uid", c.cid}, {"name", c.name}, {"vendor", c.vendor}, {"category", c.category}, {"subCategories", c.subCategories}, {"version", c.version}, {"hasEditor", true}, {"numInputs", 2}, {"numOutputs", 2}}); return 0; } }
+    Vst2Info info; QString err; if (!Vst2Plugin::probe(path, info, &err)) { QTextStream(stderr) << err << "\n"; return 4; }
+    emitJson(QJsonObject{{"format", "vst2"}, {"uid", QString::number((uint32_t)info.uniqueId, 16)}, {"name", info.name}, {"vendor", info.vendor}, {"category", info.isSynth ? "Instrument" : "Effect"}, {"subCategories", ""}, {"version", QString::number(info.version)}, {"numInputs", info.numInputs}, {"numOutputs", info.numOutputs}, {"hasEditor", info.hasEditor}});
+    return 0;
+}
+
+// ---------------------------------------------------------------- host
+PluginInstanceData PluginHost::makeInstanceData(const PluginInfo& info, Id id) { PluginInstanceData d; d.id = id; d.format = info.format; d.identifier = info.uid; d.name = info.name; d.manufacturer = info.vendor; d.type = info.category == "Instrument" ? "instrument" : "effect"; d.path = info.path; return d; }
+
+std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData& data, QString* error) {
+    QString path = data.path;
+    if (!QFileInfo::exists(path)) { if (auto* p = m_db.find(data.format, data.identifier)) path = p->path; }
+    if (!QFileInfo::exists(path)) { if (error) *error = "Plugin binary not found: " + data.path; Log::warn("Missing plugin: " + data.name + " (" + data.path + ")"); return nullptr; }
+    QString err;
+    std::unique_ptr<IProcessor> proc;
+    if (data.format == "vst3") { auto p = Vst3Plugin::create(path, data.identifier, &err); if (p) { QJsonObject st; if (!data.state.isEmpty()) st["pluginState"] = QString::fromLatin1(data.state.toBase64()); if (!data.controllerState.isEmpty()) st["controllerState"] = QString::fromLatin1(data.controllerState.toBase64()); if (!st.isEmpty()) p->restoreState(st); proc = std::move(p); } }
+    else if (data.format == "vst2") { auto p = Vst2Plugin::create(path, &err); if (p) { QJsonObject st; if (!data.state.isEmpty()) st["pluginState"] = QString::fromLatin1(data.state.toBase64()); if (!st.isEmpty()) p->restoreState(st); proc = std::move(p); } }
+    else err = "Unknown plugin format " + data.format;
+    if (!proc) { if (error) *error = err; Log::error("Failed to load plugin " + data.name + ": " + err); }
+    else Log::info("Loaded plugin " + data.name + " (" + data.format + ")");
+    return proc;
+}
+
+} // namespace mt

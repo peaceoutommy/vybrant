@@ -1,0 +1,58 @@
+// Browser: samples/loops/one-shots folders, instruments, effects, plugins, presets, projects and the user library.
+// Supports search, favorites, tags, preview and drag-and-drop into the rack, playlist and mixer.
+#pragma once
+#include "ui/App.h"
+#include <QWidget>
+#include <QTreeView>
+#include <QStandardItemModel>
+#include <QSortFilterProxyModel>
+#include <QLineEdit>
+#include <QSet>
+#include <QMap>
+
+namespace mt {
+
+class BrowserModel : public QStandardItemModel {
+    Q_OBJECT
+public:
+    enum Role { PathRole = Qt::UserRole + 1, KindRole, KeyRole, FavRole, TagsRole, LoadedRole, PluginKeyRole };
+    enum Kind { Folder, AudioFile, ProjectFile, NativeInstrument, NativeEffect, Plugin, Preset, PatternItem, ChannelItem, LaneItem, Category, MixerItem };
+    explicit BrowserModel(App& app, QObject* parent = nullptr);
+    void rebuild();
+    void populateFolder(QStandardItem* item);
+    QStringList mimeTypes() const override { return {"text/uri-list", "application/x-musicthingy-item"}; }
+    QMimeData* mimeData(const QModelIndexList& indexes) const override;
+    Qt::ItemFlags flags(const QModelIndex& i) const override { auto f = QStandardItemModel::flags(i); if (i.isValid()) f |= Qt::ItemIsDragEnabled; return f & ~Qt::ItemIsEditable; }
+    bool isFavorite(const QString& key) const { return m_favorites.contains(key); }
+    void toggleFavorite(const QString& key); QStringList tags(const QString& key) const { return m_tags.value(key); } void setTags(const QString& key, const QStringList& t);
+    QStringList libraryDirs() const { return m_dirs; } void setLibraryDirs(const QStringList& d);
+private:
+    QStandardItem* addCategory(const QString& name, Kind kind = Category);
+    QStandardItem* addFolder(QStandardItem* parent, const QString& path, const QString& label = QString());
+    QStandardItem* makeItem(const QString& text, Kind kind, const QString& key, const QString& path = QString());
+    App& m_app; QSet<QString> m_favorites; QMap<QString, QStringList> m_tags; QStringList m_dirs; QStandardItem* m_favRoot = nullptr;
+};
+
+class BrowserFilter : public QSortFilterProxyModel {
+public:
+    using QSortFilterProxyModel::QSortFilterProxyModel;
+    void setModelRef(BrowserModel* m) { m_model = m; }
+protected:
+    bool filterAcceptsRow(int row, const QModelIndex& parent) const override;
+private:
+    BrowserModel* m_model = nullptr;
+};
+
+class BrowserPanel : public QWidget {
+    Q_OBJECT
+public:
+    explicit BrowserPanel(App& app, QWidget* parent = nullptr);
+    void refresh(uint32_t flags);
+Q_SIGNALS:
+    void openEditor(Id ownerId);
+private:
+    void onClicked(const QModelIndex& idx); void onDoubleClicked(const QModelIndex& idx); void onContext(const QPoint& pos); void onExpanded(const QModelIndex& idx);
+    App& m_app; QTreeView* m_tree; BrowserModel* m_model; BrowserFilter* m_filter; QLineEdit* m_search; bool m_previewEnabled = true;
+};
+
+} // namespace mt

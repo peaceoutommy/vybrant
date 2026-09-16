@@ -1,0 +1,51 @@
+// Channel Rack: channel list with step sequencer grid and per-step graph editor (velocity/pan/pitch/probability/offset).
+#pragma once
+#include "ui/App.h"
+#include <QWidget>
+#include <QScrollArea>
+#include <QComboBox>
+#include <QToolButton>
+#include <QLabel>
+#include "ui/widgets/Controls.h"
+
+namespace mt {
+
+class RackView : public QWidget {
+    Q_OBJECT
+public:
+    explicit RackView(App& app, QWidget* parent = nullptr);
+    void refresh(); void uiTick();
+    void setGraphMode(int mode) { m_graphMode = mode; update(); }   // -1 off, 0 vel, 1 pan, 2 pitch, 3 prob, 4 offset
+    int graphMode() const { return m_graphMode; }
+    QSize sizeHint() const override;
+Q_SIGNALS:
+    void openEditor(Id channelId);
+protected:
+    void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
+    void dragEnterEvent(QDragEnterEvent*) override; void dragMoveEvent(QDragMoveEvent*) override; void dropEvent(QDropEvent*) override;
+private:
+    enum Hit { None, Grip, Enable, Name, Mute, Solo, Pan, Vol, Mixer, StepCell, Graph };
+    struct HitInfo { Hit hit = None; int row = -1; int step = -1; };
+    HitInfo hitTest(const QPoint& p) const;
+    QRect rowRect(int row) const; int stepX(int step) const; int stepW() const;
+    Pattern* pattern() const; const Step* stepAt(Id ch, int step) const;
+    void showChannelMenu(int row, const QPoint& global);
+    void applyGraphAt(const QPoint& p, bool commit);
+    App& m_app; int m_rowH = 28, m_leftW = 262, m_graphH = 90; int m_graphMode = -1;
+    // drag state
+    HitInfo m_press; bool m_paintValue = false; bool m_erasing = false; int m_dragRow = -1; QPoint m_lastPos; float m_knobStart = 0; int m_reorderTarget = -1; int m_playStep = -1; bool m_dragging = false;
+};
+
+class ChannelRackPanel : public QWidget {
+    Q_OBJECT
+public:
+    explicit ChannelRackPanel(App& app, QWidget* parent = nullptr);
+    void refresh(uint32_t flags); void uiTick();
+    QSize sizeHint() const override { return {900, 320}; }
+Q_SIGNALS:
+    void openEditor(Id channelId);
+private:
+    App& m_app; RackView* m_view; QScrollArea* m_scroll; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;
+};
+
+} // namespace mt
