@@ -9,7 +9,7 @@
 #include <QFileInfo>
 #include <cstring>
 #include <cstdio>
-namespace mt { int runSelfTest(App& app); }
+namespace mt { int runSelfTest(App& app); int runPreviewBench(App& app, const QString& dir); }
 
 int main(int argc, char** argv) {
     // Plugin scanning runs in a child process so a crashing plugin cannot take the DAW down.
@@ -20,6 +20,7 @@ int main(int argc, char** argv) {
     QCoreApplication::setOrganizationName("MusicThingy"); QCoreApplication::setApplicationName("MusicThingy"); QApplication::setStyle("Fusion"); app.setStyleSheet(mt::theme::stylesheet());
     mt::App daw; daw.initialize();
     if (argc >= 2 && std::strcmp(argv[1], "--selftest") == 0) { int rc = mt::runSelfTest(daw); return rc; }
+    if (argc >= 3 && std::strcmp(argv[1], "--preview-bench") == 0) return mt::runPreviewBench(daw, argv[2]);
     mt::MainWindow win(daw); win.show();
     QString openFile, screenshot, renderPath, panel; bool quitAfter = false;
     for (int i = 1; i < argc; ++i) { QString a = argv[i]; if (a == "--screenshot" && i + 1 < argc) screenshot = argv[++i]; else if (a == "--render" && i + 1 < argc) renderPath = argv[++i]; else if (a == "--panel" && i + 1 < argc) panel = argv[++i]; else if (a == "--quit") quitAfter = true; else if (QFileInfo(a).suffix() == "mtp") openFile = a; }

@@ -55,8 +55,9 @@ void AudioEngine::togglePlay() { if (m_playing.load()) stop(); else play(); }
 void AudioEngine::seek(Tick t) { EngineCommand c; c.type = EngineCommand::Seek; c.value = (double)std::max<Tick>(0, t); m_commands.push(c); }
 void AudioEngine::setRecording(bool r) { EngineCommand c; c.type = EngineCommand::SetRecording; c.ival = r ? 1 : 0; m_commands.push(c); }
 void AudioEngine::allNotesOff() { EngineCommand c; c.type = EngineCommand::AllNotesOff; m_commands.push(c); }
-void AudioEngine::previewPlay(AudioAssetPtr a) { if (!a) return; m_preview.set(a); EngineCommand c; c.type = EngineCommand::PreviewPlay; c.asset = a.get(); m_commands.push(c); }
+void AudioEngine::previewPlay(std::shared_ptr<PreviewBuffer> b) { if (!b) return; m_preview.set(b); EngineCommand c; c.type = EngineCommand::PreviewPlay; m_commands.push(c); }
 void AudioEngine::previewStop() { EngineCommand c; c.type = EngineCommand::PreviewStop; m_commands.push(c); }
+void AudioEngine::previewSeek(double frame) { EngineCommand c; c.type = EngineCommand::PreviewPlay; c.value = frame; m_commands.push(c); }
 
 TransportView AudioEngine::transport() const {
     TransportView v; v.playing = m_playing.load(); v.recording = m_recordingFlag.load(); v.paused = m_paused.load(); v.countingIn = m_countingIn.load(); v.positionTicks = m_posTicks.load(); v.bpm = m_bpm.load(); v.tsNum = m_tsNum.load(); v.tsDen = m_tsDen.load(); v.songMode = m_songMode.load(); v.loop = m_loopEnabled.load(); v.loopStart = m_loopStart.load(); v.loopEnd = m_loopEnd.load();
@@ -143,6 +144,7 @@ void AudioEngine::drainCommands() {
             break; }
         case EngineCommand::Play: {
             if (m_playing.load()) break;
+            m_previewPlaying.store(false);
             m_playing.store(true); m_paused.store(false); m_transportJumped = true;
             if (m_countIn.load() && m_recordingFlag.load()) { TimeSignature ts{m_tsNum.load(), m_tsDen.load()}; m_countInRemaining = (double)ts.ticksPerBar() * m_countInBars.load(); m_countingIn.store(true); }
             else { m_countInRemaining = 0; m_countingIn.store(false); if (m_recordingFlag.load()) { EngineMessage m; m.type = EngineMessage::RecordStarted; m.tick = m_posTicks.load(); m_messages.push(m); } }
@@ -156,7 +158,7 @@ void AudioEngine::drainCommands() {
         case EngineCommand::Seek: m_posTicks.store(c.value); m_transportJumped = true; if (m_rtSnapshot) for (auto& ch : m_rtSnapshot->channels) { ch.noteOffs.clear(); MidiEvent e; e.type = MidiEvent::AllNotesOff; ch.midi.add(e); } break;
         case EngineCommand::SetRecording: m_recordingFlag.store(c.ival != 0); break;
         case EngineCommand::AllNotesOff: case EngineCommand::Panic: if (m_rtSnapshot) for (auto& ch : m_rtSnapshot->channels) { ch.noteOffs.clear(); MidiEvent e; e.type = MidiEvent::AllNotesOff; ch.midi.add(e); if (ch.instrument) ch.instrument->reset(); } break;
-        case EngineCommand::PreviewPlay: m_previewPosRt = 0; m_previewPlaying.store(true); break;
+        case EngineCommand::PreviewPlay: m_previewPosRt = c.value; m_previewPos.store(c.value); m_previewPlaying.store(true); break;
         case EngineCommand::PreviewStop: m_previewPlaying.store(false); break;
         default: break;
         }
@@ -423,9 +425,13 @@ void AudioEngine::renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, b
 void AudioEngine::renderPreview(float* L, float* R, int n) {
     m_preview.rtTick();
     if (!m_previewPlaying.load()) return;
-    const AudioAsset* a = m_preview.get(); if (!a) { m_previewPlaying.store(false); return; }
-    float g = m_previewGain.load();
-    for (int i = 0; i < n; ++i) { if (m_previewPosRt >= a->frames - 1) { m_previewPlaying.store(false); break; } L[i] += dsp::readInterp(a->L(), a->frames, m_previewPosRt) * g; R[i] += dsp::readInterp(a->R(), a->frames, m_previewPosRt) * g; m_previewPosRt += 1.0; }
+    const PreviewBuffer* b = m_preview.get(); if (!b || b->failed.load()) { m_previewPlaying.store(false); return; }
+    float g = m_previewGain.load(); double rate = b->fileRate / m_sr; int64_t avail = b->available.load(std::memory_order_acquire); int64_t total = b->frames;
+    for (int i = 0; i < n; ++i) {
+        if (m_previewPosRt >= total - 1) { m_previewPlaying.store(false); break; }
+        if (m_previewPosRt + 1 >= avail) { if (b->done.load()) { m_previewPlaying.store(false); } break; }   // data not decoded yet: wait (silence)
+        L[i] += dsp::readInterp(b->L(), avail, m_previewPosRt) * g; R[i] += dsp::readInterp(b->R(), avail, m_previewPosRt) * g; m_previewPosRt += rate;
+    }
     m_previewPos.store(m_previewPosRt);
 }
 

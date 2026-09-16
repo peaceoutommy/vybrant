@@ -76,7 +76,7 @@ std::shared_ptr<AudioAsset> AudioFile::resample(const AudioAsset& in, double tar
     int64_t outFrames = (int64_t)std::ceil(in.frames * ratio) + 16;
     auto doChannel = [&](const std::vector<float>& src, std::vector<float>& dst) {
         dst.assign(outFrames, 0.f); SRC_DATA d{}; d.data_in = src.data(); d.input_frames = in.frames; d.data_out = dst.data(); d.output_frames = outFrames; d.src_ratio = ratio;
-        if (src_simple(&d, SRC_SINC_MEDIUM_QUALITY, 1) != 0) { dst = src; return (int64_t)src.size(); }
+        if (src_simple(&d, SRC_SINC_FASTEST, 1) != 0) { dst = src; return (int64_t)src.size(); }
         dst.resize(d.output_frames_gen); return (int64_t)d.output_frames_gen;
     };
     out->frames = doChannel(in.left, out->left);

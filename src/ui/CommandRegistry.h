@@ -8,13 +8,13 @@
 
 namespace mt {
 
-struct CommandEntry { QString id; QString description; QString category; QKeySequence defaultShortcut; QKeySequence userShortcut; QAction* action = nullptr; };
+struct CommandEntry { QString id; QString description; QString category; QKeySequence defaultShortcut; QKeySequence altShortcut; QKeySequence userShortcut; QAction* action = nullptr; };
 
 class CommandRegistry : public QObject {
     Q_OBJECT
 public:
     explicit CommandRegistry(QObject* parent = nullptr);
-    QAction* add(const QString& id, const QString& text, const QString& category, const QKeySequence& def, std::function<void()> fn, QObject* parent, bool checkable = false);
+    QAction* add(const QString& id, const QString& text, const QString& category, const QKeySequence& def, std::function<void()> fn, QObject* parent, bool checkable = false, const QKeySequence& alt = QKeySequence());
     QAction* action(const QString& id) const { auto it = m_entries.find(id); return it == m_entries.end() ? nullptr : it->action; }
     const QMap<QString, CommandEntry>& entries() const { return m_entries; }
     void setUserShortcut(const QString& id, const QKeySequence& seq);

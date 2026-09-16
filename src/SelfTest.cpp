@@ -50,3 +50,19 @@ int runSelfTest(App& app) {
 }
 
 } // namespace mt
+
+#include <QDir>
+#include <QElapsedTimer>
+#include <QCoreApplication>
+namespace mt {
+// `musicthingy --preview-bench <dir>`: measures click-to-play latency of the browser preview for every file in a folder
+int runPreviewBench(App& app, const QString& dir) {
+    for (auto& f : QDir(dir).entryList({"*.wav", "*.flac", "*.ogg", "*.mp3"}, QDir::Files, QDir::Name)) {
+        QString path = dir + "/" + f; app.stopPreview(); { QElapsedTimer w; w.start(); while (app.engine().previewPlaying() && w.elapsed() < 2000) QCoreApplication::processEvents(QEventLoop::AllEvents, 5); } QElapsedTimer t; t.start(); app.previewFile(path);
+        while (!app.engine().previewPlaying() && t.elapsed() < 20000) QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+        std::printf("%-14s  %6lld ms\n", f.toUtf8().constData(), (long long)t.elapsed());
+        QElapsedTimer hold; hold.start(); while (hold.elapsed() < 300) QCoreApplication::processEvents(QEventLoop::AllEvents, 5);
+    }
+    return 0;
+}
+}

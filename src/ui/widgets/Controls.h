@@ -77,7 +77,8 @@ Q_SIGNALS:
 protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override;
 private:
-    double m_value = 0, m_min = 0, m_max = 100, m_step = 1; int m_decimals = 0; QString m_suffix, m_prefix; bool m_dragging = false; int m_lastY = 0; double m_accum = 0;
+    double stepAt(int x) const;
+    double m_value = 0, m_min = 0, m_max = 100, m_step = 1; int m_decimals = 0; QString m_suffix, m_prefix; bool m_dragging = false; int m_lastY = 0; double m_accum = 0, m_dragStep = 1;
 };
 
 // Small LED-style toggle button

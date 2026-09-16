@@ -113,11 +113,12 @@ void App::collectSamples() {
 bool App::checkPluginAvailability(QStringList* missing) { bool ok = true; for (auto& pl : project().plugins) { bool inUse = false; for (auto& c : project().channels) if (c.pluginInstanceId == pl.id) inUse = true; for (auto& t : project().mixerTracks) for (auto& e : t.effects) if (e.pluginInstanceId == pl.id) inUse = true; if (inUse && !processor(0) ) {} if (inUse && !QFileInfo::exists(pl.path) && !m_pluginDb.find(pl.format, pl.identifier)) { ok = false; if (missing) *missing << pl.name; } } return ok; }
 
 // ---------------------------------------------------------------- transport
-void App::play() { m_engine->play(); }
-void App::stop() { if (m_engine->isRecording()) record(false); m_engine->stop(); }
+void App::play() { if (!m_previewPath.isEmpty()) stopPreview(); m_engine->play(); }
+void App::stop() { if (m_engine->isRecording()) record(false); if (!m_engine->isPlaying()) { m_engine->seek(0); return; }   // FL: Stop while stopped jumps to the song start
+    m_engine->stop(); }
 void App::pause() { m_engine->pause(); }
 void App::togglePlay() { if (m_engine->isPlaying()) stop(); else play(); }
-void App::record(bool on) { m_engine->setRecording(on); if (on && !m_engine->isPlaying()) play(); }
+void App::record(bool on) { if (on && !m_previewPath.isEmpty()) stopPreview(); m_engine->setRecording(on); if (on && !m_engine->isPlaying()) play(); }
 void App::seek(Tick t) { m_engine->seek(t); }
 void App::seekToStart() { m_engine->seek(project().transport.songMode && project().transport.loopEnabled ? project().transport.loopStart : 0); }
 void App::setBpm(double bpm, bool commit) { bpm = clamp(bpm, 20.0, 999.0); m_engine->setBpm(bpm); if (commit) m_model.editTransport("Change tempo", [bpm](TransportSettings& t) { t.bpm = bpm; }, 1001); }
@@ -322,8 +323,15 @@ void App::removeMidiMapping(int index) { if (index < 0 || index >= (int)project(
 // ---------------------------------------------------------------- live input
 void App::noteOn(int pitch, float vel) { MidiEvent e; e.type = MidiEvent::NoteOn; e.data1 = (uint8_t)clamp(pitch, 0, 127); e.velocity = vel; e.data2 = (uint8_t)(vel * 127); m_engine->pushUiMidi(e); }
 void App::noteOff(int pitch) { MidiEvent e; e.type = MidiEvent::NoteOff; e.data1 = (uint8_t)clamp(pitch, 0, 127); m_engine->pushUiMidi(e); }
-void App::previewFile(const QString& path) { if (!AudioFile::isAudioFile(path)) return; auto a = m_cache.getSync(path); if (a) m_engine->previewPlay(a); }
-void App::stopPreview() { m_engine->previewStop(); }
+void App::previewFile(const QString& path) {
+    if (!AudioFile::isAudioFile(path)) return;
+    m_engine->previewStop();
+    QString err; auto b = m_previewLoader.load(path, &err);
+    if (!b) { m_previewPath.clear(); m_previewBuffer = nullptr; Q_EMIT previewChanged(QString()); Q_EMIT statusMessage("Cannot preview " + path + ": " + err, 4000); return; }
+    m_previewPath = path; m_previewBuffer = b; m_engine->previewPlay(b);
+    Q_EMIT previewChanged(path);
+}
+void App::stopPreview() { m_engine->previewStop(); m_previewLoader.cancel(); m_previewPath.clear(); m_previewBuffer = nullptr; Q_EMIT previewChanged(QString()); }
 void App::panic() { m_engine->allNotesOff(); }
 
 // ---------------------------------------------------------------- recording

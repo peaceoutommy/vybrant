@@ -43,16 +43,30 @@ private:
     BrowserModel* m_model = nullptr;
 };
 
+// "Now playing" strip: waveform of the previewed sample with a progress cursor
+class PreviewBar : public QWidget {
+    Q_OBJECT
+public:
+    explicit PreviewBar(App& app, QWidget* parent = nullptr);
+    QSize sizeHint() const override { return {200, 58}; }
+    void tick();
+protected:
+    void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override;
+private:
+    App& m_app; double m_lastPos = -1; bool m_lastPlaying = false;
+};
+
 class BrowserPanel : public QWidget {
     Q_OBJECT
 public:
     explicit BrowserPanel(App& app, QWidget* parent = nullptr);
-    void refresh(uint32_t flags);
+    void refresh(uint32_t flags); void uiTick();
 Q_SIGNALS:
     void openEditor(Id ownerId);
 private:
     void onClicked(const QModelIndex& idx); void onDoubleClicked(const QModelIndex& idx); void onContext(const QPoint& pos); void onExpanded(const QModelIndex& idx);
-    App& m_app; QTreeView* m_tree; BrowserModel* m_model; BrowserFilter* m_filter; QLineEdit* m_search; bool m_previewEnabled = true;
+    App& m_app; QTreeView* m_tree; BrowserModel* m_model; BrowserFilter* m_filter; QLineEdit* m_search; bool m_previewEnabled = true; PreviewBar* m_previewBar; QString m_highlighted;
+    void highlightPlaying(const QString& path);
 };
 
 } // namespace mt

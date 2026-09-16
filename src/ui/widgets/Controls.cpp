@@ -75,13 +75,19 @@ void LevelMeter::paintEvent(QPaintEvent*) {
 
 // ---------------------------------------------------------------- DragValue
 DragValue::DragValue(QWidget* parent) : QWidget(parent) { setCursor(Qt::SizeVerCursor); }
-void DragValue::setValue(double v, bool emitSignal) { v = clamp(v, m_min, m_max); if (m_step > 0) v = std::round(v / m_step) * m_step; if (std::fabs(v - m_value) < 1e-9) return; m_value = v; update(); if (emitSignal) Q_EMIT valueChanged(v); }
+void DragValue::setValue(double v, bool emitSignal) { v = clamp(v, m_min, m_max); double q = std::pow(10.0, -m_decimals); v = std::round(v / q) * q; if (std::fabs(v - m_value) < 1e-9) return; m_value = v; update(); if (emitSignal) Q_EMIT valueChanged(v); }
 void DragValue::paintEvent(QPaintEvent*) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); theme::drawPanel(p, rect().adjusted(0, 0, -1, -1), QColor(0x15, 0x18, 0x1c)); p.setPen(QPen(theme::border(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 3, 3); p.setPen(theme::accent()); p.setFont(theme::boldFont()); p.drawText(rect(), Qt::AlignCenter, m_prefix + QString::number(m_value, 'f', m_decimals) + m_suffix); }
-void DragValue::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::LeftButton) { m_dragging = true; m_lastY = e->pos().y(); m_accum = 0; } }
-void DragValue::mouseMoveEvent(QMouseEvent* e) { if (!m_dragging) return; int dy = m_lastY - e->pos().y(); m_lastY = e->pos().y(); double sens = (e->modifiers() & Qt::ShiftModifier) ? 0.1 : 1.0; m_accum += dy * m_step * sens * 0.5; if (std::fabs(m_accum) >= m_step) { double steps = std::trunc(m_accum / m_step); setValue(m_value + steps * m_step, true); m_accum -= steps * m_step; } }
+// The step depends on where the cursor is: over the integer digits = whole units, over the decimals = 1/10^decimals
+double DragValue::stepAt(int x) const {
+    if (m_decimals <= 0) return std::max(m_step, 1.0);
+    QString text = m_prefix + QString::number(m_value, 'f', m_decimals) + m_suffix; QFontMetrics fm(theme::boldFont()); int w = fm.horizontalAdvance(text); int left = (width() - w) / 2; int dot = text.lastIndexOf('.'); int dotX = left + fm.horizontalAdvance(text.left(dot + 1));
+    return x >= dotX ? std::pow(10.0, -m_decimals) : 1.0;
+}
+void DragValue::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::LeftButton) { m_dragging = true; m_lastY = e->pos().y(); m_accum = 0; m_dragStep = stepAt(e->pos().x()); } }
+void DragValue::mouseMoveEvent(QMouseEvent* e) { if (!m_dragging) return; int dy = m_lastY - e->pos().y(); m_lastY = e->pos().y(); double st = m_dragStep; if (e->modifiers() & Qt::ShiftModifier) st *= 0.1; m_accum += dy * st * 0.5; if (std::fabs(m_accum) >= st) { double steps = std::trunc(m_accum / st); setValue(m_value + steps * st, true); m_accum -= steps * st; } }
 void DragValue::mouseReleaseEvent(QMouseEvent*) { if (m_dragging) { m_dragging = false; Q_EMIT editingFinished(); } }
 void DragValue::mouseDoubleClickEvent(QMouseEvent*) { bool ok; double v = QInputDialog::getDouble(this, "Enter value", m_prefix, m_value, m_min, m_max, m_decimals, &ok); if (ok) { setValue(v, true); Q_EMIT editingFinished(); } }
-void DragValue::wheelEvent(QWheelEvent* e) { double s = (e->modifiers() & Qt::ShiftModifier) ? m_step * 0.1 : m_step; if (m_decimals == 0) s = std::max(s, 1.0); setValue(m_value + (e->angleDelta().y() > 0 ? s : -s), true); Q_EMIT editingFinished(); e->accept(); }
+void DragValue::wheelEvent(QWheelEvent* e) { double s = stepAt(e->position().toPoint().x()); if (e->modifiers() & Qt::ShiftModifier) s *= 0.1; if (m_decimals == 0) s = std::max(s, 1.0); setValue(m_value + (e->angleDelta().y() > 0 ? s : -s), true); Q_EMIT editingFinished(); e->accept(); }
 
 // ---------------------------------------------------------------- LedButton
 LedButton::LedButton(const QString& text, const QColor& onColor, QWidget* parent) : QWidget(parent), m_text(text), m_on(onColor) { setCursor(Qt::PointingHandCursor); setToolTip(text); }

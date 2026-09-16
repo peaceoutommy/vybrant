@@ -76,7 +76,7 @@ struct Snapshot {
 // Commands from UI -> RT
 struct EngineCommand {
     enum Type : uint8_t { None, SetSnapshot, Play, Stop, Pause, Seek, SetRecording, AllNotesOff, PreviewPlay, PreviewStop, CountIn, Panic };
-    Type type = None; Snapshot* snapshot = nullptr; double value = 0; int64_t ival = 0; const AudioAsset* asset = nullptr;
+    Type type = None; Snapshot* snapshot = nullptr; double value = 0; int64_t ival = 0;
 };
 // Messages RT -> UI
 struct EngineMessage {

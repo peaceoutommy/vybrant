@@ -94,6 +94,8 @@ public:
 
     // ---- live input & preview
     void noteOn(int pitch, float vel = 0.8f); void noteOff(int pitch); void previewFile(const QString& path); void stopPreview();
+    QString previewPath() const { return m_previewPath; }          // file currently previewed
+    std::shared_ptr<const PreviewBuffer> previewBuffer() const { return m_previewBuffer; }
     void panic();
 
     // ---- audio settings
@@ -106,6 +108,7 @@ Q_SIGNALS:
     void projectLoaded();
     void midiLearnChanged(bool active, const QString& name);
     void recordingFinished();
+    void previewChanged(const QString& path);   // preview started / stopped / loading state changed
 
 private:
     void onModelChanged(uint32_t flags);
@@ -125,6 +128,7 @@ private:
     PluginDatabase m_pluginDb; std::unique_ptr<PluginScanner> m_scanner; std::unique_ptr<PluginHost> m_pluginHost; CommandRegistry m_commands;
     QTimer m_autosaveTimer; std::map<int, std::pair<double, MidiEvent>> m_pendingNotes; bool m_learnActive = false; ParamTarget m_learnTarget; QString m_learnName;
     std::map<uint32_t, float> m_paramDragStart; bool m_wasRecording = false; double m_recordStartTick = 0;
+    QString m_previewPath; std::shared_ptr<PreviewBuffer> m_previewBuffer; PreviewLoader m_previewLoader;
 };
 
 } // namespace mt

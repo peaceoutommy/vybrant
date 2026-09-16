@@ -13,6 +13,8 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QHeaderView>
+#include <QPainter>
+#include <QMouseEvent>
 
 namespace mt {
 
@@ -94,6 +96,27 @@ bool BrowserFilter::filterAcceptsRow(int row, const QModelIndex& parent) const {
     return false;
 }
 
+// ---------------------------------------------------------------- preview bar
+PreviewBar::PreviewBar(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setToolTip("Sample preview: click to seek, right-click to stop. Previews stop when the transport starts."); setCursor(Qt::PointingHandCursor); }
+void PreviewBar::tick() { bool playing = m_app.engine().previewPlaying(); double pos = m_app.engine().previewPosition(); auto b = m_app.previewBuffer(); bool loading = b && !b->done.load(); if (playing != m_lastPlaying || loading || (playing && std::fabs(pos - m_lastPos) > 200)) { m_lastPlaying = playing; m_lastPos = pos; update(); } }
+void PreviewBar::paintEvent(QPaintEvent*) {
+    QPainter p(this); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); p.setPen(theme::border()); p.drawRect(rect().adjusted(0, 0, -1, -1));
+    QString path = m_app.previewPath(); auto b = m_app.previewBuffer(); QRect wave = rect().adjusted(2, 16, -2, -2);
+    p.setFont(theme::smallFont()); p.setPen(theme::textDim());
+    if (path.isEmpty() || !b) { p.drawText(rect(), Qt::AlignCenter, "Click a sample to preview it"); return; }
+    QString name = QFileInfo(path).fileName(); bool playing = m_app.engine().previewPlaying(); bool loading = !b->done.load();
+    p.setPen(playing ? theme::accent() : theme::textDim()); p.drawText(QRect(4, 1, width() - 8, 14), Qt::AlignVCenter | Qt::AlignLeft, (playing ? "\u25B6 " : "\u25A0 ") + p.fontMetrics().elidedText(name, Qt::ElideMiddle, width() - 110) + (loading ? "  (loading)" : ""));
+    p.setPen(theme::text()); p.drawText(QRect(4, 1, width() - 8, 14), Qt::AlignVCenter | Qt::AlignRight, QString("%1 s").arg(b->seconds(), 0, 'f', 2));
+    int bins = b->binsReady.load(); int mid = wave.center().y(); int hh = wave.height() / 2 - 1; double pos = m_app.engine().previewPosition(); int px = wave.left() + (int)(pos / std::max<int64_t>(1, b->frames) * wave.width());
+    for (int x = 0; x < wave.width(); ++x) { int bin = (int)((double)x / wave.width() * PreviewBuffer::kBins); if (bin >= bins) break; float mx = b->maxPk[bin], mn = b->minPk[bin]; p.setPen(wave.left() + x <= px && playing ? theme::accent() : QColor("#4e8fb8")); p.drawLine(wave.left() + x, mid - (int)(mx * hh), wave.left() + x, mid - (int)(mn * hh)); }
+    if (playing) { p.setPen(QPen(theme::playhead(), 1.5)); p.drawLine(px, wave.top(), px, wave.bottom()); }
+}
+void PreviewBar::mousePressEvent(QMouseEvent* e) {
+    if (e->button() == Qt::RightButton) { m_app.stopPreview(); return; }
+    auto b = m_app.previewBuffer(); if (!b) return; QRect wave = rect().adjusted(2, 16, -2, -2); double frac = clamp((double)(e->pos().x() - wave.left()) / std::max(1, wave.width()), 0.0, 1.0);
+    m_app.engine().previewSeek(frac * b->frames);
+}
+
 // ---------------------------------------------------------------- panel
 BrowserPanel::BrowserPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
@@ -104,6 +127,8 @@ BrowserPanel::BrowserPanel(App& app, QWidget* parent) : QWidget(parent), m_app(a
     m_tree = new QTreeView(this); m_model = new BrowserModel(app, this); m_filter = new BrowserFilter(this); m_filter->setModelRef(m_model); m_filter->setSourceModel(m_model); m_filter->setRecursiveFilteringEnabled(false);
     m_tree->setModel(m_filter); m_tree->setHeaderHidden(true); m_tree->setDragEnabled(true); m_tree->setDragDropMode(QAbstractItemView::DragOnly); m_tree->setContextMenuPolicy(Qt::CustomContextMenu); m_tree->setUniformRowHeights(true); m_tree->setIndentation(14); m_tree->setAlternatingRowColors(true);
     lay->addWidget(m_tree);
+    m_previewBar = new PreviewBar(app, this); lay->addWidget(m_previewBar);
+    connect(&app, &App::previewChanged, this, [this](const QString& path) { highlightPlaying(path); m_previewBar->update(); });
     m_model->rebuild(); m_tree->expand(m_filter->mapFromSource(m_model->index(0, 0)));
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString& t) { m_filter->setFilterRegularExpression(QRegularExpression::escape(t)); if (!t.isEmpty()) m_tree->expandAll(); });
     connect(m_tree, &QTreeView::clicked, this, &BrowserPanel::onClicked); connect(m_tree, &QTreeView::doubleClicked, this, &BrowserPanel::onDoubleClicked); connect(m_tree, &QTreeView::customContextMenuRequested, this, &BrowserPanel::onContext); connect(m_tree, &QTreeView::expanded, this, &BrowserPanel::onExpanded);
@@ -111,8 +136,14 @@ BrowserPanel::BrowserPanel(App& app, QWidget* parent) : QWidget(parent), m_app(a
     connect(&m_app.pluginDb(), &PluginDatabase::changed, this, [this] { m_model->rebuild(); });
 }
 void BrowserPanel::refresh(uint32_t flags) { if (flags & (ChangePatterns | ChangeChannels | ChangeAutomation | ChangeStructure | ChangeMixer)) { QStringList expanded; std::function<void(const QModelIndex&)> collect = [&](const QModelIndex& idx) { for (int r = 0; r < m_filter->rowCount(idx); ++r) { auto c = m_filter->index(r, 0, idx); if (m_tree->isExpanded(c)) { expanded << c.data(BrowserModel::KeyRole).toString(); collect(c); } } }; collect(QModelIndex()); m_model->rebuild(); std::function<void(const QModelIndex&)> restore = [&](const QModelIndex& idx) { for (int r = 0; r < m_filter->rowCount(idx); ++r) { auto c = m_filter->index(r, 0, idx); if (expanded.contains(c.data(BrowserModel::KeyRole).toString())) { m_tree->expand(c); restore(c); } } }; restore(QModelIndex()); } }
+void BrowserPanel::uiTick() { m_previewBar->tick(); }
+void BrowserPanel::highlightPlaying(const QString& path) {
+    // bold + accent colour on the item that is being previewed (search the whole loaded tree)
+    std::function<void(QStandardItem*)> walk = [&](QStandardItem* it) { for (int r = 0; r < it->rowCount(); ++r) { QStandardItem* c = it->child(r); if (!c) continue; if (c->data(BrowserModel::KindRole).toInt() == BrowserModel::AudioFile) { bool on = !path.isEmpty() && c->data(BrowserModel::PathRole).toString() == path; QFont f = c->font(); if (f.bold() != on) { f.setBold(on); c->setFont(f); c->setForeground(on ? theme::accent() : QColor("#8fd0ff")); } } walk(c); } };
+    walk(m_model->invisibleRootItem()); m_highlighted = path;
+}
 void BrowserPanel::onExpanded(const QModelIndex& idx) { auto src = m_filter->mapToSource(idx); if (auto* it = m_model->itemFromIndex(src)) m_model->populateFolder(it); }
-void BrowserPanel::onClicked(const QModelIndex& idx) { int kind = idx.data(BrowserModel::KindRole).toInt(); if (kind == BrowserModel::AudioFile && m_previewEnabled) m_app.previewFile(idx.data(BrowserModel::PathRole).toString()); }
+void BrowserPanel::onClicked(const QModelIndex& idx) { int kind = idx.data(BrowserModel::KindRole).toInt(); if (kind == BrowserModel::AudioFile && m_previewEnabled) m_app.previewFile(idx.data(BrowserModel::PathRole).toString()); else if (kind != BrowserModel::AudioFile && !m_app.previewPath().isEmpty()) m_app.stopPreview(); }
 void BrowserPanel::onDoubleClicked(const QModelIndex& idx) {
     int kind = idx.data(BrowserModel::KindRole).toInt(); QString path = idx.data(BrowserModel::PathRole).toString();
     switch (kind) {

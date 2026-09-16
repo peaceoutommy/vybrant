@@ -18,7 +18,7 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     m_play = mkBtn("▶", "Play / Pause (Space)", true); m_stop = mkBtn("■", "Stop", false); m_record = mkBtn("●", "Record (R)", true); m_record->setStyleSheet("QToolButton:checked { background: #e25c5c; color: white; border-color: #e25c5c; }");
     lay->addSpacing(8);
     m_patMode = mkBtn("PAT", "Pattern mode: play the selected pattern", true); m_songMode = mkBtn("SONG", "Song mode: play the playlist", true);
-    lay->addSpacing(8);
+    lay->addSpacing(8); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); lay->addLayout(m_winLayout); lay->addSpacing(8);
     auto mkLabel = [&](const QString& t) { auto* l = new QLabel(t, this); l->setStyleSheet("color:#8a919a;"); lay->addWidget(l); return l; };
     mkLabel("BPM"); m_bpm = new DragValue(this); m_bpm->setRange(20, 999, 0.1, 1); m_bpm->setMinimumWidth(70); m_bpm->setToolTip("Tempo (drag / wheel / double-click)"); lay->addWidget(m_bpm);
     m_tsNum = new DragValue(this); m_tsNum->setRange(1, 32, 1, 0); m_tsNum->setMinimumWidth(34); m_tsNum->setToolTip("Time signature numerator"); lay->addWidget(m_tsNum); mkLabel("/"); m_tsDen = new DragValue(this); m_tsDen->setRange(1, 32, 1, 0); m_tsDen->setMinimumWidth(34); m_tsDen->setToolTip("Time signature denominator"); lay->addWidget(m_tsDen);

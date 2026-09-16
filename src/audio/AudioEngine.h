@@ -5,6 +5,7 @@
 #include "audio/AudioDeviceManager.h"
 #include "audio/AudioFile.h"
 #include "dsp/instruments/Instruments.h"
+#include "audio/PreviewPlayer.h"
 #include <QObject>
 #include <QTimer>
 #include <functional>
@@ -98,10 +99,12 @@ public:
     void allNotesOff();
 
     // ---- Preview (independent from the transport) ----
-    void previewPlay(AudioAssetPtr a);
+    void previewPlay(std::shared_ptr<PreviewBuffer> b);
     void previewStop();
+    void previewSeek(double frame);   // restart playback from a frame (also resumes a stopped preview)
     bool previewPlaying() const { return m_previewPlaying.load(); }
     double previewPosition() const { return m_previewPos.load(); }
+    std::shared_ptr<const PreviewBuffer> previewBuffer() const { return m_preview.shared(); }
     void setPreviewGain(float g) { m_previewGain.store(g); }
 
     // ---- Stats ----
@@ -158,7 +161,7 @@ private:
     // metronome
     double m_clickPhase = 0; float m_clickEnv = 0; float m_clickFreq = 1000;
     // preview
-    SwapHolder<AudioAsset> m_preview; std::atomic<bool> m_previewPlaying{false}; std::atomic<double> m_previewPos{0}; std::atomic<float> m_previewGain{0.8f}; double m_previewPosRt = 0;
+    SwapHolder<PreviewBuffer> m_preview; std::atomic<bool> m_previewPlaying{false}; std::atomic<double> m_previewPos{0}; std::atomic<float> m_previewGain{0.8f}; double m_previewPosRt = 0;
     // stats
     std::atomic<float> m_cpuLoad{0}; std::atomic<int> m_maxLatency{0}; std::atomic<int64_t> m_samplesProcessed{0};
     std::vector<float> m_outL, m_outR, m_dryL, m_dryR;
