@@ -171,7 +171,10 @@ void PianoRollView::mouseReleaseEvent(QMouseEvent* e) {
     if (m_drag == Rubber) { if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ControlModifier)) m_selected.clear(); }
     m_drag = NoDrag; m_dragNote = 0; invalidate();
 }
-void PianoRollView::mouseDoubleClickEvent(QMouseEvent* e) { Layout L = layout(); if (L.grid.contains(e->pos())) { if (Note* n = noteAt(e->pos())) { bool ok; int v = QInputDialog::getInt(this, "Note", "Velocity (0-127):", (int)(n->velocity * 127), 1, 127, 1, &ok); if (ok) { beginEdit(); n->velocity = v / 127.f; commitEdit("Note velocity"); } } } else if (L.ruler.contains(e->pos())) zoomToFit(); }
+void PianoRollView::mouseDoubleClickEvent(QMouseEvent* e) { Layout L = layout(); if (L.grid.contains(e->pos())) {
+        if (!noteAt(e->pos()) && m_ghost) { // double-click on a ghost note: jump to that channel's piano roll
+            if (Pattern* pat = pattern()) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.contains(e->pos())) { Q_EMIT channelRequested(oc.id); return; } } } }
+        if (Note* n = noteAt(e->pos())) { bool ok; int v = QInputDialog::getInt(this, "Note", "Velocity (0-127):", (int)(n->velocity * 127), 1, 127, 1, &ok); if (ok) { beginEdit(); n->velocity = v / 127.f; commitEdit("Note velocity"); } } } else if (L.ruler.contains(e->pos())) zoomToFit(); }
 void PianoRollView::wheelEvent(QWheelEvent* e) {
     int dy = e->angleDelta().y(); Layout L = layout();
     if (e->modifiers() & Qt::ControlModifier) { if (e->modifiers() & Qt::ShiftModifier) { m_rowH = clamp(m_rowH + (dy > 0 ? 1 : -1), 5, 30); } else { Tick anchor = xToTick(e->position().toPoint().x()); m_ppt = clamp(m_ppt * (dy > 0 ? 1.15 : 1 / 1.15), 0.005, 2.0); m_scrollTick = std::max<Tick>(0, anchor - (Tick)((e->position().toPoint().x() - L.keyW) / m_ppt)); } updateScrollbars(); invalidate(); }
@@ -245,6 +248,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent) : QWidget(parent), m_a
     tm->addAction("Select all\tCtrl+A", [this] { m_view->selectAll(); }); tm->addAction("Duplicate\tCtrl+D", [this] { m_view->duplicateSelected(); }); tm->addAction("Copy\tCtrl+C", [this] { m_view->copySelected(); }); tm->addAction("Paste\tCtrl+V", [this] { m_view->paste(); }); tm->addAction("Delete\tDel", [this] { m_view->deleteSelected(); }); tm->addSeparator(); tm->addAction("Zoom to fit", [this] { m_view->zoomToFit(); });
     tools->setMenu(tm); top->addWidget(tools); top->addStretch(1); lay->addLayout(top);
     m_view = new PianoRollView(app, this); lay->addWidget(m_view, 1);
+    connect(m_view, &PianoRollView::channelRequested, this, [this](Id id) { m_app.selectChannel(id); showChannel(id); });
     connect(m_view, &PianoRollView::toolChanged, this, [this](int t) { m_draw->setChecked(t == 0); m_select->setChecked(t == 1); m_erase->setChecked(t == 2); });
     connect(m_draw, &QToolButton::clicked, this, [this] { m_view->setTool(PianoRollView::Draw); m_draw->setChecked(true); m_select->setChecked(false); m_erase->setChecked(false); });
     connect(m_select, &QToolButton::clicked, this, [this] { m_view->setTool(PianoRollView::Select); m_draw->setChecked(false); m_select->setChecked(true); m_erase->setChecked(false); });
@@ -257,7 +261,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent) : QWidget(parent), m_a
     connect(m_ghost, &QToolButton::toggled, this, [this](bool b) { m_view->setGhost(b); }); connect(m_repeat, &QToolButton::toggled, this, [this](bool b) { m_view->setNoteRepeat(b); });
     refresh(ChangeAll);
 }
-void PianoRollPanel::showChannel(Id id) { for (int i = 0; i < m_channel->count(); ++i) if ((Id)m_channel->itemData(i).toULongLong() == id) { m_channel->setCurrentIndex(i); break; } m_view->setChannel(id); m_view->zoomToFit(); }
+void PianoRollPanel::showChannel(Id id) { for (int i = 0; i < m_channel->count(); ++i) if ((Id)m_channel->itemData(i).toULongLong() == id) { m_channel->setCurrentIndex(i); break; } m_view->setChannel(id); }
 void PianoRollPanel::refresh(uint32_t flags) {
     if (flags & (ChangeChannels | ChangeStructure | ChangeAll)) { m_updating = true; Id cur = m_view->channel(); m_channel->clear(); for (auto& c : m_app.project().channels) { m_channel->addItem(c.name, (qulonglong)c.id); m_channel->setItemData(m_channel->count() - 1, c.color, Qt::DecorationRole); } bool found = false; for (int i = 0; i < m_channel->count(); ++i) if ((Id)m_channel->itemData(i).toULongLong() == cur) { m_channel->setCurrentIndex(i); found = true; } if (!found && m_channel->count()) { m_channel->setCurrentIndex(0); m_view->setChannel((Id)m_channel->itemData(0).toULongLong()); } m_updating = false; }
     m_view->refresh();

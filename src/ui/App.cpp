@@ -163,7 +163,7 @@ Id App::duplicateChannel(Id id) {
     Channel c = *src; c.id = project().newId(); c.name = src->name + " copy"; int idx = 0; for (size_t i = 0; i < project().channels.size(); ++i) if (project().channels[i].id == id) idx = (int)i + 1;
     if (c.pluginInstanceId) { const auto* pd = project().plugin(c.pluginInstanceId); if (pd) { PluginInstanceData d = *pd; d.id = project().newId(); c.pluginInstanceId = d.id; m_model.insert<PluginInstanceData>(d, "Duplicate plugin"); } }
     m_model.insert<Channel>(c, "Duplicate channel", idx);
-    std::vector<std::unique_ptr<Command>> cmds; for (auto& p : project().patterns) { Id pid = p.id, cid = c.id; cmds.push_back(std::make_unique<EditObjectCommand<Pattern>>(m_model, pid, "", [cid, id](Pattern& pat) { auto* s = pat.channelData(id); auto& d = pat.ensureChannel(cid); if (s) { d.notes = s->notes; d.steps = s->steps; } }, 0)); }
+    std::vector<std::unique_ptr<Command>> cmds; for (auto& p : project().patterns) { Id pid = p.id, cid = c.id; cmds.push_back(std::make_unique<EditObjectCommand<Pattern>>(m_model, pid, "", [cid, id](Pattern& pat) { PatternChannelData copy; if (auto* s = pat.channelData(id)) copy = *s; /* copy first: ensureChannel may reallocate */ auto& d = pat.ensureChannel(cid); d.notes = copy.notes; for (auto& n : d.notes) n.id = n.id * 31 + 7; d.steps = copy.steps; }, 0)); }
     if (!cmds.empty()) m_model.macro("Duplicate channel data", std::move(cmds));
     return c.id;
 }

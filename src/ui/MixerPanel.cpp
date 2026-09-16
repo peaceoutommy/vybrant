@@ -159,7 +159,7 @@ void MixerPanel::rebuild() {
     for (auto* s : m_strips) delete s; m_strips.clear(); if (m_master) { delete m_master; m_master = nullptr; }
     auto* hl = static_cast<QHBoxLayout*>(m_stripsHost->layout());
     for (auto& t : m_app.project().mixerTracks) { if (t.isMaster) continue; auto* s = new MixerStrip(m_app, t.id, m_stripsHost); hl->insertWidget(hl->count() - 1, s); m_strips.push_back(s); connect(s, &MixerStrip::selected, this, &MixerPanel::selectTrack); connect(s, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
-    if (Id mid = m_app.project().masterId()) { m_master = new MixerStrip(m_app, mid, this); static_cast<QHBoxLayout*>(layout())->addWidget(m_master); connect(m_master, &MixerStrip::selected, this, &MixerPanel::selectTrack); connect(m_master, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
+    if (Id mid = m_app.project().masterId()) { m_master = new MixerStrip(m_app, mid, this); static_cast<QHBoxLayout*>(layout())->insertWidget(0, m_master); /* Master is the first strip, on the left */ connect(m_master, &MixerStrip::selected, this, &MixerPanel::selectTrack); connect(m_master, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
     if (!m_selected || !m_app.project().mixerTrack(m_selected)) m_selected = m_app.project().masterId();
     for (auto* s : m_strips) s->setSelected(s->trackId() == m_selected); if (m_master) m_master->setSelected(m_master->trackId() == m_selected);
 }

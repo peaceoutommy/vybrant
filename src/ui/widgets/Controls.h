@@ -13,7 +13,7 @@ public:
     float value() const { return m_value; }            // normalized 0..1
     void setValue(float v, bool emitSignal = false);
     void setDefault(float d) { m_default = d; }
-    void setLabel(const QString& l) { m_label = l; update(); }
+    void setLabel(const QString& l) { m_label = l; if (toolTip().isEmpty()) setToolTip(l); setMinimumSize(sizeHint()); update(); }
     void setBipolar(bool b) { m_bipolar = b; update(); }
     void setColor(const QColor& c) { m_color = c; update(); }
     void setShowLabel(bool s) { m_showLabel = s; setMinimumSize(sizeHint()); updateGeometry(); }

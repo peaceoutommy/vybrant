@@ -10,7 +10,7 @@
 #include <QFileInfo>
 #include <cstring>
 #include <cstdio>
-namespace mt { int runSelfTest(App& app); int runPreviewBench(App& app, const QString& dir); int runUiTest(QMainWindow* win, const QString& png); }
+namespace mt { int runSelfTest(App& app); int runPreviewBench(App& app, const QString& dir); int runUiTest(QMainWindow* win, const QString& png); int runDuplicateTest(App& app); }
 
 int main(int argc, char** argv) {
     // Plugin scanning runs in a child process so a crashing plugin cannot take the DAW down.
@@ -21,6 +21,7 @@ int main(int argc, char** argv) {
     QCoreApplication::setOrganizationName("MusicThingy"); QCoreApplication::setApplicationName("MusicThingy"); QApplication::setStyle("Fusion"); app.setStyleSheet(mt::theme::stylesheet());
     mt::App daw; daw.initialize();
     if (argc >= 2 && std::strcmp(argv[1], "--selftest") == 0) { int rc = mt::runSelfTest(daw); return rc; }
+    if (argc >= 2 && std::strcmp(argv[1], "--duptest") == 0) return mt::runDuplicateTest(daw);
     if (argc >= 3 && std::strcmp(argv[1], "--preview-bench") == 0) return mt::runPreviewBench(daw, argv[2]);
     mt::MainWindow win(daw); win.show();
     QString openFile, screenshot, renderPath, panel; bool quitAfter = false;

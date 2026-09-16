@@ -21,6 +21,7 @@ public:
     int graphMode() const { return m_graphMode; }
     QSize sizeHint() const override;
     int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 12 - 44) / (4 * stepW() + 4) * 4; return std::max(4, n); }
+    int stepsPerBar() const;
     int widthForSteps(int n) const { return m_leftW + 12 + 44 + (n / 4) * (4 * stepW() + 4) + 8; }
 Q_SIGNALS:
     void openEditor(Id channelId); void openPianoRoll(Id channelId);
@@ -32,7 +33,7 @@ private:
     struct HitInfo { Hit hit = None; int row = -1; int step = -1; };
     HitInfo hitTest(const QPoint& p) const;
     QRect rowRect(int row) const; int stepX(int step) const; int stepW() const;
-    Pattern* pattern() const; const Step* stepAt(Id ch, int step) const;
+    Pattern* pattern() const; const Step* stepAt(Id ch, int step) const; int visibleSteps() const;   // steps covering the pattern's full (bar-rounded) length
     void showChannelMenu(int row, const QPoint& global);
     void applyGraphAt(const QPoint& p, bool commit);
     App& m_app; int m_rowH = 24, m_leftW = 238, m_graphH = 90; int m_graphMode = -1;

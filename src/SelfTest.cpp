@@ -85,3 +85,4 @@ int runUiTest(QMainWindow* win, const QString& png) {
     return 0;
 }
 }
+namespace mt { int runDuplicateTest(App& app) { Id id = app.project().channels[2].id; for (int i = 0; i < 5; ++i) { Id d = app.duplicateChannel(id); if (!d || !app.project().channel(d)) { std::printf("duplicate failed\n"); return 1; } id = d; } auto* pat = app.project().pattern(app.project().selectedPatternId); std::printf("duplicated 5x: %zu channels, pattern has %zu channel rows\n", app.project().channels.size(), pat->channels.size()); return 0; } }

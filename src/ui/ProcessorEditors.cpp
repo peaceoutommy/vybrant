@@ -26,15 +26,33 @@ static Id ownerOf(IProcessor* p) { App* app = App::instance(); for (auto& [id, p
 // ---------------------------------------------------------------- waveform view
 class WaveView : public QWidget {
 public:
-    explicit WaveView(QWidget* parent = nullptr) : QWidget(parent) { setMinimumHeight(110); setAcceptDrops(true); }
+    explicit WaveView(QWidget* parent = nullptr) : QWidget(parent) { setMinimumHeight(120); setAcceptDrops(true); setMouseTracking(true); }
     std::function<AudioAssetPtr()> asset; std::function<void(const QString&)> onDrop; std::function<float()> startFrac; std::function<void(float)> setStart;
+    // Optional processing view: the drawn waveform reflects the instrument's current settings
+    std::function<float(double)> envelope;            // gain multiplier at fraction 0..1 of the (already reversed) sample
+    std::function<bool()> reversed;                   // play backwards
+    std::function<std::pair<float, float>()> loop;    // loop region (fractions), enabled when first < second
+    std::function<QString()> caption;                 // extra info line
     void paintEvent(QPaintEvent*) override {
-        QPainter p(this); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); auto a = asset ? asset() : nullptr;
+        QPainter p(this); p.fillRect(rect(), QColor(0x11, 0x13, 0x16)); auto a = asset ? asset() : nullptr;
         if (!a || a->frames == 0) { p.setPen(theme::textDim()); p.drawText(rect(), Qt::AlignCenter, "Drop an audio file here or use Load"); return; }
-        double spp = (double)a->frames / width(); const auto& lv = a->levelFor(spp); int mid = height() / 2; p.setPen(QColor("#5ad1c9"));
-        for (int x = 0; x < width(); ++x) { int64_t b0 = (int64_t)(x * spp / lv.samplesPerBin), b1 = std::max<int64_t>(b0 + 1, (int64_t)((x + 1) * spp / lv.samplesPerBin)); float mx = -1, mn = 1; for (int64_t b = b0; b < b1 && b < (int64_t)lv.maxL.size(); ++b) { mx = std::max(mx, lv.maxL[b]); mn = std::min(mn, lv.minL[b]); } p.drawLine(x, mid - (int)(mx * (mid - 2)), x, mid - (int)(mn * (mid - 2))); }
-        if (startFrac) { int x = (int)(startFrac() * width()); p.setPen(QPen(theme::accent(), 2)); p.drawLine(x, 0, x, height()); }
-        p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(4, 12, QString("%1  |  %2 s  |  %3 Hz  |  %4").arg(QFileInfo(a->path).fileName()).arg(a->seconds(), 0, 'f', 2).arg((int)a->originalSampleRate).arg(a->channels == 1 ? "mono" : "stereo"));
+        bool rev = reversed && reversed(); float st = startFrac ? startFrac() : 0.f; std::pair<float, float> lp = loop ? loop() : std::make_pair(0.f, 0.f); bool hasLoop = lp.first < lp.second;
+        QRect wave = rect().adjusted(0, 16, 0, 0); double spp = (double)a->frames / wave.width(); const auto& lv = a->levelFor(spp); int mid = wave.center().y(); int hh = wave.height() / 2 - 2;
+        // background regions: before the start point (skipped) and the loop region
+        if (st > 0) p.fillRect(QRect(wave.left(), wave.top(), (int)(st * wave.width()), wave.height()), QColor(0x1a, 0x1c, 0x21));
+        if (hasLoop) p.fillRect(QRect(wave.left() + (int)(lp.first * wave.width()), wave.top(), (int)((lp.second - lp.first) * wave.width()), wave.height()), QColor(0x22, 0x2c, 0x38));
+        p.setPen(theme::grid()); p.drawLine(wave.left(), mid, wave.right(), mid);
+        for (int x = 0; x < wave.width(); ++x) {
+            double frac = (double)x / wave.width(); double srcFrac = rev ? 1.0 - frac : frac; int64_t b0 = (int64_t)(srcFrac * a->frames / lv.samplesPerBin), b1 = std::max<int64_t>(b0 + 1, (int64_t)((srcFrac + 1.0 / wave.width()) * a->frames / lv.samplesPerBin));
+            if (rev) std::swap(b0, b1), b0 = std::max<int64_t>(0, b1 - std::max<int64_t>(1, (int64_t)(spp / lv.samplesPerBin)));
+            float mx = -1, mn = 1; for (int64_t b = b0; b < b1 && b < (int64_t)lv.maxL.size(); ++b) { if (b < 0) continue; mx = std::max(mx, std::max(lv.maxL[b], lv.maxR[b])); mn = std::min(mn, std::min(lv.minL[b], lv.minR[b])); }
+            if (mx < mn) continue; float g = envelope ? envelope(frac) : 1.f; bool active = frac >= st; QColor c = active ? QColor("#5ad1c9") : QColor(0x3a, 0x45, 0x50); if (g > 1.f && active) c = c.lighter(110 + (int)std::min(60.f, (g - 1) * 40));
+            p.setPen(c); p.drawLine(x, mid - (int)(clamp(mx * g, -1.f, 1.f) * hh), x, mid - (int)(clamp(mn * g, -1.f, 1.f) * hh));
+        }
+        if (envelope) { QPolygonF env; for (int x = 0; x < wave.width(); x += 2) env << QPointF(x, mid - clamp(envelope((double)x / wave.width()), 0.f, 1.f) * hh); p.setPen(QPen(theme::withAlpha(theme::accent(), 150), 1)); p.drawPolyline(env); }
+        int sx = (int)(st * wave.width()); p.setPen(QPen(theme::accent(), 2)); p.drawLine(sx, wave.top(), sx, wave.bottom());
+        if (hasLoop) { p.setPen(QPen(theme::accent2(), 1, Qt::DashLine)); int lx1 = (int)(lp.first * wave.width()), lx2 = (int)(lp.second * wave.width()); p.drawLine(lx1, wave.top(), lx1, wave.bottom()); p.drawLine(lx2, wave.top(), lx2, wave.bottom()); }
+        p.setPen(theme::textDim()); p.setFont(theme::smallFont()); QString info = QString("%1  |  %2 s  |  %3 Hz  |  %4%5").arg(QFileInfo(a->path).fileName()).arg(a->seconds(), 0, 'f', 2).arg((int)a->originalSampleRate).arg(a->channels == 1 ? "mono" : "stereo").arg(rev ? "  |  reversed" : ""); if (caption) info += "  |  " + caption(); p.drawText(4, 12, info);
     }
     void mousePressEvent(QMouseEvent* e) override { if (setStart && e->button() == Qt::LeftButton) { setStart(clamp((float)e->pos().x() / width(), 0.f, 1.f)); update(); } }
     void mouseMoveEvent(QMouseEvent* e) override { if (setStart && (e->buttons() & Qt::LeftButton)) { setStart(clamp((float)e->pos().x() / width(), 0.f, 1.f)); update(); } }
@@ -42,11 +60,21 @@ public:
     void dropEvent(QDropEvent* e) override { for (auto& u : e->mimeData()->urls()) { QString p = u.toLocalFile(); if (AudioFile::isAudioFile(p) && onDrop) { onDrop(p); break; } } }
 };
 
+// ADSR shape over the sample's duration for the waveform preview (note held for the whole sample)
+static float previewEnvelope(double frac, double seconds, float a, float d, float sus, float level) {
+    double t = frac * seconds; float e; if (t < a) e = (float)(t / std::max(a, 0.0005f)); else { double td = t - a; e = sus + (1.f - sus) * (float)std::exp(-4.0 * td / std::max(d, 0.0005f)); } return e * level;
+}
+
 // ---------------------------------------------------------------- sampler editor
 static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
     App& app = *App::instance(); Id owner = ownerOf(s); auto* w = new QWidget(parent); auto* lay = new QVBoxLayout(w); lay->setContentsMargins(4, 4, 4, 4);
-    auto* top = new QHBoxLayout(); auto* load = new QPushButton("Load sample...", w); top->addWidget(load); auto* name = new QLabel(s->samplePath().isEmpty() ? "(no sample)" : QFileInfo(s->samplePath()).fileName(), w); top->addWidget(name, 1); lay->addLayout(top);
+    auto* top = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play", w); play->setToolTip("Hold to audition the sample at its root note (through the channel's mixer track)"); play->setFocusPolicy(Qt::NoFocus); top->addWidget(play); auto* load = new QPushButton("Load sample...", w); top->addWidget(load); auto* name = new QLabel(s->samplePath().isEmpty() ? "(no sample)" : QFileInfo(s->samplePath()).fileName(), w); top->addWidget(name, 1); lay->addLayout(top);
+    QObject::connect(play, &QPushButton::pressed, w, [&app, owner, s] { app.selectChannel(owner); app.noteOn(s->params().getInt(Sampler::pRoot), 1.f); }); QObject::connect(play, &QPushButton::released, w, [&app, s] { app.noteOff(s->params().getInt(Sampler::pRoot)); });
     auto* wave = new WaveView(w); wave->asset = [s] { return s->sample(); }; wave->startFrac = [s] { return s->params().get(Sampler::pStart); }; wave->setStart = [&app, owner](float f) { app.setProcessorParam(owner, Sampler::pStart, f, true); };
+    wave->reversed = [s] { return s->params().getBool(Sampler::pReverse); };
+    wave->loop = [s] { auto& ps = s->params(); if (ps.getInt(Sampler::pLoopMode) == 0) return std::make_pair(0.f, 0.f); return std::make_pair(ps.get(Sampler::pLoopStart), ps.get(Sampler::pLoopEnd)); };
+    wave->envelope = [s](double frac) { auto& ps = s->params(); auto a = s->sample(); double secs = a ? a->seconds() : 1.0; return previewEnvelope(frac, secs, ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pLevel)); };
+    wave->caption = [s] { auto& ps = s->params(); float semis = ps.get(Sampler::pTune) + ps.get(Sampler::pFine) / 100.f; QString c = QString("level %1 dB").arg(gainToDb(ps.get(Sampler::pLevel)), 0, 'f', 1); if (std::fabs(semis) > 0.01f) c += QString("  |  tune %1 st").arg(semis, 0, 'f', 2); if (ps.get(Sampler::pCutoff) < 19000.f) c += QString("  |  %1 %2 Hz").arg(ps.getInt(Sampler::pFilterType) == 0 ? "LP" : ps.getInt(Sampler::pFilterType) == 1 ? "HP" : "BP").arg((int)ps.get(Sampler::pCutoff)); return c; };
     wave->onDrop = [&app, owner, name](const QString& p) { app.setChannelSample(owner, p); name->setText(QFileInfo(p).fileName()); };
     QObject::connect(load, &QPushButton::clicked, w, [&app, owner, name, w] { QString p = QFileDialog::getOpenFileName(w, "Load sample", QString(), "Audio (*.wav *.aif *.aiff *.flac *.ogg *.mp3)"); if (!p.isEmpty()) { app.setChannelSample(owner, p); name->setText(QFileInfo(p).fileName()); } });
     lay->addWidget(wave); auto* params = new GenericParamPanel(app, owner, s, nullptr, 7, w); lay->addWidget(params);
@@ -72,7 +100,16 @@ private: App& m_app; Id m_owner; DrumSampler* m_ds;
 static QWidget* makeDrumEditor(DrumSampler* ds, QWidget* parent) {
     App& app = *App::instance(); Id owner = ownerOf(ds); auto* w = new QWidget(parent); auto* lay = new QHBoxLayout(w); lay->setContentsMargins(4, 4, 4, 4);
     auto* left = new QVBoxLayout(); auto* hint = new QLabel("Pads: click to audition (C1 = pad 1), right-click / drop files to assign. Steps trigger pad 1 at the root note.", w); hint->setWordWrap(true); hint->setStyleSheet("color:#8a919a;"); left->addWidget(hint);
-    auto* grid = new PadGrid(app, owner, ds, w); left->addWidget(grid, 1); lay->addLayout(left, 1);
+    auto* grid = new PadGrid(app, owner, ds, w); left->addWidget(grid, 1);
+    auto* padWave = new WaveView(w); padWave->setMinimumHeight(90); left->addWidget(padWave);
+    auto* playRow = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play pad", w); play->setToolTip("Hold to audition the selected pad"); play->setFocusPolicy(Qt::NoFocus); playRow->addWidget(play); playRow->addStretch(1); left->addLayout(playRow); lay->addLayout(left, 1);
+    QObject::connect(play, &QPushButton::pressed, w, [&app, owner, grid] { app.selectChannel(owner); app.noteOn(36 + grid->selected, 1.f); }); QObject::connect(play, &QPushButton::released, w, [&app, grid] { app.noteOff(36 + grid->selected); });
+    padWave->asset = [ds, grid] { return ds->padSample(grid->selected); };
+    padWave->onDrop = [grid](const QString& p) { grid->assign(grid->selected, p); };
+    padWave->startFrac = [ds, grid] { return ds->params().get(DrumSampler::padParam(grid->selected, 6)); }; padWave->setStart = [&app, owner, grid](float f) { app.setProcessorParam(owner, DrumSampler::padParam(grid->selected, 6), f, true); };
+    padWave->reversed = [ds, grid] { return ds->params().getBool(DrumSampler::padParam(grid->selected, 5)); };
+    padWave->envelope = [ds, grid](double frac) { auto& ps = ds->params(); int pad = grid->selected; auto a = ds->padSample(pad); double secs = a ? a->seconds() : 1.0; float decay = std::min(ps.get(DrumSampler::pDecay), ps.get(DrumSampler::padParam(pad, 3))); return previewEnvelope(frac, secs, ps.get(DrumSampler::pAttack), decay, 0.f, ps.get(DrumSampler::pLevel) * ps.get(DrumSampler::padParam(pad, 0))); };
+    padWave->caption = [ds, grid] { auto& ps = ds->params(); int pad = grid->selected; float semis = ps.get(DrumSampler::pPitch) + ps.get(DrumSampler::padParam(pad, 2)) + ps.get(DrumSampler::padParam(pad, 7)) / 100.f; QString c = QString("pad %1").arg(pad + 1); if (std::fabs(semis) > 0.01f) c += QString("  |  pitch %1 st").arg(semis, 0, 'f', 2); return c; };
     auto* right = new QVBoxLayout(); auto* padLabel = new QLabel("Pad 1", w); padLabel->setStyleSheet("font-weight:bold; color:#f2a93b;"); right->addWidget(padLabel);
     auto* padHost = new QWidget(w); auto* padLay = new QVBoxLayout(padHost); padLay->setContentsMargins(0, 0, 0, 0); right->addWidget(padHost);
     GenericParamPanel** padPanel = new GenericParamPanel*(nullptr);
@@ -80,7 +117,7 @@ static QWidget* makeDrumEditor(DrumSampler* ds, QWidget* parent) {
     rebuildPad(0); grid->onSelect = rebuildPad;
     auto* global = new QLabel("Global", w); global->setStyleSheet("font-weight:bold; color:#f2a93b;"); right->addWidget(global);
     auto* gp = new GenericParamPanel(app, owner, ds, [](const ParamDesc& d) { return d.id < DrumSampler::pPadBase; }, 5, w); right->addWidget(gp); right->addStretch(1); lay->addLayout(right, 1);
-    auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [gp, padPanel] { gp->sync(); if (*padPanel) (*padPanel)->sync(); }); t->start(100);
+    auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [gp, padPanel, padWave] { gp->sync(); if (*padPanel) (*padPanel)->sync(); padWave->update(); }); t->start(100);
     QObject::connect(w, &QObject::destroyed, [padPanel] { delete padPanel; });
     return w;
 }

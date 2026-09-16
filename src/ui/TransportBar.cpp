@@ -43,7 +43,7 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     mkLabel("Snap"); m_snap = makeSnapCombo(this); m_snap->setFixedHeight(22); m_snap->setToolTip("Global snap grid for the transport and editors"); lay->addWidget(m_snap);
     mkLabel("Record"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(22); lay->addWidget(m_recMode);
     lay->addStretch(1);
-    m_masterVol = new Knob(this, 22); m_masterVol->setShowLabel(false); m_masterVol->setToolTip("Master volume"); m_masterVol->valueText = [](float v) { return QString("Master %1 dB").arg(gainToDb(v * 1.25f / 0.8f), 0, 'f', 1); }; lay->addWidget(m_masterVol);
+    m_masterVol = new Knob(this, 22); m_masterVol->setShowLabel(false); m_masterVol->setDefault(0.8f / 1.25f); m_masterVol->setToolTip("Master volume"); m_masterVol->valueText = [](float v) { return QString("Master %1 dB").arg(gainToDb(v * 1.25f / 0.8f), 0, 'f', 1); }; lay->addWidget(m_masterVol);
     // ---- row 2: hint bar, window buttons, pattern selector, status
     m_hint = new QLabel(this); m_hint->setStyleSheet("QLabel { color:#8e97a3; font-size:8pt; padding:0 6px; background:#111316; border:1px solid #2b3037; border-radius:3px; }"); m_hint->setFixedHeight(22); m_hint->setMinimumWidth(240); m_hint->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); row2->addWidget(m_hint, 1);
     sepIn(row2); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); row2->addLayout(m_winLayout); sepIn(row2);

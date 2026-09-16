@@ -12,7 +12,7 @@ namespace mt {
 
 // ---------------------------------------------------------------- Knob
 Knob::Knob(QWidget* parent, int size) : QWidget(parent), m_size(size), m_color(theme::accent()) { setCursor(Qt::PointingHandCursor); setMouseTracking(false); setMinimumSize(sizeHint()); }
-QSize Knob::sizeHint() const { return {m_size + 8, m_size + (m_showLabel ? 14 : 2)}; }
+QSize Knob::sizeHint() const { return {m_showLabel ? std::max(m_size + 8, 66) : m_size + 8, m_size + (m_showLabel ? 14 : 2)}; }
 void Knob::setValue(float v, bool emitSignal) { v = clamp(v, 0.f, 1.f); if (std::fabs(v - m_value) < 1e-6f) return; m_value = v; update(); if (emitSignal) Q_EMIT valueChanged(v); }
 void Knob::paintEvent(QPaintEvent*) {
     QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
@@ -25,7 +25,7 @@ void Knob::paintEvent(QPaintEvent*) {
     else p.drawArc(arc, (int)(startAngle * 16), (int)(span * m_value * 16));
     double ang = qDegreesToRadians(startAngle + span * m_value); QPointF c = r.center(); double rad = d / 2.0 - 4;
     p.setPen(QPen(theme::text(), 1.5, Qt::SolidLine, Qt::RoundCap)); p.drawLine(c + QPointF(std::cos(ang) * rad * 0.45, -std::sin(ang) * rad * 0.45), c + QPointF(std::cos(ang) * rad, -std::sin(ang) * rad));
-    if (m_showLabel && !m_label.isEmpty()) { p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(0, height() - 13, width(), 12), Qt::AlignCenter, m_label); }
+    if (m_showLabel && !m_label.isEmpty()) { p.setPen(theme::textDim()); p.setFont(theme::smallFont()); QString t = p.fontMetrics().elidedText(m_label, Qt::ElideRight, width() - 2); p.drawText(QRect(0, height() - 13, width(), 12), Qt::AlignCenter, t); }
 }
 void Knob::showTip() { QString t = valueText ? valueText(m_value) : QString::number(m_value * 100, 'f', 0) + "%"; if (!m_label.isEmpty()) t = m_label + ": " + t; QToolTip::showText(mapToGlobal(QPoint(width(), 0)), t, this); }
 void Knob::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::RightButton) { Q_EMIT contextRequested(e->globalPosition().toPoint()); return; } if (e->button() != Qt::LeftButton) return; m_dragging = true; m_lastPos = e->pos(); m_dragStart = m_value; Q_EMIT dragStarted(); showTip(); }
