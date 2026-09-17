@@ -3,6 +3,7 @@
 #include "ui/App.h"
 #include "ui/widgets/Controls.h"
 #include <QWidget>
+#include <set>
 #include <QScrollArea>
 #include <QLabel>
 #include <QToolButton>
@@ -10,6 +11,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 
+class QToolButton;
 namespace mt {
 
 // Searchable picker for native effects/instruments and scanned plugins
@@ -45,7 +47,7 @@ public:
     Id trackId() const { return m_track; }
     void refresh(); void uiTick(); void setSelected(bool s) { m_selected = s; update(); }
 Q_SIGNALS:
-    void selected(Id trackId); void openEditor(Id slotId, const QString& title);
+    void selected(Id trackId, Qt::KeyboardModifiers mods); void openEditor(Id slotId, const QString& title);
 protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
 private:
@@ -59,13 +61,15 @@ class MixerPanel : public QWidget {
 public:
     explicit MixerPanel(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags); void uiTick();
-    Id selectedTrack() const { return m_selected; } void selectTrack(Id id);
+    Id selectedTrack() const { return m_selected; } void selectTrack(Id id); void selectTrack(Id id, Qt::KeyboardModifiers mods);
+    std::vector<Id> selectedTracks() const;   // every highlighted strip (primary first)
+    void deleteSelectedTracks(); void selectAllTracks();
     QSize sizeHint() const override { return {900, 340}; } QSize minimumSizeHint() const override { return {300, 200}; }
 Q_SIGNALS:
     void openEditor(Id slotId, const QString& title);
 private:
     void rebuild();
-    App& m_app; QScrollArea* m_scroll; QWidget* m_stripsHost; std::vector<MixerStrip*> m_strips; MixerStrip* m_master = nullptr; Id m_selected = 0;
+    App& m_app; QScrollArea* m_scroll; QWidget* m_stripsHost; std::vector<MixerStrip*> m_strips; MixerStrip* m_master = nullptr; QToolButton* m_addBtn = nullptr; Id m_selected = 0; std::set<Id> m_multi;
 };
 
 } // namespace mt

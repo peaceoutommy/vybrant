@@ -65,9 +65,9 @@ QStringList App::recentFiles() const { return QSettings().value("general/recent"
 void App::addRecent(const QString& path) { QStringList r = recentFiles(); r.removeAll(path); r.prepend(path); while (r.size() > 12) r.removeLast(); QSettings().setValue("general/recent", r); }
 QStringList App::templates() const { QStringList out; for (auto& f : QDir(templatesDir()).entryList({"*.mtp"}, QDir::Files, QDir::Name)) out << templatesDir() + "/" + f; return out; }
 
-void App::newProject() {
+void App::newProject(bool demo) {
     m_engine->stop(); m_engine->unloadProject(); m_recorder->stop();
-    m_model.setFilePath(QString()); m_model.replaceProject(makeDefaultProject());
+    m_model.setFilePath(QString()); m_model.replaceProject(makeDefaultProject(demo));
     m_engine->rebuild(project()); syncTransportToEngine(); Q_EMIT projectLoaded();
 }
 bool App::newFromTemplate(const QString& path) { if (!openProject(path)) return false; m_model.setFilePath(QString()); m_model.setDirty(true); return true; }

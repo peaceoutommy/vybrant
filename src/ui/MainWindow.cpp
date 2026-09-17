@@ -30,6 +30,7 @@
 #include <QActionGroup>
 #include <QCursor>
 #include <QVariantAnimation>
+#include <QElapsedTimer>
 #include "ui/Anim.h"
 #include <cstdio>
 #include <QDebug>
@@ -100,7 +101,7 @@ void MainWindow::buildMenus() {
     file->addAction(reg.add("file.info", "Project info...", "File", QKeySequence("F11"), [this] { ProjectInfoDialog d(m_app, this); d.exec(); }, this)); file->addSeparator(); file->addAction(reg.add("file.quit", "Quit", "File", QKeySequence::Quit, [this] { close(); }, this));
     auto* edit = mb->addMenu("&Edit");
     edit->addAction(reg.add("edit.undo", "Undo", "Edit", QKeySequence::Undo, [this] { m_app.model().undoStack().undo(); }, this)); edit->addAction(reg.add("edit.redo", "Redo", "Edit", QKeySequence("Ctrl+Alt+Z"), [this] { m_app.model().undoStack().redo(); }, this, false, QKeySequence("Ctrl+Y")));
-    edit->addSeparator(); edit->addAction(reg.add("edit.addChannel", "Add channel (Synth)", "Edit", QKeySequence("Ctrl+Shift+N"), [this] { m_app.addChannel(ChannelType::Synth, "native.synth"); }, this)); edit->addAction(reg.add("edit.addPattern", "New pattern", "Edit", QKeySequence("F4"), [this] { m_app.addPattern(); }, this)); edit->addAction(reg.add("edit.clonePattern", "Clone current pattern", "Edit", QKeySequence("Ctrl+Shift+C"), [this] { m_app.clonePattern(m_app.project().selectedPatternId); }, this));
+    edit->addSeparator(); edit->addAction(reg.add("edit.addChannel", "Add channel (Synth)", "Edit", QKeySequence("Ctrl+Shift+N"), [this] { m_app.addChannel(ChannelType::Synth, "native.synth"); }, this)); edit->addAction(reg.add("edit.addMixerTrack", "Add mixer track", "Edit", QKeySequence(), [this] { m_app.addMixerTrack(); }, this)); edit->addAction(reg.add("edit.addPattern", "New pattern", "Edit", QKeySequence("F4"), [this] { m_app.addPattern(); }, this)); edit->addAction(reg.add("edit.clonePattern", "Clone current pattern", "Edit", QKeySequence("Ctrl+Shift+C"), [this] { m_app.clonePattern(m_app.project().selectedPatternId); }, this));
     edit->addAction(reg.add("edit.nextPattern", "Next pattern", "Edit", QKeySequence(Qt::KeypadModifier | Qt::Key_Plus), [this] { auto& p = m_app.project(); for (size_t i = 0; i + 1 < p.patterns.size(); ++i) if (p.patterns[i].id == p.selectedPatternId) { m_app.selectPattern(p.patterns[i + 1].id); return; } }, this)); edit->addAction(reg.add("edit.prevPattern", "Previous pattern", "Edit", QKeySequence(Qt::KeypadModifier | Qt::Key_Minus), [this] { auto& p = m_app.project(); for (size_t i = 1; i < p.patterns.size(); ++i) if (p.patterns[i].id == p.selectedPatternId) { m_app.selectPattern(p.patterns[i - 1].id); return; } }, this));
     edit->addAction(reg.add("edit.renamePattern", "Rename current pattern...", "Edit", QKeySequence("F2"), [this] { auto* p = m_app.project().pattern(m_app.project().selectedPatternId); if (!p) return; bool ok; QString n = QInputDialog::getText(this, "Rename pattern", "Name:", QLineEdit::Normal, p->name, &ok); if (ok && !n.isEmpty()) m_app.renamePattern(p->id, n); }, this));
     auto* tr = mb->addMenu("&Transport");
@@ -224,6 +225,7 @@ void MainWindow::animateRackDock() {
     connect(a, &QVariantAnimation::finished, this, [this, h] { m_dRack->setMinimumHeight(0); m_dRack->setMaximumHeight(QWIDGETSIZE_MAX); m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks); });
     QTimer::singleShot(30, a, [a] { a->start(QAbstractAnimation::DeleteWhenStopped); });
 }
+void MainWindow::debugSearch(const QString& t) { QElapsedTimer et; et.start(); m_browser->debugSearch(t); fprintf(stderr, "search '%s' took %lld ms\n", t.toUtf8().constData(), (long long)et.elapsed()); }
 void MainWindow::updateRackDockCandidate() {
     QRect r = m_dRack->frameGeometry(); QRect main = geometry(); const int th = 16;
     bool overlapsX = r.right() > main.left() + 40 && r.left() < main.right() - 40; int topLimit = main.top() + menuBar()->height() + m_transport->height() + 6;

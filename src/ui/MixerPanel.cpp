@@ -1,4 +1,6 @@
 #include "ui/MixerPanel.h"
+#include <QMessageBox>
+#include <QShortcut>
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
 #include <QPainter>
@@ -121,7 +123,7 @@ void MixerStrip::refresh() {
 }
 void MixerStrip::uiTick() { auto* tc = m_app.engine().registry().trackIfExists(m_track); if (!tc) return; bool clip = tc->meter.clipped.exchange(false); m_meter->setLevels(tc->meter.peakL.load(), tc->meter.peakR.load(), clip); m_updating = true; m_fader->setValue(tc->volume.load() / 1.25f); m_pan->setValue((tc->pan.load() + 1) * 0.5f); m_updating = false; }
 void MixerStrip::paintEvent(QPaintEvent*) { QPainter p(this); p.fillRect(rect(), m_selected ? QColor(0x20, 0x24, 0x2a) : QColor(0x1a, 0x1d, 0x22)); p.setPen(theme::border()); p.drawLine(width() - 1, 0, width() - 1, height()); }
-void MixerStrip::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::LeftButton) Q_EMIT selected(m_track); QWidget::mousePressEvent(e); }
+void MixerStrip::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::LeftButton) Q_EMIT selected(m_track, e->modifiers()); QWidget::mousePressEvent(e); }
 void MixerStrip::mouseDoubleClickEvent(QMouseEvent* e) { if (m_name->geometry().contains(e->pos())) { const MixerTrack* t = m_app.project().mixerTrack(m_track); bool ok; QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t ? t->name : "", &ok); if (ok && !n.isEmpty()) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { x.name = n; }); } }
 void MixerStrip::showRouteMenu() { QMenu m; const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t || t->isMaster) { m.addAction("Master goes to the audio device")->setEnabled(false); m.exec(m_route->mapToGlobal(QPoint(0, m_route->height()))); return; } for (auto& o : m_app.project().mixerTracks) { if (o.id == m_track) continue; auto* a = m.addAction(o.name, [this, id = o.id] { m_app.routeTrack(m_track, id); }); a->setCheckable(true); a->setChecked(o.id == t->outputTrackId); } m.exec(m_route->mapToGlobal(QPoint(0, m_route->height()))); }
 void MixerStrip::showSendsMenu() {
@@ -143,7 +145,9 @@ void MixerStrip::contextMenuEvent(QContextMenuEvent* e) {
     m.addAction("Rename...", [this, t] { bool ok; QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t->name, &ok); if (ok && !n.isEmpty()) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { x.name = n; }); });
     m.addAction("Color...", [this, t] { QColor c = QColorDialog::getColor(t->color, this); if (c.isValid()) m_app.editMixerTrack(m_track, "Track color", [c](MixerTrack& x) { x.color = c; }); });
     m.addAction("Add mixer track", [this] { m_app.addMixerTrack(); });
-    if (!t->isMaster) m.addAction("Delete track", [this] { m_app.deleteMixerTrack(m_track); });
+    { MixerPanel* mp = nullptr; { QWidget* w = this; while (w && !(mp = qobject_cast<MixerPanel*>(w))) w = w->parentWidget(); } std::vector<Id> many = mp ? mp->selectedTracks() : std::vector<Id>{}; int deletable = 0; for (Id id : many) if (auto* x = m_app.project().mixerTrack(id)) if (!x->isMaster) ++deletable;
+      if (mp && deletable > 1 && std::find(many.begin(), many.end(), m_track) != many.end()) { m.addAction(QString("Delete %1 selected tracks").arg(deletable), [mp] { mp->deleteSelectedTracks(); }); m.addAction("Color selected tracks...", [this, many, t] { QColor c = QColorDialog::getColor(t->color, this); if (!c.isValid()) return; for (Id id : many) m_app.editMixerTrack(id, "Track color", [c](MixerTrack& x) { x.color = c; }); }); }
+      else if (!t->isMaster) m.addAction("Delete track", [this] { m_app.deleteMixerTrack(m_track); }); }
     m.addAction("Reset clip indicator", [this] { m_meter->resetClip(); });
     m.exec(e->globalPos());
 }
@@ -152,18 +156,37 @@ void MixerStrip::contextMenuEvent(QContextMenuEvent* e) {
 MixerPanel::MixerPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QHBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(4);
     m_scroll = new QScrollArea(this); m_scroll->setWidgetResizable(true); m_scroll->setFrameShape(QFrame::NoFrame); m_scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOn); m_scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_stripsHost = new QWidget(this); auto* hl = new QHBoxLayout(m_stripsHost); hl->setContentsMargins(0, 0, 0, 0); hl->setSpacing(2); hl->addStretch(1); m_scroll->setWidget(m_stripsHost); lay->addWidget(m_scroll, 1);
+    m_stripsHost = new QWidget(this); auto* hl = new QHBoxLayout(m_stripsHost); hl->setContentsMargins(0, 0, 0, 0); hl->setSpacing(2);
+    // "+" column after the last insert: adds a mixer track (also in the strips' context menu and Edit > Add mixer track)
+    m_addBtn = new QToolButton(m_stripsHost); m_addBtn->setText("+"); m_addBtn->setToolTip("Add a mixer track"); m_addBtn->setFixedWidth(28); m_addBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding); m_addBtn->setFocusPolicy(Qt::NoFocus); connect(m_addBtn, &QToolButton::clicked, this, [this] { Id id = m_app.addMixerTrack(); selectTrack(id); QTimer::singleShot(0, this, [this] { m_scroll->horizontalScrollBar()->setValue(m_scroll->horizontalScrollBar()->maximum()); }); });
+    hl->addWidget(m_addBtn); hl->addStretch(1); m_scroll->setWidget(m_stripsHost); lay->addWidget(m_scroll, 1);
+    m_stripsHost->setContextMenuPolicy(Qt::CustomContextMenu); connect(m_stripsHost, &QWidget::customContextMenuRequested, this, [this](const QPoint& p) { if (m_stripsHost->childAt(p)) return; QMenu m; m.addAction("Add mixer track", [this] { Id id = m_app.addMixerTrack(); selectTrack(id); }); m.exec(m_stripsHost->mapToGlobal(p)); });
+    auto* del = new QShortcut(QKeySequence(Qt::Key_Delete), this); del->setContext(Qt::WidgetWithChildrenShortcut); connect(del, &QShortcut::activated, this, &MixerPanel::deleteSelectedTracks);
+    auto* all = new QShortcut(QKeySequence::SelectAll, this); all->setContext(Qt::WidgetWithChildrenShortcut); connect(all, &QShortcut::activated, this, &MixerPanel::selectAllTracks);
+    setFocusPolicy(Qt::ClickFocus);
     rebuild();
 }
 void MixerPanel::rebuild() {
     for (auto* s : m_strips) delete s; m_strips.clear(); if (m_master) { delete m_master; m_master = nullptr; }
     auto* hl = static_cast<QHBoxLayout*>(m_stripsHost->layout());
-    for (auto& t : m_app.project().mixerTracks) { if (t.isMaster) continue; auto* s = new MixerStrip(m_app, t.id, m_stripsHost); hl->insertWidget(hl->count() - 1, s); m_strips.push_back(s); connect(s, &MixerStrip::selected, this, &MixerPanel::selectTrack); connect(s, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
-    if (Id mid = m_app.project().masterId()) { m_master = new MixerStrip(m_app, mid, this); static_cast<QHBoxLayout*>(layout())->insertWidget(0, m_master); /* Master is the first strip, on the left */ connect(m_master, &MixerStrip::selected, this, &MixerPanel::selectTrack); connect(m_master, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
+    for (auto& t : m_app.project().mixerTracks) { if (t.isMaster) continue; auto* s = new MixerStrip(m_app, t.id, m_stripsHost); hl->insertWidget(hl->indexOf(m_addBtn), s); m_strips.push_back(s); connect(s, &MixerStrip::selected, this, qOverload<Id, Qt::KeyboardModifiers>(&MixerPanel::selectTrack)); connect(s, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
+    if (Id mid = m_app.project().masterId()) { m_master = new MixerStrip(m_app, mid, this); static_cast<QHBoxLayout*>(layout())->insertWidget(0, m_master); /* Master is the first strip, on the left */ connect(m_master, &MixerStrip::selected, this, qOverload<Id, Qt::KeyboardModifiers>(&MixerPanel::selectTrack)); connect(m_master, &MixerStrip::openEditor, this, &MixerPanel::openEditor); }
     if (!m_selected || !m_app.project().mixerTrack(m_selected)) m_selected = m_app.project().masterId();
-    for (auto* s : m_strips) s->setSelected(s->trackId() == m_selected); if (m_master) m_master->setSelected(m_master->trackId() == m_selected);
+    for (auto it = m_multi.begin(); it != m_multi.end();) { if (!m_app.project().mixerTrack(*it)) it = m_multi.erase(it); else ++it; } m_multi.insert(m_selected);
+    for (auto* s : m_strips) s->setSelected(m_multi.count(s->trackId())); if (m_master) m_master->setSelected(m_multi.count(m_master->trackId()));
 }
-void MixerPanel::selectTrack(Id id) { m_selected = id; for (auto* s : m_strips) { s->setSelected(s->trackId() == id); s->refresh(); } if (m_master) { m_master->setSelected(m_master->trackId() == id); m_master->refresh(); } }
+void MixerPanel::selectTrack(Id id) { selectTrack(id, Qt::NoModifier); }
+// Ctrl+click toggles a strip, Shift+click selects the range from the primary strip; plain click selects one (FL: Ctrl+Shift+click adds)
+void MixerPanel::selectTrack(Id id, Qt::KeyboardModifiers mods) {
+    if (mods & Qt::ShiftModifier) { auto& tr = m_app.project().mixerTracks; int a = -1, b = -1; for (size_t i = 0; i < tr.size(); ++i) { if (tr[i].id == m_selected) a = (int)i; if (tr[i].id == id) b = (int)i; } if (a < 0) a = b; if (!(mods & Qt::ControlModifier)) m_multi.clear(); for (int i = std::min(a, b); i <= std::max(a, b) && i >= 0; ++i) m_multi.insert(tr[i].id); }
+    else if (mods & Qt::ControlModifier) { if (m_multi.count(id) && m_multi.size() > 1) { m_multi.erase(id); if (m_selected == id) id = *m_multi.begin(); } else m_multi.insert(id); }
+    else { m_multi.clear(); m_multi.insert(id); }
+    m_selected = id; m_multi.insert(id);
+    for (auto* s : m_strips) { s->setSelected(m_multi.count(s->trackId())); s->refresh(); } if (m_master) { m_master->setSelected(m_multi.count(m_master->trackId())); m_master->refresh(); }
+}
+std::vector<Id> MixerPanel::selectedTracks() const { std::vector<Id> v; if (m_selected) v.push_back(m_selected); for (Id id : m_multi) if (id != m_selected) v.push_back(id); return v; }
+void MixerPanel::selectAllTracks() { m_multi.clear(); for (auto& t : m_app.project().mixerTracks) if (!t.isMaster) m_multi.insert(t.id); if (!m_multi.empty()) selectTrack(m_multi.count(m_selected) ? m_selected : *m_multi.begin(), Qt::ControlModifier); }
+void MixerPanel::deleteSelectedTracks() { std::vector<Id> ids = selectedTracks(); int n = 0; for (Id id : ids) if (auto* t = m_app.project().mixerTrack(id)) if (!t->isMaster) ++n; if (n == 0) return; if (n > 1 && QMessageBox::question(this, "Delete mixer tracks", QString("Delete %1 mixer tracks? Channels routed to them go back to the Master.").arg(n)) != QMessageBox::Yes) return; for (Id id : ids) m_app.deleteMixerTrack(id); m_multi.clear(); }
 void MixerPanel::refresh(uint32_t flags) {
     bool structural = (flags & (ChangeStructure | ChangeAll)) != 0; size_t n = 0; for (auto& t : m_app.project().mixerTracks) if (!t.isMaster) ++n;
     if (structural || n != m_strips.size()) { bool same = n == m_strips.size(); if (same) { size_t i = 0; for (auto& t : m_app.project().mixerTracks) { if (t.isMaster) continue; if (m_strips[i++]->trackId() != t.id) { same = false; break; } } } if (!same) rebuild(); }

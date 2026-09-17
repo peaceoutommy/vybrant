@@ -20,13 +20,14 @@ int main(int argc, char** argv) {
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("MusicThingy"); QCoreApplication::setApplicationName("MusicThingy"); QApplication::setStyle("Fusion"); app.setStyleSheet(mt::theme::stylesheet());
     mt::App daw; daw.initialize();
-    if (argc >= 2 && std::strcmp(argv[1], "--selftest") == 0) { int rc = mt::runSelfTest(daw); return rc; }
-    if (argc >= 2 && std::strcmp(argv[1], "--duptest") == 0) return mt::runDuplicateTest(daw);
+    if (argc >= 2 && std::strcmp(argv[1], "--selftest") == 0) { daw.newProject(true); int rc = mt::runSelfTest(daw); return rc; }   /* the tests exercise the demo content */
+    if (argc >= 2 && std::strcmp(argv[1], "--duptest") == 0) { daw.newProject(true); return mt::runDuplicateTest(daw); }
     if (argc >= 2 && std::strcmp(argv[1], "--backuptest") == 0) return mt::runBackupTest(daw);
     if (argc >= 3 && std::strcmp(argv[1], "--preview-bench") == 0) return mt::runPreviewBench(daw, argv[2]);
     mt::MainWindow win(daw); win.show();
     QString openFile, screenshot, renderPath, panel; bool quitAfter = false;
     for (int i = 1; i < argc; ++i) { QString a = argv[i]; if (a == "--screenshot" && i + 1 < argc) screenshot = argv[++i]; else if (a == "--render" && i + 1 < argc) renderPath = argv[++i]; else if (a == "--panel" && i + 1 < argc) panel = argv[++i]; else if (a == "--quit") quitAfter = true; else if (QFileInfo(a).suffix() == "mtp") openFile = a; }
+    for (int i = 1; i < argc; ++i) if (std::strcmp(argv[i], "--demo") == 0) daw.newProject(true);   // demo content (drums + synth + clip) for tests and screenshots
     if (quitAfter) win.setForceClose(true);
     if (!openFile.isEmpty()) daw.openProject(openFile); else if (renderPath.isEmpty()) QTimer::singleShot(0, &win, [&win] { win.startupChecks(); });
     if (!renderPath.isEmpty()) { // batch render: musicthingy song.mtp --render out.wav [--quit]
@@ -36,6 +37,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i + 1 < argc; ++i) if (std::strcmp(argv[i], "--uitest") == 0) { QString png = argv[i + 1]; QTimer::singleShot(800, &win, [&win, png] { mt::runUiTest(&win, png); QApplication::quit(); }); }
     for (int i = 1; i + 1 < argc; ++i) if (std::strcmp(argv[i], "--dock") == 0) { QString a = argv[i + 1]; QTimer::singleShot(300, &win, [&win, a] { win.debugDock(a == "top" ? Qt::TopDockWidgetArea : Qt::BottomDockWidgetArea); }); }
     if (!panel.isEmpty()) QTimer::singleShot(100, &win, [&daw, &win, panel] { if (panel == "mixer") daw.commands().action("view.mixer")->trigger(); else if (panel == "pianoroll") { daw.commands().action("view.pianoRoll")->trigger(); } else if (panel == "editor") { win.openEditor(daw.project().channels.empty() ? 0 : daw.project().channels.back().id); } });
+    for (int i = 1; i + 1 < argc; ++i) if (std::strcmp(argv[i], "--search") == 0) { QString t = argv[i + 1]; QTimer::singleShot(300, &win, [&win, t] { win.debugSearch(t); }); }   // type into the browser search (test hook)
     if (!screenshot.isEmpty()) QTimer::singleShot(1500, &win, [&win, screenshot, quitAfter] { win.saveScreenshot(screenshot); if (quitAfter) QApplication::quit(); });
     else if (quitAfter) QTimer::singleShot(3000, &app, &QApplication::quit);
     return app.exec();

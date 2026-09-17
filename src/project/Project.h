@@ -205,6 +205,6 @@ enum ChangeFlag : uint32_t {
     ChangeAutomation = 32, ChangeTransport = 64, ChangeAudio = 128, ChangeMeta = 256, ChangeStructure = 512, ChangeAll = 0xffffffff
 };
 
-Project makeDefaultProject();
+Project makeDefaultProject(bool demo = false);   // demo = the 4 drums + synth with a beat and melody (tests / --demo); default = FL-style empty project
 
 } // namespace mt

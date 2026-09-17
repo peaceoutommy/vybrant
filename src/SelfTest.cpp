@@ -17,7 +17,7 @@ static int g_fail = 0;
 int runSelfTest(App& app) {
     std::printf("MusicThingy self test\n");
     // ---- project round trip
-    Project p = makeDefaultProject(); QJsonObject j1 = ProjectSerializer::toJson(p); Project p2; QString err; bool ok = ProjectSerializer::fromJson(j1, p2, &err); QJsonObject j2 = ProjectSerializer::toJson(p2);
+    Project p = makeDefaultProject(true); QJsonObject j1 = ProjectSerializer::toJson(p); Project p2; QString err; bool ok = ProjectSerializer::fromJson(j1, p2, &err); QJsonObject j2 = ProjectSerializer::toJson(p2);
     CHECK(ok && QJsonDocument(j1).toJson() == QJsonDocument(j2).toJson(), "serializer round trip is lossless");
     QTemporaryDir tmp; QString path = tmp.path() + "/t.mtp"; CHECK(ProjectSerializer::save(p, path, &err), "save project file"); Project p3; CHECK(ProjectSerializer::load(path, p3, &err) && p3.channels.size() == p.channels.size() && p3.patterns.size() == 1, "load project file");
     QJsonObject old = j1; old["formatVersion"] = 0; Project p4; CHECK(!ProjectSerializer::fromJson(old, p4, &err), "rejects invalid format version");

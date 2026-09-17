@@ -31,7 +31,7 @@ int RackView::visibleSteps() const { return std::max(patternSteps(), m_fitSteps)
 int RackView::stepW() const { return 23; }
 int RackView::stepX(int step) const { return m_leftW + 6 + step * stepW() + (step / 4) * 4; }
 QRect RackView::rowRect(int row) const { return QRect(0, row * m_rowH, width(), m_rowH); }
-QSize RackView::sizeHint() const { int steps = visibleSteps(); int rows = (int)m_app.project().channels.size(); return QSize(stepX(steps) + 12, rows * m_rowH + (m_graphMode >= 0 ? m_graphH : 0) + 4); }
+QSize RackView::sizeHint() const { int steps = visibleSteps(); int rows = (int)m_app.project().channels.size(); return QSize(stepX(steps) + 12, std::max(rows, 3) * m_rowH + (m_graphMode >= 0 ? m_graphH : 0) + 4); }   // 3 rows minimum: room for the empty-project hint
 void RackView::refresh() { for (auto it = m_multi.begin(); it != m_multi.end();) { if (!m_app.project().channel(*it)) it = m_multi.erase(it); else ++it; } updateGeometry(); resize(sizeHint()); update(); }
 void RackView::uiTick() { auto tv = m_app.engine().transport(); int ps = -1; Pattern* p = pattern(); if (p && tv.playing && !tv.countingIn) { Tick local = (Tick)tv.positionTicks; if (tv.songMode) { local = -1; for (auto& c : m_app.project().clips) if (c.type == ClipType::Pattern && c.sourceId == p->id && tv.positionTicks >= c.start && tv.positionTicks < c.start + c.length) { local = ((Tick)tv.positionTicks - c.start + c.sourceOffset) % std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), 1); break; } } if (local >= 0) ps = (int)(local / p->stepTicks()); } if (ps != m_playStep) { m_playStep = ps; update(); } }
 
@@ -47,6 +47,8 @@ void RackView::paintEvent(QPaintEvent*) {
     QPainter p(this); p.fillRect(rect(), theme::bg()); p.setRenderHint(QPainter::Antialiasing);
     Pattern* pat = pattern(); int steps = visibleSteps(); int patSteps = patternSteps(); auto& proj = m_app.project();
     const auto& chans = proj.channels;
+    if (chans.empty()) { // empty project: explain how to get a first channel in
+        QRect r = rect().adjusted(8, 6, -8, -6); p.setPen(QPen(theme::textDim(), 1, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(r, 6, 6); p.setPen(theme::textDim()); p.setFont(theme::boldFont()); p.drawText(r.adjusted(0, 0, 0, -18), Qt::AlignCenter, "No channels yet"); p.setFont(theme::smallFont()); p.drawText(r.adjusted(0, 18, 0, 0), Qt::AlignCenter, "Drag a sample, instrument or plugin here from the Browser, or click  + Channel"); }
     for (int r = 0; r < (int)chans.size(); ++r) {
         const Channel& c = chans[r]; QRect rr = rowRect(r); bool selected = c.id == proj.selectedChannelId;
         bool multi = m_multi.count(c.id) > 0; p.fillRect(rr.adjusted(0, 0, 0, -1), (selected || multi) ? QColor(0x27, 0x2c, 0x33) : (r % 2 ? QColor(0x1a, 0x1d, 0x22) : QColor(0x18, 0x1b, 0x20))); if (multi) { p.fillRect(QRect(0, rr.top(), 2, rr.height() - 1), theme::accent()); }
@@ -252,7 +254,7 @@ void ChannelRackPanel::fitStepsToWidth() {
     int n = std::max(4, m_view->stepsThatFit(m_scroll->viewport()->width()));   // stepsThatFit already rounds down to groups of 4 steps
     m_view->setFitSteps(n);   // view only: the pattern length is never changed by the window size
 }
-int ChannelRackPanel::heightForContent() const { int rows = std::max(1, (int)m_app.project().channels.size()); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }
+int ChannelRackPanel::heightForContent() const { int rows = std::max(3, (int)m_app.project().channels.size()); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }
 void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }
 void ChannelRackPanel::uiTick() { m_view->uiTick(); }
 

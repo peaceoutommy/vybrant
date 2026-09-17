@@ -22,7 +22,7 @@ public:
     void startupChecks();
     bool saveScreenshot(const QString& path);
     void setForceClose(bool f) { m_forceClose = f; }
-    void debugDock(Qt::DockWidgetArea a) { m_rackCandidate = a; dockRackAtCandidate(); }
+    void debugSearch(const QString& t); void debugDock(Qt::DockWidgetArea a) { m_rackCandidate = a; dockRackAtCandidate(); }
 protected:
     void closeEvent(QCloseEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; bool eventFilter(QObject* o, QEvent* e) override;
 private:
