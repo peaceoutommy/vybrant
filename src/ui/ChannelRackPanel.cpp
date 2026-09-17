@@ -21,7 +21,7 @@
 namespace mt {
 
 // ---------------------------------------------------------------- RackView
-RackView::RackView(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setAcceptDrops(true); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); }
+RackView::RackView(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setAcceptDrops(true); setMouseTracking(true); setFocusPolicy(Qt::StrongFocus); m_ticker = new anim::Ticker(this); }
 Pattern* RackView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
 const Step* RackView::stepAt(Id ch, int step) const { Pattern* p = pattern(); if (!p) return nullptr; auto* d = p->channelData(ch); if (!d || step < 0 || step >= (int)d->steps.size()) return nullptr; return &d->steps[step]; }
 int RackView::stepsPerBar() const { Pattern* p = pattern(); const auto& ts = m_app.project().transport.timeSig; return std::max(1, (int)(ts.ticksPerBar() / (p ? p->stepTicks() : PPQ / 4))); }
@@ -76,12 +76,14 @@ void RackView::paintEvent(QPaintEvent*) {
         for (int s = 0; s < steps; ++s) {
             QRectF sr(stepX(s), rr.top() + 4, stepW() - 2, m_rowH - 8); bool beatA = (s / 4) % 2 == 0; const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr; bool on = st && st->enabled;
             QColor base = beatA ? QColor(0x2a, 0x2f, 0x37) : QColor(0x23, 0x27, 0x2d); if (s >= patSteps) base = base.darker(150); if (m_playStep == s) base = base.lighter(140);
+            double pulse = m_pulses.value(r * 4096 + s); if (pulse > 0) { double g = pulse * 3.0; sr.adjust(-g, -g, g, g); }
             p.setPen(Qt::NoPen); p.setBrush(on ? c.color.lighter(st->velocity > 0.9f ? 115 : (int)(70 + st->velocity * 50)) : base); p.drawRoundedRect(sr, 2.5, 2.5);
             if (on) { p.setPen(QPen(theme::withAlpha(Qt::white, 40), 1)); p.setBrush(Qt::NoBrush); p.drawLine(QPointF(sr.left() + 2, sr.top() + 1), QPointF(sr.right() - 2, sr.top() + 1)); }
             if (on && st->probability < 1.f) { p.setPen(QPen(theme::bg(), 1, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(sr.adjusted(1, 1, -1, -1), 2, 2); }
             if (on && std::fabs(st->pitch) > 0.01f) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(sr, Qt::AlignCenter, QString::number((int)st->pitch)); }
         }
     }
+    m_ticker->keepAlive(m_pulses.active());
     // graph editor
     if (m_graphMode >= 0) {
         int top = (int)chans.size() * m_rowH; QRect g(0, top, width(), m_graphH); p.fillRect(g, QColor(0x15, 0x18, 0x1c)); p.setPen(theme::border()); p.drawLine(0, top, width(), top);
@@ -116,7 +118,7 @@ void RackView::mousePressEvent(QMouseEvent* e) {
     case Pan: m_knobStart = c.pan; if (e->button() == Qt::RightButton) { QMenu m; m.addAction("Create automation clip", [this, id = c.id] { m_app.createAutomationLane({ParamTarget::ChannelPan, id, 0, 0}, QString()); }); m.addAction("Link to MIDI controller...", [this, id = c.id, n = c.name] { m_app.startMidiLearn({ParamTarget::ChannelPan, id, 0, 0}, n + " Pan"); }); m.addAction("Reset", [this, id = c.id] { m_app.setChannelPan(id, 0, true); }); m.exec(e->globalPosition().toPoint()); m_dragging = false; } break;
     case Vol: m_knobStart = c.volume; if (e->button() == Qt::RightButton) { QMenu m; m.addAction("Create automation clip", [this, id = c.id] { m_app.createAutomationLane({ParamTarget::ChannelVolume, id, 0, 0}, QString()); }); m.addAction("Link to MIDI controller...", [this, id = c.id, n = c.name] { m_app.startMidiLearn({ParamTarget::ChannelVolume, id, 0, 0}, n + " Volume"); }); m.addAction("Reset", [this, id = c.id] { m_app.setChannelVolume(id, 0.8f, true); }); m.exec(e->globalPosition().toPoint()); m_dragging = false; } break;
     case Mixer: { if (e->button() == Qt::RightButton) { QMenu m; for (auto& t : proj.mixerTracks) { auto* a = m.addAction(t.name, [this, id = c.id, tid = t.id] { m_app.setChannelMixerTrack(id, tid); }); a->setCheckable(true); a->setChecked(t.id == c.mixerTrackId); } m.exec(e->globalPosition().toPoint()); m_dragging = false; } break; }
-    case StepCell: { Pattern* pat = pattern(); if (!pat) break; if (auto* pd = pat->channelData(c.id); pd && !pd->notes.empty()) { if (e->button() == Qt::LeftButton) Q_EMIT openPianoRoll(c.id); else { QMenu m; m.addAction("Open in piano roll", [this, id = c.id] { Q_EMIT openPianoRoll(id); }); m.addAction("Clear (steps and notes)", [this, id = c.id, pid = pat->id] { m_app.editPattern(pid, "Clear channel in pattern", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (auto& s : d.steps) s.enabled = false; d.notes.clear(); }); }); m.exec(e->globalPosition().toPoint()); } m_dragging = false; break; } const Step* st = stepAt(c.id, m_press.step); bool on = st && st->enabled; if (e->button() == Qt::RightButton) { m_erasing = true; if (on) m_app.setStep(pat->id, c.id, m_press.step, false); } else if (e->modifiers() & Qt::ShiftModifier) { /* shift+click: audition */ m_app.noteOn(c.rootNote); m_app.noteOff(c.rootNote); } else { m_erasing = false; m_paintValue = !on; m_app.setStep(pat->id, c.id, m_press.step, m_paintValue); } break; }
+    case StepCell: { Pattern* pat = pattern(); if (!pat) break; if (auto* pd = pat->channelData(c.id); pd && !pd->notes.empty()) { if (e->button() == Qt::LeftButton) Q_EMIT openPianoRoll(c.id); else { QMenu m; m.addAction("Open in piano roll", [this, id = c.id] { Q_EMIT openPianoRoll(id); }); m.addAction("Clear (steps and notes)", [this, id = c.id, pid = pat->id] { m_app.editPattern(pid, "Clear channel in pattern", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (auto& s : d.steps) s.enabled = false; d.notes.clear(); }); }); m.exec(e->globalPosition().toPoint()); } m_dragging = false; break; } const Step* st = stepAt(c.id, m_press.step); bool on = st && st->enabled; if (e->button() == Qt::RightButton) { m_erasing = true; if (on) m_app.setStep(pat->id, c.id, m_press.step, false); } else if (e->modifiers() & Qt::ShiftModifier) { /* shift+click: audition */ m_app.noteOn(c.rootNote); m_app.noteOff(c.rootNote); } else { m_erasing = false; m_paintValue = !on; m_pulses.trigger(m_press.row * 4096 + m_press.step); m_app.setStep(pat->id, c.id, m_press.step, m_paintValue); } break; }
     case Name: if (e->button() == Qt::LeftButton && (e->modifiers() & Qt::AltModifier)) Q_EMIT openPianoRoll(c.id); break;
     default: break;
     }
@@ -131,7 +133,7 @@ void RackView::mouseMoveEvent(QMouseEvent* e) {
     if (m_press.hit == Pan) { float v = clamp(c.pan + dy * sens * 2, -1.f, 1.f); m_app.setChannelPan(c.id, v, false); update(); QToolTip::showText(e->globalPosition().toPoint(), QString("Pan %1").arg(v, 0, 'f', 2), this); }
     else if (m_press.hit == Vol) { float v = clamp(c.volume + dy * sens, 0.f, 1.f); m_app.setChannelVolume(c.id, v, false); update(); QToolTip::showText(e->globalPosition().toPoint(), QString("Volume %1 dB").arg(gainToDb(v / 0.8f), 0, 'f', 1), this); }
     else if (m_press.hit == Mixer) { if (std::abs(dy) >= 4) { int mi = proj.mixerIndex(c.mixerTrackId); mi = clamp(mi + (dy > 0 ? 1 : -1), 0, (int)proj.mixerTracks.size() - 1); m_app.setChannelMixerTrack(c.id, proj.mixerTracks[mi].id); m_lastPos = e->pos(); } return; }
-    else if (m_press.hit == StepCell) { HitInfo h = hitTest(e->pos()); if (h.hit == StepCell && h.row >= 0) { Pattern* pat = pattern(); if (!pat) return; const Channel& rc = proj.channels[h.row]; const Step* st = stepAt(rc.id, h.step); bool on = st && st->enabled; if (m_erasing) { if (on) m_app.setStep(pat->id, rc.id, h.step, false); } else if (on != m_paintValue) m_app.setStep(pat->id, rc.id, h.step, m_paintValue); } }
+    else if (m_press.hit == StepCell) { HitInfo h = hitTest(e->pos()); if (h.hit == StepCell && h.row >= 0) { Pattern* pat = pattern(); if (!pat) return; const Channel& rc = proj.channels[h.row]; const Step* st = stepAt(rc.id, h.step); bool on = st && st->enabled; if (m_erasing) { if (on) { m_pulses.trigger(h.row * 4096 + h.step); m_app.setStep(pat->id, rc.id, h.step, false); } } else if (on != m_paintValue) { m_pulses.trigger(h.row * 4096 + h.step); m_app.setStep(pat->id, rc.id, h.step, m_paintValue); } } }
     m_lastPos = e->pos();
 }
 void RackView::mouseReleaseEvent(QMouseEvent*) {

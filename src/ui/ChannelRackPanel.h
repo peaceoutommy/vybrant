@@ -9,6 +9,7 @@
 #include <set>
 #include <QTimer>
 #include "ui/widgets/Controls.h"
+#include "ui/Anim.h"
 
 namespace mt {
 
@@ -41,6 +42,7 @@ private:
     std::set<Id> m_multi; Id m_anchor = 0;   // multi-selection (Ctrl / Shift click); the project's selectedChannelId is the primary
     std::vector<Id> selectedIds() const;
     void deleteSelected();
+    anim::Pulses m_pulses; anim::Ticker* m_ticker = nullptr;
     HitInfo m_press; bool m_paintValue = false; bool m_erasing = false; int m_dragRow = -1; QPoint m_lastPos; float m_knobStart = 0; int m_reorderTarget = -1; int m_playStep = -1; bool m_dragging = false;
 };
 

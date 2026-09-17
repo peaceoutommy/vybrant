@@ -29,6 +29,8 @@
 #include <QScreen>
 #include <QActionGroup>
 #include <QCursor>
+#include <QVariantAnimation>
+#include "ui/Anim.h"
 #include <cstdio>
 #include <QDebug>
 
@@ -196,6 +198,14 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
     }
     return QMainWindow::eventFilter(o, e);
 }
+// Slide the freshly docked rack open instead of letting the layout jump (undocking is already animated by Qt)
+void MainWindow::animateRackDock() {
+    int h = m_rack->heightForContent() + 24; bool dbg = qEnvironmentVariableIsSet("MT_DEBUG_DOCK");
+    auto* a = new QVariantAnimation(this); a->setDuration(anim::kDurationMs * 2); a->setEasingCurve(QEasingCurve::OutCubic); a->setStartValue(1); a->setEndValue(h);
+    connect(a, &QVariantAnimation::valueChanged, this, [this, dbg](const QVariant& v) { int hh = v.toInt(); m_dRack->setFixedHeight(hh); m_workspace->resizeDocks({m_dRack}, {hh}, Qt::Vertical); if (dbg) fprintf(stderr, "dock anim %d -> rack %d playlist y %d\n", hh, m_dRack->height(), m_dPlaylist->y()); });
+    connect(a, &QVariantAnimation::finished, this, [this, h] { m_dRack->setMinimumHeight(0); m_dRack->setMaximumHeight(QWIDGETSIZE_MAX); m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks); });
+    QTimer::singleShot(30, a, [a] { a->start(QAbstractAnimation::DeleteWhenStopped); });
+}
 void MainWindow::updateRackDockCandidate() {
     QRect r = m_dRack->frameGeometry(); QRect main = geometry(); const int th = 16;
     bool overlapsX = r.right() > main.left() + 40 && r.left() < main.right() - 40; int topLimit = main.top() + menuBar()->height() + m_transport->height() + 6;
@@ -220,9 +230,13 @@ void MainWindow::hideDockIndicator() { if (m_dockIndicator) m_dockIndicator->hid
 void MainWindow::dockRackAtCandidate() {
     Qt::DockWidgetArea area = m_rackCandidate; m_rackCandidate = Qt::NoDockWidgetArea; m_rackReleasePoll.stop(); m_rackDragging = false; hideDockIndicator();
     if (area == Qt::NoDockWidgetArea || !m_dRack->isFloating()) return;
-    QTimer::singleShot(0, this, [this, area] { if (m_dRack->isFloating()) { m_dRack->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea); m_workspace->addDockWidget(area, m_dRack); m_dRack->setFloating(false); m_dRack->show(); if (area == Qt::TopDockWidgetArea) { /* the top area already holds the editors: put the rack above them, full width */ bool pianoOnTop = m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty(); m_workspace->splitDockWidget(m_dRack, m_dPlaylist, Qt::Vertical); m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); (pianoOnTop ? m_dPiano : m_dPlaylist)->raise(); }
-        // give the rack its content height: constrain it while the layout settles, then release the constraint so the user can resize it
-        int h = m_rack->heightForContent(); m_dRack->setMaximumHeight(h + 24); QTimer::singleShot(150, this, [this, h] { m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); m_dRack->setMaximumHeight(QWIDGETSIZE_MAX); }); QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); }); } });
+    QTimer::singleShot(0, this, [this, area] { if (!m_dRack->isFloating()) return;
+        // Qt's own dock animation would first snap the layout to the rack's full height; we run our own instead:
+        // the rack enters collapsed (1 px) so the editors don't jump, then slides open to its content height
+        m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks); m_dRack->hide(); m_dRack->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea); m_dRack->setFixedHeight(1); /* explicit min+max: overrides the content's minimum size hint */
+        m_workspace->addDockWidget(area, m_dRack); m_dRack->setFloating(false);
+        if (area == Qt::TopDockWidgetArea) { /* the top area already holds the editors: put the rack above them, full width */ bool pianoOnTop = m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty(); m_workspace->splitDockWidget(m_dRack, m_dPlaylist, Qt::Vertical); m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); (pianoOnTop ? m_dPiano : m_dPlaylist)->raise(); }
+        m_workspace->resizeDocks({m_dRack}, {1}, Qt::Vertical); m_dRack->show(); animateRackDock(); QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); }); });
 }
 void MainWindow::showHelp() {
     QMessageBox::information(this, "Quick help", R"(<b>Workflow</b><br>

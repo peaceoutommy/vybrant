@@ -26,6 +26,7 @@ PlaylistView::PlaylistView(App& app, QWidget* parent) : QWidget(parent), m_app(a
     m_hbar = new QScrollBar(Qt::Horizontal, this); m_vbar = new QScrollBar(Qt::Vertical, this);
     connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollTick = (Tick)v * PPQ / 4; invalidate(); } });
     connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollY = v; invalidate(); } });
+    m_ticker = new anim::Ticker(this);
 }
 void PlaylistView::setTool(Tool t) { m_tool = t; setCursor(t == Erase ? theme::deleteCursor() : t == MuteTool ? theme::muteCursor() : t == Slice ? Qt::SplitHCursor : t == Select ? Qt::CrossCursor : Qt::ArrowCursor); Q_EMIT modeChanged(t); }
 PlaylistView::Layout PlaylistView::layout() const { Layout l; int w = width() - 14, h = height() - 14; l.ruler = QRect(l.headerW, 0, w - l.headerW, l.rulerH); l.headers = QRect(0, l.rulerH, l.headerW, h - l.rulerH); l.area = QRect(l.headerW, l.rulerH, w - l.headerW, h - l.rulerH); return l; }
@@ -54,8 +55,9 @@ float PlaylistView::autoValueAtY(const Clip& c, int y) const { QRect r = clipRec
 Tick PlaylistView::autoTickAtX(const Clip& c, int x) const { return clamp<Tick>(xToTick(x) - c.start + c.sourceOffset, 0, c.length + c.sourceOffset); }
 
 // ---------------------------------------------------------------- painting
-void PlaylistView::drawClip(QPainter& p, const Clip& c) {
-    QRect r = clipRect(c); Layout L = layout(); if (r.isNull() || r.right() < L.area.left() || r.left() > L.area.right() || r.bottom() < L.area.top() || r.top() > L.area.bottom()) return;
+void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, double alpha) {
+    QRect r = rectF.toRect(); Layout L = layout(); if (r.isNull() || r.right() < L.area.left() || r.left() > L.area.right() || r.bottom() < L.area.top() || r.top() > L.area.bottom()) return;
+    if (alpha < 0.999) p.setOpacity(alpha);
     auto& proj = m_app.project(); bool sel = m_selected.count(c.id); QColor col = theme::accent2();
     if (c.type == ClipType::Pattern) { if (auto* pat = proj.pattern(c.sourceId)) col = pat->color; } else if (c.type == ClipType::Audio) col = QColor("#5ad1c9"); else if (c.type == ClipType::Automation) { if (auto* l = proj.lane(c.sourceId)) col = l->color; }
     if (c.muted) col = col.darker(220);
@@ -95,7 +97,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c) {
             p.setBrush(col.lighter(180)); p.setPen(theme::bg()); for (auto& pt : l->points) { int x = tickToX(c.start + pt.time - c.sourceOffset); if (x < r.left() || x > r.right()) continue; int y = r.bottom() - 4 - (int)(pt.value * (r.height() - 8)); p.drawEllipse(QPoint(x, y), 3, 3); }
         }
     }
-    p.setClipping(false);
+    p.setClipping(false); p.setOpacity(1.0);
 }
 void PlaylistView::renderCache() {
     Layout L = layout(); m_cache = QPixmap(size()); m_cache.fill(theme::bg()); QPainter p(&m_cache); auto& proj = m_app.project(); const auto& ts = proj.transport.timeSig; Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar();
@@ -108,7 +110,6 @@ void PlaylistView::renderCache() {
     for (Tick t = (m_scrollTick / step) * step; t <= last; t += step) { int x = tickToX(t); bool isBar = t % bar == 0; bool strongBar = t % (barStep * 4) == 0; if (isBar && t % barStep != 0) continue; p.setPen(strongBar && barStep > bar ? theme::gridStrong().lighter(140) : isBar ? theme::gridStrong().lighter(120) : t % beat == 0 ? theme::gridStrong() : theme::grid()); p.drawLine(x, L.area.top(), x, L.area.bottom()); }
     // loop / punch region
     if (proj.transport.loopEnabled) { int x1 = tickToX(proj.transport.loopStart), x2 = tickToX(proj.transport.loopEnd); p.fillRect(QRect(x1, L.area.top(), x2 - x1, L.area.height()), QColor(0xf2, 0xa9, 0x3b, 18)); }
-    for (auto& c : proj.clips) drawClip(p, c);
     p.setClipping(false);
     // ruler
     p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont()); Tick lstep = barStep; while (lstep * m_ppt < 34) lstep *= 2; Tick tickStep = beat * m_ppt >= 6 ? beat : barStep;
@@ -133,6 +134,17 @@ void PlaylistView::renderCache() {
 }
 void PlaylistView::paintEvent(QPaintEvent*) {
     if (!m_cacheValid) renderCache(); QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
+    { // clips: animated (appear / move / vanish), instant while being dragged
+        p.save(); p.setClipRect(L.area); auto& proj = m_app.project(); bool dragging = m_drag == Moving || m_drag == ResizingL || m_drag == ResizingR || m_drag == FadeIn || m_drag == FadeOut;
+        m_clipAnim.begin();
+        // tracked in song space (tick / track index) so scrolling, zooming or resizing the view never "moves" clips
+        auto trackIndex = [&](Id id) { auto& tr = proj.playlistTracks; for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == id) return (int)i; return -1; };
+        auto toPx = [&](const QRectF& m) { int i = std::max(0, (int)std::floor(m.y())); double th = trackH(i); return QRectF(tickToX(0) + m.x() * m_ppt, trackTop(i) + (m.y() - i) * th + 1, std::max(3.0, m.width() * m_ppt), m.height() * th - 2); };
+        for (auto& c : proj.clips) { int ti = trackIndex(c.trackId); if (ti < 0) continue; QRectF target(c.start, ti, proj.clipLength(c), 1); double alpha = 1; QRectF r = toPx(m_clipAnim.item(c.id, target, dragging && m_selected.count(c.id), &alpha)); drawClip(p, c, r, alpha); }
+        m_clipAnim.end([&](Id) { return theme::accent2(); });
+        m_clipAnim.drawGhosts([&](const QRectF& m, const QColor& c, double a) { QRectF r = toPx(m); QColor cc = c; cc.setAlphaF(a * 0.6); p.setPen(Qt::NoPen); p.setBrush(cc); p.drawRoundedRect(r, 2, 2); });
+        p.restore(); m_ticker->keepAlive(m_clipAnim.active());
+    }
     if (m_playTick >= 0) { int x = tickToX((Tick)m_playTick); if (x >= L.area.left() && x <= L.area.right()) { p.setPen(QPen(theme::playhead(), 1.5)); p.drawLine(x, L.ruler.top(), x, L.area.bottom()); } }
     if (m_drag == Rubber) { p.save(); p.setRenderHint(QPainter::Antialiasing, false); p.setPen(QPen(theme::withAlpha(theme::accent(), 220), 1)); p.setBrush(theme::selection()); p.drawRect(m_rubber.normalized()); p.restore(); }
     if (m_tool == Draw && m_drag == NoDrag && L.area.contains(m_hoverPos) && underMouse() && !clipAt(m_hoverPos)) { int tr = trackAtY(m_hoverPos.y()); if (tr >= 0) { if (auto* pat = m_app.project().pattern(m_app.project().selectedPatternId)) { Tick t = snap(xToTick(m_hoverPos.x())); QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(pat->effectiveLength(m_app.project().transport.timeSig) * m_ppt)), trackH(tr) - 2); p.save(); p.setClipRect(L.area); p.setRenderHint(QPainter::Antialiasing, false); p.setPen(QPen(theme::withAlpha(pat->color, 200), 1)); p.setBrush(theme::withAlpha(pat->color, 40)); p.drawRect(r); p.restore(); } } }

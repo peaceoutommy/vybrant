@@ -26,7 +26,7 @@ public:
 protected:
     void closeEvent(QCloseEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; bool eventFilter(QObject* o, QEvent* e) override;
 private:
-    void buildMenus(); void buildDocks(); void onChanged(uint32_t flags); void uiTick(); void updateTitle(); bool maybeSave(); void resetLayout(); void applyDefaultLayout(); void showHelp(); void showMixerPage(bool on); void dockRackAtCandidate(); void updateRackDockCandidate(); void showDockIndicator(Qt::DockWidgetArea area); void hideDockIndicator(); void showWorkspaceDock(QDockWidget* d); void closeAllWindows(); void syncWindowButtons();
+    void buildMenus(); void buildDocks(); void onChanged(uint32_t flags); void uiTick(); void updateTitle(); bool maybeSave(); void resetLayout(); void applyDefaultLayout(); void showHelp(); void showMixerPage(bool on); void dockRackAtCandidate(); void updateRackDockCandidate(); void animateRackDock(); void showDockIndicator(Qt::DockWidgetArea area); void hideDockIndicator(); void showWorkspaceDock(QDockWidget* d); void closeAllWindows(); void syncWindowButtons();
     bool doOpen(const QString& path = QString()); bool doSave(); bool doSaveAs();
     int typingNote(int key) const;
     App& m_app; TransportBar* m_transport; BrowserPanel* m_browser; ChannelRackPanel* m_rack; PianoRollPanel* m_pianoRoll; PlaylistPanel* m_playlist; MixerPanel* m_mixer;

@@ -26,7 +26,7 @@ QStringList PianoRollView::chordNames() { return {"None", "Major", "Minor", "Maj
 
 PianoRollView::PianoRollView(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     setFocusPolicy(Qt::StrongFocus); setMouseTracking(true);
-    m_velH = clamp(QSettings().value("pianoroll/laneHeight", 80).toInt(), 40, 400);
+    m_velH = clamp(QSettings().value("pianoroll/laneHeight", 80).toInt(), 40, 400); m_ticker = new anim::Ticker(this);
     m_hbar = new QScrollBar(Qt::Horizontal, this); m_vbar = new QScrollBar(Qt::Vertical, this);
     connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollTick = (Tick)v * PPQ / 16; invalidate(); } });
     connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_topPitch = 127 - v; invalidate(); } });
@@ -87,7 +87,7 @@ void PianoRollView::renderCache() {
     if (m_ghost && pat) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; const Channel* ch = m_app.project().channel(oc.id); QColor c = ch ? ch->color : theme::textDim(); c.setAlpha(70); for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; p.fillRect(r.adjusted(0, 1, -1, -1), c); } }
     // notes
     const Channel* ch = m_app.project().channel(m_channel); QColor base = ch ? ch->color : theme::accent();
-    bool virt = stepMode(); if (d) for (auto& n : notesView()) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; bool sel = m_selected.count(n.id); QColor c = base.lighter((int)(55 + n.velocity * 65)); if (n.muted) c = c.darker(200); p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(base.darker(160), 1, virt ? Qt::DashLine : Qt::SolidLine)); p.setBrush(virt ? theme::withAlpha(c, 170) : c); p.drawRoundedRect(r.adjusted(0, 1, -1, -1), 2, 2); if (r.width() > 28 && m_rowH >= 10) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(r.adjusted(3, 0, 0, 0), Qt::AlignVCenter | Qt::AlignLeft, theme::noteName(n.pitch)); } }
+    bool virt = stepMode();
     p.setClipping(false);
     // ruler
     p.fillRect(L.ruler, theme::panel()); p.setClipRect(L.ruler); p.setFont(theme::smallFont());
@@ -113,6 +113,19 @@ void PianoRollView::renderCache() {
 void PianoRollView::paintEvent(QPaintEvent*) {
     if (!m_cacheValid) renderCache();
     QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
+    { // notes: animated (appear / move / vanish), instant while being dragged
+        p.save(); p.setClipRect(L.grid); p.setRenderHint(QPainter::Antialiasing); const Channel* ch = m_app.project().channel(m_channel); QColor base = ch ? ch->color : theme::accent(); bool virt = stepMode(); bool dragging = m_drag == Moving || m_drag == Creating || m_drag == Resizing || m_drag == Velocity;
+        m_noteAnim.begin();
+        // tracked in musical space (tick / pitch) so scrolling, zooming or resizing the view never "moves" notes
+        auto toPx = [&](const QRectF& m) { double x = tickToX(0) + m.x() * m_ppt; return QRectF(x, pitchToY(0) - (m.y() + m.height() - 1) * m_rowH + 1, std::max(3.0, m.width() * m_ppt) - 1, m.height() * m_rowH - 1); };
+        for (auto& n : notesView()) { QRectF target(n.start, n.pitch, n.duration, 1); double alpha = 1; bool instant = dragging && m_selected.count(n.id); QRectF r = toPx(m_noteAnim.item(n.id, target, instant, &alpha)); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue;
+            bool sel = m_selected.count(n.id); QColor c = base.lighter((int)(55 + n.velocity * 65)); if (n.muted) c = c.darker(200); QColor cc = c; cc.setAlphaF(alpha * (virt ? 0.67 : 1.0)); QColor pen = sel ? QColor(Qt::white) : base.darker(160); pen.setAlphaF(alpha);
+            p.setPen(QPen(pen, sel ? 1.2 : 1, virt ? Qt::DashLine : Qt::SolidLine)); p.setBrush(cc); p.drawRoundedRect(r, 2, 2);
+            if (r.width() > 28 && m_rowH >= 10 && alpha >= 0.99) { p.setPen(theme::bg()); p.setFont(theme::smallFont()); p.drawText(r.adjusted(3, 0, 0, 0).toRect(), Qt::AlignVCenter | Qt::AlignLeft, theme::noteName(n.pitch)); } }
+        m_noteAnim.end([&](Id) { return base; });
+        m_noteAnim.drawGhosts([&](const QRectF& m, const QColor& c, double a) { QRectF r = toPx(m); QColor cc = c.lighter(110); cc.setAlphaF(a * 0.8); p.setPen(Qt::NoPen); p.setBrush(cc); p.drawRoundedRect(r, 2, 2); });
+        p.restore(); m_ticker->keepAlive(m_noteAnim.active());
+    }
     if (m_playTick >= 0) { int x = tickToX((Tick)m_playTick); if (x >= L.grid.left() && x <= L.grid.right()) { p.setPen(QPen(theme::playhead(), 1.5)); p.drawLine(x, L.ruler.top(), x, L.vel.bottom()); } }
     if (m_drag == Rubber) { p.save(); p.setRenderHint(QPainter::Antialiasing, false); p.setPen(QPen(theme::withAlpha(theme::accent(), 220), 1)); p.setBrush(theme::selection()); p.drawRect(m_rubber.normalized()); p.restore(); }
     if (m_tool == Draw && m_drag == NoDrag && L.grid.contains(m_hoverPos) && underMouse()) { int pitch = yToPitch(m_hoverPos.y()); Tick t = snap(xToTick(m_hoverPos.x())); QRect r(tickToX(t), pitchToY(pitch), std::max(3, (int)(m_lastLength * m_ppt)), m_rowH); p.save(); p.setClipRect(L.grid); p.setPen(QPen(theme::withAlpha(theme::accent(), 200), 1)); p.setBrush(theme::withAlpha(theme::accent(), 40)); p.drawRect(r.adjusted(0, 1, -1, -1)); p.restore(); }
