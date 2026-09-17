@@ -28,7 +28,7 @@ int RackView::stepsPerBar() const { Pattern* p = pattern(); const auto& ts = m_a
 int RackView::patternSteps() const { Pattern* p = pattern(); if (!p) return 16; return (int)(p->effectiveLength(m_app.project().transport.timeSig) / p->stepTicks()); }
 // The rack shows the whole pattern plus enough extra (dimmed) steps to fill the window; only the pattern's own steps play
 int RackView::visibleSteps() const { return std::max(patternSteps(), m_fitSteps); }
-int RackView::stepW() const { return 23; }
+int RackView::stepW() const { return 20; }
 int RackView::stepX(int step) const { return m_leftW + 6 + step * stepW() + (step / 4) * 4; }
 QRect RackView::rowRect(int row) const { return QRect(0, row * m_rowH, width(), m_rowH); }
 QSize RackView::sizeHint() const { int steps = visibleSteps(); int rows = (int)m_app.project().channels.size(); return QSize(stepX(steps) + 12, std::max(rows, 3) * m_rowH + (m_graphMode >= 0 ? m_graphH : 0) + 4); }   // 3 rows minimum: room for the empty-project hint

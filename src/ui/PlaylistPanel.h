@@ -17,7 +17,8 @@ class PlaylistView : public QWidget {
 public:
     enum Tool { Draw, Select, Erase, Slice, MuteTool };
     explicit PlaylistView(App& app, QWidget* parent = nullptr);
-    void setTool(Tool t); Tool tool() const { return m_tool; }
+    void setTool(Tool t);
+    static QCursor toolCursorFor(Tool t); Tool tool() const { return m_tool; }
     void setSnapDivision(int d) { m_snapDiv = d; }
     void refresh(); void uiTick(); void zoomToFit(); Tick maxExtent() const;
     void deleteSelected(); void selectAll(); void duplicateSelected(); void muteSelected(bool m); void crossfadeSelected(); void copySelected(); void cutSelected(); void paste(); void selectBySource(); void sliceAtPlayhead(); void deleteLoopSpace(); void insertLoopSpace();
