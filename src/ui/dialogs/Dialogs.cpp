@@ -14,6 +14,9 @@
 #include <QCoreApplication>
 #include <QStandardPaths>
 #include <QFileInfo>
+#include <QDir>
+#include <QProcess>
+#include <QGroupBox>
 
 namespace mt {
 
@@ -65,16 +68,42 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent) : QDialog(pa
     auto* dbtns = new QVBoxLayout(); auto* add = new QPushButton("Add...", this); auto* rem = new QPushButton("Remove", this); dbtns->addWidget(add); dbtns->addWidget(rem); dbtns->addStretch(1); dl->addLayout(dbtns); lay->addLayout(dl);
     connect(add, &QPushButton::clicked, this, [this] { QString d = QFileDialog::getExistingDirectory(this, "Plugin folder"); if (!d.isEmpty()) { m_dirs->addItem(d); QStringList l; for (int i = 0; i < m_dirs->count(); ++i) l << m_dirs->item(i)->text(); m_app.pluginDb().setDirectories(l); } });
     connect(rem, &QPushButton::clicked, this, [this] { delete m_dirs->currentItem(); QStringList l; for (int i = 0; i < m_dirs->count(); ++i) l << m_dirs->item(i)->text(); m_app.pluginDb().setDirectories(l); });
+    { // Windows plugins via yabridge
+        auto* box = new QGroupBox("Windows plugins (yabridge)", this); auto* bl = new QVBoxLayout(box); m_yabStatus = new QLabel(box); m_yabStatus->setWordWrap(true); m_yabStatus->setTextInteractionFlags(Qt::TextBrowserInteraction); m_yabStatus->setOpenExternalLinks(true); bl->addWidget(m_yabStatus);
+        auto* yl = new QHBoxLayout(); m_yabAdd = new QPushButton("Add Windows plugin folder...", box); m_yabSync = new QPushButton("Sync yabridge + scan", box); yl->addWidget(m_yabAdd); yl->addWidget(m_yabSync); yl->addStretch(1); bl->addLayout(yl); lay->addWidget(box);
+        connect(m_yabAdd, &QPushButton::clicked, this, [this] { QString d = QFileDialog::getExistingDirectory(this, "Folder with Windows VST2 (.dll) / VST3 plugins (inside your Wine prefix, e.g. ~/.wine/drive_c/Program Files/Common Files/VST3)"); if (d.isEmpty()) return; runYabridge({"add", d}, true); });
+        connect(m_yabSync, &QPushButton::clicked, this, [this] { runYabridge({"sync"}, true); });
+        refreshYabridge();
+    }
     auto* sl = new QHBoxLayout(); auto* scan = new QPushButton("Scan for new plugins", this); auto* rescan = new QPushButton("Rescan all", this); auto* cancel = new QPushButton("Cancel", this); auto* clean = new QPushButton("Remove missing", this); m_filter = new QLineEdit(this); m_filter->setPlaceholderText("Filter..."); sl->addWidget(scan); sl->addWidget(rescan); sl->addWidget(cancel); sl->addWidget(clean); sl->addWidget(m_filter, 1); lay->addLayout(sl);
     m_progress = new QProgressBar(this); m_progress->setVisible(false); lay->addWidget(m_progress); m_status = new QLabel(this); lay->addWidget(m_status);
     m_table = new QTableWidget(this); m_table->setColumnCount(7); m_table->setHorizontalHeaderLabels({"★", "Hide", "Name", "Vendor", "Format", "Type", "Path / status"}); m_table->horizontalHeader()->setStretchLastSection(true); m_table->setSelectionBehavior(QAbstractItemView::SelectRows); m_table->setEditTriggers(QAbstractItemView::NoEditTriggers); lay->addWidget(m_table, 1);
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Close, this); lay->addWidget(bb); connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(scan, &QPushButton::clicked, this, [this] { m_progress->setVisible(true); m_app.scanner().scan(false); }); connect(rescan, &QPushButton::clicked, this, [this] { m_progress->setVisible(true); m_app.scanner().scan(true); }); connect(cancel, &QPushButton::clicked, this, [this] { m_app.scanner().cancel(); }); connect(clean, &QPushButton::clicked, this, [this] { m_app.pluginDb().removeMissing(); });
     connect(&app.scanner(), &PluginScanner::progress, this, [this](int d, int t, const QString& cur) { m_progress->setVisible(true); m_progress->setRange(0, std::max(t, 1)); m_progress->setValue(d); m_status->setText("Scanning " + cur); });
-    connect(&app.scanner(), &PluginScanner::finished, this, [this] { m_progress->setVisible(false); m_status->setText(QString("Scan complete: %1 plugin entries").arg(m_app.pluginDb().plugins().size())); rebuild(); });
+    connect(&app.scanner(), &PluginScanner::finished, this, [this] { m_progress->setVisible(false); m_status->setText(QString("Scan complete: %1 plugin entries").arg(m_app.pluginDb().plugins().size())); rebuild(); refreshYabridge(); });
     connect(&app.pluginDb(), &PluginDatabase::changed, this, &PluginManagerDialog::rebuild); connect(m_filter, &QLineEdit::textChanged, this, &PluginManagerDialog::rebuild);
     connect(m_table, &QTableWidget::cellClicked, this, [this](int r, int c) { QString key = m_table->item(r, 2)->data(Qt::UserRole).toString(); const PluginInfo* info = nullptr; for (auto& p : m_app.pluginDb().plugins()) if (p.key() == key) info = &p; if (!info) return; if (c == 0) m_app.pluginDb().setFavorite(key, !info->favorite); else if (c == 1) m_app.pluginDb().setHidden(key, !info->hidden); });
     rebuild();
+}
+void PluginManagerDialog::refreshYabridge() {
+    auto st = yabridge::status(); m_yabAdd->setEnabled(st.installed()); m_yabSync->setEnabled(st.installed());
+    if (!st.installed()) { m_yabStatus->setText(QString("<b>Not installed.</b> Windows .dll / .vst3 plugins run through Wine + yabridge. On Arch / CachyOS: <code>sudo pacman -S wine yabridge yabridgectl</code> (multilib enabled), other distros: <a href=\"https://github.com/robbert-vdh/yabridge\">github.com/robbert-vdh/yabridge</a>. Then reopen this dialog.%1").arg(st.wine.isEmpty() ? "" : " Wine found at " + st.wine + ".")); return; }
+    int bridged = 0; for (auto& p : m_app.pluginDb().plugins()) if (yabridge::isBridged(p.path)) ++bridged;
+    m_yabStatus->setText(QString("<b>%1</b> (%2)%3<br>Windows plugin folders: %4 &nbsp;·&nbsp; bridged plugins in the database: %5. Copy a plugin's .dll / .vst3 into a folder inside your Wine prefix, add that folder here (once), then <i>Sync</i>: the wrappers land in ~/.vst/yabridge and ~/.vst3/yabridge and are scanned like native plugins.")
+        .arg(st.version.isEmpty() ? "yabridge" : st.version, st.yabridgectl, st.wine.isEmpty() ? " - <b>Wine not found</b>, install it first" : "", st.winePluginDirs.isEmpty() ? "none yet" : st.winePluginDirs.join(", ")).arg(bridged));
+}
+void PluginManagerDialog::runYabridge(const QStringList& args, bool syncAndScan) {
+    auto st = yabridge::status(); if (!st.installed()) return; m_status->setText("yabridgectl " + args.join(' ') + " ..."); m_yabAdd->setEnabled(false); m_yabSync->setEnabled(false);
+    auto* p = new QProcess(this); connect(p, &QProcess::finished, this, [this, p, args, syncAndScan](int code, QProcess::ExitStatus) {
+        QString out = QString::fromUtf8(p->readAllStandardOutput() + p->readAllStandardError()).trimmed(); p->deleteLater(); m_status->setText(out.right(300));
+        if (code != 0) { QMessageBox::warning(this, "yabridgectl failed", out.isEmpty() ? "yabridgectl returned an error" : out); refreshYabridge(); return; }
+        if (syncAndScan && args.first() == "add") { runYabridge({"sync"}, true); return; }
+        // make sure the wrapper folders are scanned, then look for the new plugins
+        QStringList dirs = m_app.pluginDb().directories(); bool changed = false; for (auto& d : yabridge::wrapperDirs()) { bool covered = false; for (auto& x : dirs) if (d.startsWith(x)) covered = true; if (!covered && QDir(d).exists()) { dirs << d; changed = true; } } if (changed) { m_app.pluginDb().setDirectories(dirs); m_dirs->clear(); m_dirs->addItems(dirs); }
+        refreshYabridge(); m_progress->setVisible(true); m_app.scanner().scan(false);
+    });
+    p->start(st.yabridgectl, args);
 }
 void PluginManagerDialog::rebuild() {
     m_table->setRowCount(0); QString f = m_filter->text();

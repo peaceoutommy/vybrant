@@ -10,6 +10,16 @@
 
 namespace mt {
 
+// Windows plugins through yabridge (https://github.com/robbert-vdh/yabridge): yabridgectl turns each Windows .dll / .vst3 into a
+// Linux .so / .vst3 wrapper in ~/.vst/yabridge and ~/.vst3/yabridge, which the normal scanner then picks up like any native plugin.
+namespace yabridge {
+struct Status { QString yabridgectl, wine, version; QStringList winePluginDirs; bool installed() const { return !yabridgectl.isEmpty(); } };
+Status status();                                   // looks for yabridgectl / wine on PATH and in ~/.local/share/yabridge
+bool isBridged(const QString& pluginPath);         // true for yabridge wrapper plugins (they boot Wine, so scans / loads take longer)
+QStringList wrapperDirs();                         // ~/.vst/yabridge, ~/.vst3/yabridge
+}
+
+
 struct PluginInfo {
     QString format;          // "vst2" | "vst3"
     QString path;            // bundle dir (vst3) or .so (vst2)

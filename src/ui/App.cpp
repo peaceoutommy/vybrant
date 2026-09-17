@@ -1,4 +1,5 @@
 #include "ui/App.h"
+#include <cstdio>
 #include "audio/RenderEngine.h"
 #include "dsp/NativeRegistry.h"
 #include "dsp/instruments/Instruments.h"
@@ -37,10 +38,15 @@ App::App(QObject* parent) : QObject(parent) {
 }
 App::~App() { m_midi->stop(); m_engine->stopDevice(); s_app = nullptr; }
 
+// The device can be busy for a moment (e.g. a previous instance still closing it): keep trying for a while before giving up
+void App::retryAudioDevice(int attempt) {
+    QTimer::singleShot(500, this, [this, attempt] { if (m_engine->deviceRunning()) return; QString err; if (m_engine->startDevice(&err)) { m_recorder->setSampleRate(m_engine->sampleRate()); Q_EMIT statusMessage("Audio device started", 3000); return; }
+        if (attempt < 20) retryAudioDevice(attempt + 1); else { fprintf(stderr, "Audio device could not be opened: %s\n", err.toUtf8().constData()); Q_EMIT statusMessage("No audio output: " + err + " - check Options > Audio settings", 0); } });
+}
 void App::initialize() {
     m_pluginDb.load();
     m_devices.initialize(); m_devices.loadConfig();
-    QString err; if (!m_engine->startDevice(&err)) Log::warn("Audio device not started: " + err);
+    QString err; if (!m_engine->startDevice(&err)) { Log::warn("Audio device not started: " + err); fprintf(stderr, "Audio device not started: %s (retrying)\n", err.toUtf8().constData()); retryAudioDevice(0); }
     m_recorder->setSampleRate(m_engine->sampleRate());
     m_midi->start();
     m_engine->setMidiClockOut(QSettings().value("midi/clockOut", false).toBool());

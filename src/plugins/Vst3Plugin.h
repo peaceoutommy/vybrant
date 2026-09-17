@@ -64,7 +64,7 @@ private:
     std::shared_ptr<Vst3Module> m_module; std::unique_ptr<Vst3HostObjects> m_host;
     vst3::IComponent* m_component = nullptr; vst3::IAudioProcessor* m_processor = nullptr; vst3::IEditController* m_controller = nullptr; vst3::IMidiMapping* m_midiMapping = nullptr; bool m_controllerIsComponent = false;
     QString m_classId, m_name, m_vendor; bool m_isInstrument = false, m_hasEditor = false, m_active = false, m_processing = false;
-    ParameterSet m_params; std::vector<float> m_lastSent; std::vector<uint32_t> m_paramIds; int m_bypassParamIndex = -1;
+    ParameterSet m_params; std::vector<float> m_lastSent; std::vector<float> m_lastPushed; /* last values pushed to the edit controller (GUI) */ std::vector<uint32_t> m_paramIds; int m_bypassParamIndex = -1;
     double m_sr = 44100; int m_maxBlock = 512; std::atomic<int> m_latency{0}; int m_tail = 0; std::atomic<bool> m_latencyDirty{false};
     // bus buffers
     int m_numInputBuses = 0, m_numOutputBuses = 0; std::vector<vst3::AudioBusBuffers> m_inBuses, m_outBuses; std::vector<std::vector<float*>> m_inPtrs, m_outPtrs; std::vector<std::vector<float>> m_scratch; std::vector<int> m_inChans, m_outChans;

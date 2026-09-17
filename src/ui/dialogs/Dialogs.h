@@ -38,8 +38,8 @@ class PluginManagerDialog : public QDialog {
 public:
     explicit PluginManagerDialog(App& app, QWidget* parent = nullptr);
 private:
-    void rebuild();
-    App& m_app; QListWidget* m_dirs; QTableWidget* m_table; QProgressBar* m_progress; QLabel* m_status; QLineEdit* m_filter;
+    void rebuild(); void refreshYabridge(); void runYabridge(const QStringList& args, bool syncAndScan);
+    App& m_app; QListWidget* m_dirs; QTableWidget* m_table; QProgressBar* m_progress; QLabel* m_status; QLineEdit* m_filter; QLabel* m_yabStatus = nullptr; QPushButton* m_yabAdd = nullptr; QPushButton* m_yabSync = nullptr;
 };
 
 class ExportDialog : public QDialog {

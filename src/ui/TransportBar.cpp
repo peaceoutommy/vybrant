@@ -95,6 +95,7 @@ void TransportBar::uiTick() {
     m_play->setChecked(tv.playing); m_record->setChecked(tv.recording);
     m_position->setText(tv.countingIn ? "COUNT-IN" : theme::tickToBBT((int64_t)tv.positionTicks, tv.tsNum, tv.tsDen)); double secs = ticksToSeconds((Tick)tv.positionTicks, tv.bpm); m_timeSec->setText(QString("%1:%2").arg((int)secs / 60).arg(secs - (int)secs / 60 * 60, 4, 'f', 1, QChar('0')));
     auto& e = m_app.engine(); double lat = e.deviceRunning() ? m_app.devices().reportedOutputLatency() * 1000 : 0;
+    if (!e.deviceRunning()) { m_stats->setText("\u26a0 NO AUDIO DEVICE - Options > Audio settings"); m_stats->setStyleSheet("color:#e2665c; font-family: monospace; font-size:7.5pt; font-weight:bold;"); return; } else if (m_stats->styleSheet().contains("e2665c")) m_stats->setStyleSheet("color:#7e8691; font-family: monospace; font-size:7.5pt;");
     m_stats->setText(QString("%1% \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6").arg((int)(e.cpuLoad() * 100), 2).arg(e.xruns()).arg(e.sampleRate() / 1000.0, 0, 'g', 3).arg(m_app.devices().config().bufferSize).arg(lat, 0, 'f', 1).arg(e.totalLatencySamples()));
     int act = m_app.midi().activityCounter(); m_midiLed->setStyleSheet(act != m_lastMidiActivity ? "color:#5fc074; font-weight:bold; font-size:7.5pt;" : "color:#3a4048; font-weight:bold; font-size:7.5pt;"); m_lastMidiActivity = act;
     if (auto* m = m_app.project().master()) { float v = m_app.engine().registry().track(m->id).volume.load(); m_masterVol->setValue(v / 1.25f); }

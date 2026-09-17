@@ -1,0 +1,4 @@
+#!/bin/sh
+# Send a command to the running MusicThingy instance (see src/ui/ControlServer.cpp for the command list)
+S="${XDG_RUNTIME_DIR:-/tmp}/musicthingy.sock"
+printf '%s\n' "$*" | timeout 5 socat - "UNIX-CONNECT:$S" 2>/dev/null || printf '%s\n' "$*" | timeout 5 nc -U "$S"
