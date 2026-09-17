@@ -239,7 +239,7 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent),
 bool ChannelRackPanel::eventFilter(QObject* o, QEvent* e) { if (o == m_scroll->viewport() && e->type() == QEvent::Resize) m_fitTimer->start(); return QWidget::eventFilter(o, e); }
 // FL behaviour: the number of steps shown (and the pattern's step count) follows the rack width, 4 steps at a time
 void ChannelRackPanel::fitStepsToWidth() {
-    int spb = m_view->stepsPerBar(); int n = std::max(spb, m_view->stepsThatFit(m_scroll->viewport()->width()) / spb * spb);
+    int n = std::max(4, m_view->stepsThatFit(m_scroll->viewport()->width()));   // stepsThatFit already rounds down to groups of 4 steps
     m_view->setFitSteps(n);   // view only: the pattern length is never changed by the window size
 }
 int ChannelRackPanel::heightForContent() const { int rows = std::max(1, (int)m_app.project().channels.size()); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }

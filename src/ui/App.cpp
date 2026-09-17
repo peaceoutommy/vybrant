@@ -214,7 +214,18 @@ Id App::clonePattern(Id id) { const Pattern* src = project().pattern(id); if (!s
 void App::renamePattern(Id id, const QString& name) { m_model.edit<Pattern>(id, "Rename pattern", [name](Pattern& p) { p.name = name; }); std::vector<std::unique_ptr<Command>> cmds; for (auto& c : project().clips) if (c.type == ClipType::Pattern && c.sourceId == id) cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [name](Clip& cl) { cl.name = name; }, 0)); if (!cmds.empty()) m_model.macro("Rename clips", std::move(cmds)); }
 void App::setPatternColor(Id id, const QColor& c) { m_model.edit<Pattern>(id, "Pattern color", [c](Pattern& p) { p.color = c; }); }
 void App::movePattern(Id id, int index) { m_model.reorder<Pattern>(id, index, "Reorder pattern"); }
-void App::setStep(Id patternId, Id channelId, int step, bool enabled) { TimeSignature ts = project().transport.timeSig; m_model.edit<Pattern>(patternId, enabled ? "Set step" : "Clear step", [=](Pattern& p) { auto& d = p.ensureChannel(channelId); if ((int)d.steps.size() <= step) d.steps.resize(step + 1); d.steps[step].enabled = enabled; if (enabled) { int spb = std::max(1, (int)(ts.ticksPerBar() / p.stepTicks())); int need = (step / spb + 1) * spb; if (need > p.stepCount) { p.stepCount = need; for (auto& c : p.channels) if ((int)c.steps.size() < need) c.steps.resize(need); } } }); }
+void App::setStep(Id patternId, Id channelId, int step, bool enabled) {
+    TimeSignature ts = project().transport.timeSig;
+    m_model.edit<Pattern>(patternId, enabled ? "Set step" : "Clear step", [=](Pattern& p) {
+        auto& d = p.ensureChannel(channelId); if ((int)d.steps.size() <= step) d.steps.resize(step + 1); d.steps[step].enabled = enabled;
+        int spb = std::max(1, (int)(ts.ticksPerBar() / p.stepTicks()));
+        // the pattern length follows the steps in whole bars: grows when a step is set beyond it, shrinks back when steps are cleared
+        int last = -1; for (auto& c : p.channels) for (size_t i = 0; i < c.steps.size(); ++i) if (c.steps[i].enabled) last = std::max(last, (int)i);
+        Tick notesEnd = 0; for (auto& c : p.channels) for (auto& n : c.notes) notesEnd = std::max(notesEnd, n.start + n.duration);
+        int need = std::max((last / spb + 1) * spb, (int)((notesEnd + p.stepTicks() - 1) / p.stepTicks() + spb - 1) / spb * spb); need = std::max(need, spb);
+        if (need != p.stepCount) { p.stepCount = need; for (auto& c : p.channels) if ((int)c.steps.size() < need) c.steps.resize(need); }
+    });
+}
 void App::setStepProperty(Id patternId, Id channelId, int step, int which, float value, bool commit) {
     auto fn = [=](Pattern& p) { auto& d = p.ensureChannel(channelId); if ((int)d.steps.size() <= step) d.steps.resize(step + 1); Step& s = d.steps[step]; switch (which) { case 0: s.velocity = clamp(value, 0.f, 1.f); break; case 1: s.pan = clamp(value, -1.f, 1.f); break; case 2: s.pitch = clamp(value, -24.f, 24.f); break; case 3: s.probability = clamp(value, 0.f, 1.f); break; case 4: s.offset = clamp(value, -0.5f, 0.5f); break; } };
     if (commit) m_model.edit<Pattern>(patternId, "Edit step", fn, 3000 + which); else { if (auto* p = project().pattern(patternId)) { fn(*p); m_model.notify(ChangePatterns); } }
