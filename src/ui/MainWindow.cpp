@@ -29,13 +29,14 @@
 #include <QScreen>
 #include <QActionGroup>
 #include <QCursor>
+#include <cstdio>
 #include <QDebug>
 
 namespace mt {
 
 MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(app) {
     setWindowTitle("MusicThingy"); resize(1500, 900); setDockNestingEnabled(true); setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks | GroupedDragging);
-    setCorner(Qt::BottomLeftCorner, Qt::BottomDockWidgetArea); setCorner(Qt::BottomRightCorner, Qt::BottomDockWidgetArea);
+    setCorner(Qt::BottomLeftCorner, Qt::LeftDockWidgetArea); setCorner(Qt::TopLeftCorner, Qt::LeftDockWidgetArea); setCorner(Qt::BottomRightCorner, Qt::BottomDockWidgetArea); setCorner(Qt::TopRightCorner, Qt::TopDockWidgetArea);
     m_workspace = new QMainWindow(this); m_workspace->setWindowFlags(Qt::Widget); m_workspace->setDockNestingEnabled(true); m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks); auto* wc = new QWidget(m_workspace); wc->setFixedSize(0, 0); m_workspace->setCentralWidget(wc); m_pages = new QStackedWidget(this); m_pages->addWidget(m_workspace); setCentralWidget(m_pages);
     m_transport = new TransportBar(app, this); auto* tb = new QToolBar("Transport", this); tb->setObjectName("transportBar"); tb->setMovable(false); tb->addWidget(m_transport); addToolBar(Qt::TopToolBarArea, tb);
     buildDocks(); buildMenus();
@@ -47,7 +48,7 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
         auto* help = new QToolButton(this); help->setIcon(theme::glyphIcon(theme::Glyph::Help, QColor(0xc8, 0xcc, 0xd3), 18)); help->setIconSize(QSize(18, 18)); help->setFixedSize(32, 26); help->setFocusPolicy(Qt::NoFocus); help->setToolTip("Quick help and keyboard shortcuts (F1)"); connect(help, &QToolButton::clicked, this, [this] { showHelp(); }); m_transport->addWindowButton(help);
     }
     qApp->installEventFilter(this);
-    connect(&m_rackReleasePoll, &QTimer::timeout, this, [this] { if (!(QApplication::mouseButtons() & Qt::LeftButton)) { if (m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate(); else m_rackReleasePoll.stop(); } });
+    connect(&m_rackReleasePoll, &QTimer::timeout, this, [this] { if (!m_dRack->isFloating() || !m_dRack->isVisible()) { m_rackReleasePoll.stop(); hideDockIndicator(); return; } QRect g = m_dRack->frameGeometry(); if (g == m_lastRackGeom) { bool buttonsUp = !(QApplication::mouseButtons() & Qt::LeftButton); if (++m_rackStillTicks > (m_rackDragging ? 25 : 8) && buttonsUp) { m_rackReleasePoll.stop(); m_rackDragging = false; if (m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate(); else hideDockIndicator(); } } else { m_rackStillTicks = 0; m_lastRackGeom = g; } });
     m_status = new QLabel(this); statusBar()->addWidget(m_status, 1); m_undoLabel = new QLabel(this); m_undoLabel->setStyleSheet("color:#8a919a;"); statusBar()->addPermanentWidget(m_undoLabel);
     connect(&m_app, &App::statusMessage, this, [this](const QString& m, int t) { if (t == 0) m_status->setText(m); else statusBar()->showMessage(m, t); });
     connect(&m_app, &App::requestOpenEditor, this, [this](Id id, const QString& t) { openEditor(id, t); });
@@ -75,7 +76,8 @@ void MainWindow::buildDocks() {
     connect(m_browser, &BrowserPanel::openEditor, this, [this](Id id) { openEditor(id); });
     connect(m_rack, &ChannelRackPanel::openEditor, this, [this](Id id) { openEditor(id); });
     connect(m_rack, &ChannelRackPanel::openPianoRoll, this, [this](Id id) { m_app.selectChannel(id); showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(id); });
-    connect(m_dRack, &QDockWidget::topLevelChanged, this, [this](bool floating) { if (floating) { QSize s = m_dRack->size(); int w = std::min(s.width(), 900); if (s.width() > 950) QTimer::singleShot(0, m_dRack, [this, w, s] { m_dRack->resize(w, std::min(s.height(), 420)); }); } });
+    QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); });   // edge-based docking only (see eventFilter)
+    connect(m_dRack, &QDockWidget::topLevelChanged, this, [this](bool floating) { if (floating) m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); if (floating) { QSize s = m_dRack->size(); int w = std::min(s.width(), 900); if (s.width() > 950) QTimer::singleShot(0, m_dRack, [this, w, s] { m_dRack->resize(w, std::min(s.height(), 420)); }); } });
     connect(m_mixer, &MixerPanel::openEditor, this, [this](Id id, const QString& t) { openEditor(id, t); });
     connect(m_playlist, &PlaylistPanel::openPattern, this, [this](Id) { showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(m_app.project().selectedChannelId); });
     connect(m_playlist, &PlaylistPanel::openAudioClip, this, [this](Id id) { auto* e = new AudioClipEditor(m_app, id, this); e->show(); });
@@ -181,24 +183,46 @@ void MainWindow::keyReleaseEvent(QKeyEvent* e) { if (e->isAutoRepeat()) { QMainW
 
 // FL behaviour: clicking in the main workspace (playlist / piano roll / mixer) closes the floating Channel Rack; the Browser is exempt so you can browse sounds while the rack stays open.
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
-    // Dock the floating rack by its *own* edges: while it is dragged we only remember which edge it touches; the
-    // dock happens when the button is released (so it can be pulled away again without snapping straight back).
-    if (e->type() == QEvent::Move && o == m_dRack && m_dRack->isFloating() && m_dRack->isVisible() && (QApplication::mouseButtons() & Qt::LeftButton)) {
-        QRect r = m_dRack->frameGeometry(); QRect main = geometry(); const int th = 14;
-        bool overlapsX = r.right() > main.left() + 40 && r.left() < main.right() - 40; int topLimit = main.top() + menuBar()->height() + m_transport->height() + 6;
-        m_rackCandidate = (overlapsX && r.bottom() >= main.bottom() - th) ? Qt::BottomDockWidgetArea : (overlapsX && r.top() <= topLimit + th) ? Qt::TopDockWidgetArea : Qt::NoDockWidgetArea;
-        if (!m_rackReleasePoll.isActive()) m_rackReleasePoll.start(30);
+    // Dock the floating rack by its *own* edges. On X11 floating docks have native window-manager decorations, so the
+    // drag itself is done by the WM: Qt only sees non-client-area press/move/release events and the resulting
+    // QEvent::Move. We track the drag through those, show an indicator while an edge is touched and dock on release.
+    if (o == m_dRack && (e->type() == QEvent::NonClientAreaMouseButtonPress || e->type() == QEvent::MouseButtonPress)) m_rackDragging = true;   // docked or floating: a title-bar press starts a drag
+    if (o == m_dRack && m_dRack->isFloating()) {
+        if (m_rackDragging && (e->type() == QEvent::Move || e->type() == QEvent::NonClientAreaMouseMove || e->type() == QEvent::MouseMove)) updateRackDockCandidate();
+        if (e->type() == QEvent::NonClientAreaMouseButtonRelease || e->type() == QEvent::MouseButtonRelease) { m_rackDragging = false; if (m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate(); else hideDockIndicator(); }
     }
-    if ((e->type() == QEvent::MouseButtonRelease || e->type() == QEvent::NonClientAreaMouseButtonRelease) && m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate();
     if (e->type() == QEvent::MouseButtonPress && m_dRack && m_dRack->isFloating() && m_dRack->isVisible()) {
         QWidget* w = qobject_cast<QWidget*>(o); if (w && w->window() == this && !m_dRack->isAncestorOf(w)) { QWidget* p = w; bool inMain = false; while (p) { if (p == m_dBrowser || p == m_dSamples) return QMainWindow::eventFilter(o, e); if (p == m_pages) { inMain = true; break; } p = p->parentWidget(); } if (inMain) m_dRack->hide(); }
     }
     return QMainWindow::eventFilter(o, e);
 }
+void MainWindow::updateRackDockCandidate() {
+    QRect r = m_dRack->frameGeometry(); QRect main = geometry(); const int th = 16;
+    bool overlapsX = r.right() > main.left() + 40 && r.left() < main.right() - 40; int topLimit = main.top() + menuBar()->height() + m_transport->height() + 6;
+    Qt::DockWidgetArea c = (overlapsX && r.bottom() >= main.bottom() - th) ? Qt::BottomDockWidgetArea : (overlapsX && r.top() <= topLimit + th) ? Qt::TopDockWidgetArea : Qt::NoDockWidgetArea;
+    if (c != m_rackCandidate) { m_rackCandidate = c; if (c == Qt::NoDockWidgetArea) hideDockIndicator(); else showDockIndicator(c); }
+    if (!m_rackReleasePoll.isActive()) m_rackReleasePoll.start(40);
+}
+// Translucent overlay painted inside the main window (a separate window can be suppressed by the WM during a drag)
+class DockIndicatorOverlay : public QWidget {
+public:
+    explicit DockIndicatorOverlay(QWidget* parent) : QWidget(parent) { setAttribute(Qt::WA_TransparentForMouseEvents); setAttribute(Qt::WA_NoSystemBackground); }
+protected:
+    void paintEvent(QPaintEvent*) override { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(theme::withAlpha(theme::accent(), 230), 3)); p.setBrush(theme::withAlpha(theme::accent(), 60)); p.drawRoundedRect(rect().adjusted(2, 2, -2, -2), 6, 6); p.setPen(theme::accent()); QFont f = theme::boldFont(); f.setPointSizeF(12); p.setFont(f); p.drawText(rect(), Qt::AlignCenter, "Release to dock the Channel Rack here"); }
+};
+void MainWindow::showDockIndicator(Qt::DockWidgetArea area) {
+    if (!m_dockIndicator) m_dockIndicator = new DockIndicatorOverlay(this);
+    QRect c = m_workspace->geometry(); c.moveTopLeft(m_workspace->mapTo(this, QPoint(0, 0))); int h = std::min(c.height() / 2, m_dRack->height() + 30);
+    QRect target = area == Qt::BottomDockWidgetArea ? QRect(c.left(), c.bottom() - h, c.width(), h) : QRect(c.left(), c.top(), c.width(), h);
+    m_dockIndicator->setGeometry(target); m_dockIndicator->show(); m_dockIndicator->raise(); m_dockIndicator->update();
+}
+void MainWindow::hideDockIndicator() { if (m_dockIndicator) m_dockIndicator->hide(); }
 void MainWindow::dockRackAtCandidate() {
-    Qt::DockWidgetArea area = m_rackCandidate; m_rackCandidate = Qt::NoDockWidgetArea; m_rackReleasePoll.stop();
+    Qt::DockWidgetArea area = m_rackCandidate; m_rackCandidate = Qt::NoDockWidgetArea; m_rackReleasePoll.stop(); m_rackDragging = false; hideDockIndicator();
     if (area == Qt::NoDockWidgetArea || !m_dRack->isFloating()) return;
-    QTimer::singleShot(0, this, [this, area] { if (m_dRack->isFloating()) { m_dRack->setFloating(false); addDockWidget(area, m_dRack); m_dRack->show(); } });
+    QTimer::singleShot(0, this, [this, area] { if (m_dRack->isFloating()) { m_dRack->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea); m_workspace->addDockWidget(area, m_dRack); m_dRack->setFloating(false); m_dRack->show(); if (area == Qt::TopDockWidgetArea) { /* the top area already holds the editors: put the rack above them, full width */ bool pianoOnTop = m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty(); m_workspace->splitDockWidget(m_dRack, m_dPlaylist, Qt::Vertical); m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); (pianoOnTop ? m_dPiano : m_dPlaylist)->raise(); }
+        // give the rack its content height: constrain it while the layout settles, then release the constraint so the user can resize it
+        int h = m_rack->heightForContent(); m_dRack->setMaximumHeight(h + 24); QTimer::singleShot(150, this, [this, h] { m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); m_dRack->setMaximumHeight(QWIDGETSIZE_MAX); }); QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); }); } });
 }
 void MainWindow::showHelp() {
     QMessageBox::information(this, "Quick help", R"(<b>Workflow</b><br>

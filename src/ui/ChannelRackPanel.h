@@ -21,7 +21,7 @@ public:
     int graphMode() const { return m_graphMode; }
     QSize sizeHint() const override;
     int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 12 - 44) / (4 * stepW() + 4) * 4; return std::max(4, n); }
-    int stepsPerBar() const;
+    int stepsPerBar() const; int patternSteps() const; void setFitSteps(int n) { if (n != m_fitSteps) { m_fitSteps = n; refresh(); } } int m_fitSteps = 16;
     int widthForSteps(int n) const { return m_leftW + 12 + 44 + (n / 4) * (4 * stepW() + 4) + 8; }
 Q_SIGNALS:
     void openEditor(Id channelId); void openPianoRoll(Id channelId);

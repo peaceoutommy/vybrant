@@ -25,7 +25,9 @@ RackView::RackView(App& app, QWidget* parent) : QWidget(parent), m_app(app) { se
 Pattern* RackView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
 const Step* RackView::stepAt(Id ch, int step) const { Pattern* p = pattern(); if (!p) return nullptr; auto* d = p->channelData(ch); if (!d || step < 0 || step >= (int)d->steps.size()) return nullptr; return &d->steps[step]; }
 int RackView::stepsPerBar() const { Pattern* p = pattern(); const auto& ts = m_app.project().transport.timeSig; return std::max(1, (int)(ts.ticksPerBar() / (p ? p->stepTicks() : PPQ / 4))); }
-int RackView::visibleSteps() const { Pattern* p = pattern(); if (!p) return 16; return (int)(p->effectiveLength(m_app.project().transport.timeSig) / p->stepTicks()); }
+int RackView::patternSteps() const { Pattern* p = pattern(); if (!p) return 16; return (int)(p->effectiveLength(m_app.project().transport.timeSig) / p->stepTicks()); }
+// The rack shows the whole pattern plus enough extra (dimmed) steps to fill the window; only the pattern's own steps play
+int RackView::visibleSteps() const { return std::max(patternSteps(), m_fitSteps); }
 int RackView::stepW() const { return 23; }
 int RackView::stepX(int step) const { return m_leftW + 6 + step * stepW() + (step / 4) * 4; }
 QRect RackView::rowRect(int row) const { return QRect(0, row * m_rowH, width(), m_rowH); }
@@ -43,7 +45,7 @@ RackView::HitInfo RackView::hitTest(const QPoint& pt) const {
 
 void RackView::paintEvent(QPaintEvent*) {
     QPainter p(this); p.fillRect(rect(), theme::bg()); p.setRenderHint(QPainter::Antialiasing);
-    Pattern* pat = pattern(); int steps = visibleSteps(); auto& proj = m_app.project();
+    Pattern* pat = pattern(); int steps = visibleSteps(); int patSteps = patternSteps(); auto& proj = m_app.project();
     const auto& chans = proj.channels;
     for (int r = 0; r < (int)chans.size(); ++r) {
         const Channel& c = chans[r]; QRect rr = rowRect(r); bool selected = c.id == proj.selectedChannelId;
@@ -73,7 +75,7 @@ void RackView::paintEvent(QPaintEvent*) {
         }
         for (int s = 0; s < steps; ++s) {
             QRectF sr(stepX(s), rr.top() + 4, stepW() - 2, m_rowH - 8); bool beatA = (s / 4) % 2 == 0; const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr; bool on = st && st->enabled;
-            QColor base = beatA ? QColor(0x2a, 0x2f, 0x37) : QColor(0x23, 0x27, 0x2d); if (m_playStep == s) base = base.lighter(140);
+            QColor base = beatA ? QColor(0x2a, 0x2f, 0x37) : QColor(0x23, 0x27, 0x2d); if (s >= patSteps) base = base.darker(150); if (m_playStep == s) base = base.lighter(140);
             p.setPen(Qt::NoPen); p.setBrush(on ? c.color.lighter(st->velocity > 0.9f ? 115 : (int)(70 + st->velocity * 50)) : base); p.drawRoundedRect(sr, 2.5, 2.5);
             if (on) { p.setPen(QPen(theme::withAlpha(Qt::white, 40), 1)); p.setBrush(Qt::NoBrush); p.drawLine(QPointF(sr.left() + 2, sr.top() + 1), QPointF(sr.right() - 2, sr.top() + 1)); }
             if (on && st->probability < 1.f) { p.setPen(QPen(theme::bg(), 1, Qt::DashLine)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(sr.adjusted(1, 1, -1, -1), 2, 2); }
@@ -237,12 +239,8 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent),
 bool ChannelRackPanel::eventFilter(QObject* o, QEvent* e) { if (o == m_scroll->viewport() && e->type() == QEvent::Resize) m_fitTimer->start(); return QWidget::eventFilter(o, e); }
 // FL behaviour: the number of steps shown (and the pattern's step count) follows the rack width, 4 steps at a time
 void ChannelRackPanel::fitStepsToWidth() {
-    auto* p = m_app.project().pattern(m_app.project().selectedPatternId); if (!p) return;
     int spb = m_view->stepsPerBar(); int n = std::max(spb, m_view->stepsThatFit(m_scroll->viewport()->width()) / spb * spb);
-    Tick notesEnd = 0; for (auto& c : p->channels) for (auto& nt : c.notes) notesEnd = std::max(notesEnd, nt.start + nt.duration); int needed = (int)((notesEnd + p->stepTicks() - 1) / p->stepTicks()); needed = (needed + spb - 1) / spb * spb; n = std::max(n, needed);
-    if (n == p->stepCount) return;
-    p->stepCount = n; for (auto& c : p->channels) if ((int)c.steps.size() < n) c.steps.resize(n);
-    m_app.model().notifyClean(ChangePatterns);
+    m_view->setFitSteps(n);   // view only: the pattern length is never changed by the window size
 }
 int ChannelRackPanel::heightForContent() const { int rows = std::max(1, (int)m_app.project().channels.size()); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }
 void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }

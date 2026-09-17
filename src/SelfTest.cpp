@@ -93,3 +93,21 @@ namespace mt { int runBackupTest(App& app) {
     for (int i = 0; i < 5; ++i) { app.model().setDirty(true); QString err; if (!app.writeBackupNow(&err)) { std::printf("backup failed: %s\n", err.toUtf8().constData()); return 1; } QThread::msleep(1100); }
     auto b = app.backups(); std::printf("backups kept: %d (limit 3), dir %s\n", (int)b.size(), app.backupDir().toUtf8().constData()); for (auto& f : b) std::printf("  %s\n", QFileInfo(f).fileName().toUtf8().constData());
     return b.size() == 3 ? 0 : 1; } }
+
+#include <QDockWidget>
+namespace mt {
+// `--docktest`: drag the floating Channel Rack by its title bar towards the bottom of the main window and report
+int runDockTest(QMainWindow* win) {
+    QDockWidget* rack = nullptr; for (auto* d : win->findChildren<QDockWidget*>()) if (d->objectName() == "dockRack") rack = d;
+    if (!rack) { std::printf("no rack\n"); return 1; }
+    std::printf("start: floating=%d geom=%d,%d %dx%d main=%d,%d %dx%d\n", rack->isFloating(), rack->x(), rack->y(), rack->width(), rack->height(), win->x(), win->y(), win->width(), win->height());
+    QPoint title(rack->width() / 2, 8);   // title bar
+    QMouseEvent press(QEvent::MouseButtonPress, title, rack->mapToGlobal(title), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(rack, &press); QCoreApplication::processEvents();
+    int targetBottom = win->geometry().bottom(); int steps = 12;
+    for (int i = 1; i <= steps; ++i) { int dy = (targetBottom - rack->frameGeometry().bottom()) * i / steps; QPoint p = title + QPoint(0, dy); QMouseEvent mv(QEvent::MouseMove, p, rack->mapToGlobal(p), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(rack, &mv); QCoreApplication::processEvents(); std::printf("move %d: floating=%d rack bottom=%d main bottom=%d\n", i, rack->isFloating(), rack->frameGeometry().bottom(), win->geometry().bottom()); }
+    QPoint last = title + QPoint(0, targetBottom - rack->frameGeometry().bottom());
+    QMouseEvent rel(QEvent::MouseButtonRelease, last, rack->mapToGlobal(last), Qt::LeftButton, Qt::NoButton, Qt::NoModifier); QCoreApplication::sendEvent(rack, &rel); QCoreApplication::processEvents(); QCoreApplication::processEvents();
+    std::printf("after release: floating=%d area=%d\n", rack->isFloating(), (int)win->dockWidgetArea(rack));
+    return 0;
+}
+}
