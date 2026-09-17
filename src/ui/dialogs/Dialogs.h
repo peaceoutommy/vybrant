@@ -1,6 +1,7 @@
 // Settings and utility dialogs.
 #pragma once
 #include "ui/App.h"
+#include "ui/Theme.h"
 #include "audio/RenderEngine.h"
 #include <QDialog>
 #include <QComboBox>
@@ -8,6 +9,8 @@
 #include <QLineEdit>
 #include <QTableWidget>
 #include <QListWidget>
+#include <QToolButton>
+#include <map>
 #include <QProgressBar>
 #include <QLabel>
 #include <QDoubleSpinBox>
@@ -81,6 +84,20 @@ public:
     explicit ProjectInfoDialog(App& app, QWidget* parent = nullptr);
 private:
     App& m_app; QLineEdit *m_title, *m_author, *m_genre; QPlainTextEdit* m_comments;
+};
+
+// Theme picker: choose a preset, optionally override individual colours, applied live to every open window.
+class ThemeDialog : public QDialog {
+    Q_OBJECT
+public:
+    explicit ThemeDialog(QWidget* parent = nullptr);
+private:
+    void reloadList(const QString& selectId);
+    void selectPalette(const QString& id);
+    void apply();          // push m_palette to the whole app
+    void refreshSwatches();
+    theme::Palette m_palette; theme::Palette m_entry;   // working copy, and what was active when the dialog opened
+    QListWidget* m_presets; std::map<QString, QToolButton*> m_swatches; QPushButton *m_saveAs, *m_delete;
 };
 
 } // namespace mt

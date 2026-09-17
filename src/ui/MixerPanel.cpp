@@ -42,18 +42,18 @@ void ProcessorPicker::rebuild(const QString& f) {
 EffectSlotList::EffectSlotList(App& app, Id trackId, QWidget* parent) : QWidget(parent), m_app(app), m_track(trackId) { setAcceptDrops(true); setMinimumHeight(3 * 18); setMaximumHeight(10 * 18 + 2); setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding); }
 void EffectSlotList::refresh() { update(); }
 void EffectSlotList::paintEvent(QPaintEvent*) {
-    QPainter p(this); p.fillRect(rect(), QColor(0x11, 0x13, 0x16)); const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t) return;
+    QPainter p(this); p.fillRect(rect(), theme::surface()); const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t) return;
     int rows = height() / 18; p.setFont(theme::smallFont());
     for (int r = 0; r < rows; ++r) {
         int slot = r + m_scroll; QRect rr(1, r * 18 + 1, width() - 2, 16);
         if (slot < (int)t->effects.size()) {
             const EffectSlot& e = t->effects[slot]; bool crashed = false; if (auto* pd = m_app.project().plugin(e.pluginInstanceId)) crashed = pd->crashed || pd->missing; bool available = m_app.processor(e.id) != nullptr;
-            QColor c = e.bypass ? QColor(0x22, 0x26, 0x2b) : (e.pluginInstanceId ? QColor(0x4a, 0x3c, 0x22) : QColor(0x22, 0x3c, 0x30)); if (crashed || !available) c = QColor(0x4a, 0x24, 0x24);
+            QColor c = e.bypass ? theme::grid() : (e.pluginInstanceId ? QColor(0x4a, 0x3c, 0x22) : QColor(0x22, 0x3c, 0x30)); if (crashed || !available) c = QColor(0x4a, 0x24, 0x24);
             p.setPen(Qt::NoPen); p.setBrush(c); p.drawRoundedRect(rr, 2, 2);
             p.setPen(Qt::NoPen); p.setBrush(e.bypass ? theme::textDim() : theme::green()); p.drawEllipse(QRect(rr.left() + 3, rr.top() + 5, 6, 6));
             p.setPen(e.bypass ? theme::textDim() : theme::text()); p.drawText(rr.adjusted(12, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(e.name.isEmpty() ? e.processorKey : e.name, Qt::ElideRight, rr.width() - 14));
             if (m_dragging && m_dragSlot == slot) { p.setPen(QPen(theme::accent(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rr, 2, 2); }
-        } else { p.setPen(QPen(QColor(0x22, 0x26, 0x2b), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rr, 2, 2); }
+        } else { p.setPen(QPen(theme::grid(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rr, 2, 2); }
     }
 }
 void EffectSlotList::pick(int slot) {
@@ -94,7 +94,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent) : QWidget(parent),
     m_input = new QToolButton(this); m_input->setText("In: -"); m_input->setStyleSheet("QToolButton { padding: 1px 4px; }"); m_input->setToolTip("Hardware input for recording / monitoring"); m_input->setPopupMode(QToolButton::InstantPopup); lay->addWidget(m_input);
     m_slots = new EffectSlotList(app, trackId, this); lay->addWidget(m_slots, 3);
     connect(m_slots, &EffectSlotList::openEditor, this, &MixerStrip::openEditor);
-    auto* mid = new QHBoxLayout(); mid->setSpacing(2); m_pan = new Knob(this, 26); m_pan->setBipolar(true); m_pan->setLabel("Pan"); m_pan->setShowLabel(false); m_pan->setDefault(0.5f); m_pan->valueText = [](float v) { return QString("Pan %1").arg((v - 0.5f) * 2, 0, 'f', 2); }; mid->addWidget(m_pan); m_latency = new QLabel(this); m_latency->setStyleSheet("color:#6a717a; font-size:7pt;"); m_latency->setToolTip("Latency compensation delay applied to this track"); mid->addWidget(m_latency); lay->addLayout(mid);
+    auto* mid = new QHBoxLayout(); mid->setSpacing(2); m_pan = new Knob(this, 26); m_pan->setBipolar(true); m_pan->setLabel("Pan"); m_pan->setShowLabel(false); m_pan->setDefault(0.5f); m_pan->valueText = [](float v) { return QString("Pan %1").arg((v - 0.5f) * 2, 0, 'f', 2); }; mid->addWidget(m_pan); m_latency = new QLabel(this); theme::styled(m_latency, "color:@textDim@; font-size:7pt;"); m_latency->setToolTip("Latency compensation delay applied to this track"); mid->addWidget(m_latency); lay->addLayout(mid);
     auto* fl = new QHBoxLayout(); fl->setSpacing(2); m_fader = new Fader(this); m_fader->valueText = [](float v) { return QString::number(gainToDb(v * 1.25f / 0.8f), 'f', 1) + " dB"; }; fl->addWidget(m_fader); m_meter = new LevelMeter(this); fl->addWidget(m_meter); lay->addLayout(fl, 2);
     auto* bl = new QHBoxLayout(); bl->setSpacing(2); m_mute = new LedButton("M", theme::red(), this); m_solo = new LedButton("S", theme::accent(), this); m_arm = new LedButton("R", QColor(0xe2, 0x5c, 0x5c), this); m_arm->setToolTip("Arm for recording (needs an input)"); bl->addWidget(m_mute); bl->addWidget(m_solo); bl->addWidget(m_arm); lay->addLayout(bl);
     auto* rl = new QHBoxLayout(); rl->setSpacing(2); m_route = new QToolButton(this); m_route->setToolTip("Output routing"); m_route->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); rl->addWidget(m_route); m_sends = new QToolButton(this); m_sends->setText("S"); m_sends->setToolTip("Sends & sidechains from this track"); rl->addWidget(m_sends); lay->addLayout(rl);
@@ -115,14 +115,17 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent) : QWidget(parent),
 }
 void MixerStrip::refresh() {
     const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t) return; m_updating = true;
-    m_name->setText(t->name); m_name->setStyleSheet(QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:3px; background:%1; color:%2; border-bottom: 2px solid %3;").arg(m_selected ? "#2c3139" : "#1e2126", m_selected ? "#f0a13a" : "#c8ccd3", t->color.name()));
+    m_name->setText(t->name);
+    // Kept as a theme template so a live theme change re-applies it; the track colour is this strip's own, not the theme's.
+    theme::styled(m_name, QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:3px; background:%1; color:%2; border-bottom: 2px solid %3;")
+                              .arg(m_selected ? "@hover@" : "@panel@", m_selected ? "@accent@" : "@text@", t->color.name()));
     m_input->setText(t->inputChannel >= 0 ? QString("In %1").arg(t->inputChannel + 1) : "In: -"); m_pan->setValue((t->pan + 1) * 0.5f); m_fader->setValue(t->volume / 1.25f); m_mute->setChecked(t->mute); m_solo->setChecked(t->solo); m_arm->setChecked(t->armed);
     const MixerTrack* out = m_app.project().mixerTrack(t->outputTrackId); m_route->setText(t->isMaster ? "→ Out" : QString("→ %1").arg(out ? (out->isMaster ? "Mst" : QString::number(m_app.project().mixerIndex(out->id))) : "?"));
     int ns = (int)t->sends.size(); m_sends->setText(ns ? QString("S%1").arg(ns) : "S");
     auto& tc = m_app.engine().registry().track(m_track); int d = tc.generatorDelay.delay; m_latency->setText(d > 0 ? QString("+%1").arg(d) : ""); m_slots->refresh(); m_updating = false; update();
 }
 void MixerStrip::uiTick() { auto* tc = m_app.engine().registry().trackIfExists(m_track); if (!tc) return; bool clip = tc->meter.clipped.exchange(false); m_meter->setLevels(tc->meter.peakL.load(), tc->meter.peakR.load(), clip); m_updating = true; m_fader->setValue(tc->volume.load() / 1.25f); m_pan->setValue((tc->pan.load() + 1) * 0.5f); m_updating = false; }
-void MixerStrip::paintEvent(QPaintEvent*) { QPainter p(this); p.fillRect(rect(), m_selected ? QColor(0x20, 0x24, 0x2a) : QColor(0x1a, 0x1d, 0x22)); p.setPen(theme::border()); p.drawLine(width() - 1, 0, width() - 1, height()); }
+void MixerStrip::paintEvent(QPaintEvent*) { QPainter p(this); p.fillRect(rect(), m_selected ? theme::hover() : theme::panel()); p.setPen(theme::border()); p.drawLine(width() - 1, 0, width() - 1, height()); }
 void MixerStrip::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::LeftButton) Q_EMIT selected(m_track, e->modifiers()); QWidget::mousePressEvent(e); }
 void MixerStrip::mouseDoubleClickEvent(QMouseEvent* e) { if (m_name->geometry().contains(e->pos())) { const MixerTrack* t = m_app.project().mixerTrack(m_track); bool ok; QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t ? t->name : "", &ok); if (ok && !n.isEmpty()) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { x.name = n; }); } }
 void MixerStrip::showRouteMenu() { QMenu m; const MixerTrack* t = m_app.project().mixerTrack(m_track); if (!t || t->isMaster) { m.addAction("Master goes to the audio device")->setEnabled(false); m.exec(m_route->mapToGlobal(QPoint(0, m_route->height()))); return; } for (auto& o : m_app.project().mixerTracks) { if (o.id == m_track) continue; auto* a = m.addAction(o.name, [this, id = o.id] { m_app.routeTrack(m_track, id); }); a->setCheckable(true); a->setChecked(o.id == t->outputTrackId); } m.exec(m_route->mapToGlobal(QPoint(0, m_route->height()))); }

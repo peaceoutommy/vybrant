@@ -1,4 +1,9 @@
 #include "ui/dialogs/Dialogs.h"
+#include <QSignalBlocker>
+#include <QRegularExpression>
+#include <QInputDialog>
+#include <QGridLayout>
+#include <QColorDialog>
 #include "ui/Theme.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -55,7 +60,7 @@ MidiSettingsDialog::MidiSettingsDialog(App& app, QWidget* parent) : QDialog(pare
     m_clock = new QCheckBox("Send MIDI clock / start / stop to outputs", this); m_clock->setChecked(QSettings().value("midi/clockOut", false).toBool()); lay->addWidget(m_clock); connect(m_clock, &QCheckBox::toggled, this, [this](bool b) { QSettings().setValue("midi/clockOut", b); m_app.engine().setMidiClockOut(b); });
     lay->addWidget(new QLabel("Controller links (right-click any knob/fader > Link to MIDI controller):", this)); m_mappings = new QTableWidget(this); m_mappings->setColumnCount(3); m_mappings->setHorizontalHeaderLabels({"CC", "Channel", "Target"}); m_mappings->horizontalHeader()->setStretchLastSection(true); lay->addWidget(m_mappings);
     auto* rm = new QPushButton("Remove selected link", this); lay->addWidget(rm); connect(rm, &QPushButton::clicked, this, [this] { int r = m_mappings->currentRow(); if (r >= 0) { m_app.removeMidiMapping(r); rebuildMappings(); } });
-    auto* hint = new QLabel("Hardware ports appear here when connected (ALSA sequencer). Live input plays the channel selected in the Channel Rack.", this); hint->setWordWrap(true); hint->setStyleSheet("color:#8a919a;"); lay->addWidget(hint);
+    auto* hint = new QLabel("Hardware ports appear here when connected (ALSA sequencer). Live input plays the channel selected in the Channel Rack.", this); hint->setWordWrap(true); theme::styled(hint, "color:@textDim@;"); lay->addWidget(hint);
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Close, this); lay->addWidget(bb); connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
     rebuildMappings();
 }
@@ -165,7 +170,7 @@ AutosaveDialog::AutosaveDialog(App& app, QWidget* parent) : QDialog(parent) {
     auto* enabled = new QCheckBox("Enable autosave backups", this); enabled->setChecked(a.enabled); form->addRow(enabled);
     auto* interval = new QSpinBox(this); interval->setRange(1, 120); interval->setValue(a.intervalMinutes); interval->setSuffix(" min"); form->addRow("Save a backup every", interval);
     auto* copies = new QSpinBox(this); copies->setRange(1, 200); copies->setValue(a.maxCopies); form->addRow("Keep the newest", copies);
-    auto* info = new QLabel("Backups are written to a <b>Backup</b> folder next to the project file (name_date_time.mtp) whenever the project has unsaved changes; the oldest copies are recycled once the limit is reached. Ctrl+S always saves over the project itself. Unsaved (untitled) projects get a crash-recovery copy instead.", this); info->setWordWrap(true); info->setStyleSheet("color:#7e8691;"); form->addRow(info);
+    auto* info = new QLabel("Backups are written to a <b>Backup</b> folder next to the project file (name_date_time.mtp) whenever the project has unsaved changes; the oldest copies are recycled once the limit is reached. Ctrl+S always saves over the project itself. Unsaved (untitled) projects get a crash-recovery copy instead.", this); info->setWordWrap(true); theme::styled(info, "color:@textDim@;"); form->addRow(info);
     auto* now = new QPushButton("Write a backup now", this); form->addRow(now); connect(now, &QPushButton::clicked, this, [&app, this] { QString err; if (app.writeBackupNow(&err)) QMessageBox::information(this, "Backup", "Backup written to " + app.backupDir()); else QMessageBox::warning(this, "Backup", err); });
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this); form->addRow(bb); connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(bb, &QDialogButtonBox::accepted, this, [&app, this, enabled, interval, copies] { App::AutosaveSettings s; s.enabled = enabled->isChecked(); s.intervalMinutes = interval->value(); s.maxCopies = copies->value(); app.setAutosaveSettings(s); accept(); });
@@ -178,6 +183,89 @@ ProjectInfoDialog::ProjectInfoDialog(App& app, QWidget* parent) : QDialog(parent
     form->addRow("Title", m_title); form->addRow("Author", m_author); form->addRow("Genre", m_genre); form->addRow("Comments", m_comments); form->addRow("Created", new QLabel(m.created, this)); form->addRow("Modified", new QLabel(m.modified, this));
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this); form->addRow(bb); connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
     connect(bb, &QDialogButtonBox::accepted, this, [this] { QString t = m_title->text(), a = m_author->text(), g = m_genre->text(), c = m_comments->toPlainText(); m_app.model().editMeta("Project info", [=](Project& p) { p.meta.title = t; p.meta.author = a; p.meta.genre = g; p.meta.comments = c; }); accept(); });
+}
+
+
+// ---------------------------------------------------------------- theme
+ThemeDialog::ThemeDialog(QWidget* parent) : QDialog(parent) {
+    setWindowTitle("Theme"); resize(560, 460);
+    m_palette = theme::current(); m_entry = m_palette;
+    auto* lay = new QVBoxLayout(this);
+    auto* row = new QHBoxLayout(); lay->addLayout(row, 1);
+
+    m_presets = new QListWidget(this); m_presets->setFixedWidth(160); row->addWidget(m_presets);
+
+    auto* right = new QVBoxLayout(); row->addLayout(right, 1);
+    right->addWidget(new QLabel("Click a colour to change it. Changes apply to every window as you make them.", this));
+    auto* grid = new QGridLayout(); grid->setHorizontalSpacing(10); grid->setVerticalSpacing(4); right->addLayout(grid);
+    int r = 0;
+    for (auto& role : theme::paletteRoleNames()) {
+        auto* sw = new QToolButton(this); sw->setFixedSize(26, 20); sw->setAutoRaise(false); sw->setToolTip("Pick a colour for " + theme::paletteRoleLabel(role));
+        connect(sw, &QToolButton::clicked, this, [this, role] {
+            QColor c = QColorDialog::getColor(theme::paletteRole(m_palette, role), this, "Colour: " + theme::paletteRoleLabel(role));
+            if (!c.isValid()) return;
+            theme::setPaletteRole(m_palette, role, c); apply(); refreshSwatches();
+        });
+        m_swatches[role] = sw;
+        grid->addWidget(sw, r / 2, (r % 2) * 2); grid->addWidget(new QLabel(theme::paletteRoleLabel(role), this), r / 2, (r % 2) * 2 + 1);
+        ++r;
+    }
+    right->addStretch(1);
+
+    auto* btns = new QHBoxLayout(); lay->addLayout(btns);
+    auto* reset = new QPushButton("Revert", this); reset->setToolTip("Discard the edits made since this theme was selected"); btns->addWidget(reset);
+    m_saveAs = new QPushButton("Save as new theme...", this); m_saveAs->setToolTip("Keep the current colours as your own theme, leaving the preset untouched"); btns->addWidget(m_saveAs);
+    m_delete = new QPushButton("Delete", this); m_delete->setToolTip("Delete the selected custom theme"); btns->addWidget(m_delete);
+    btns->addStretch(1);
+    auto* cancel = new QPushButton("Cancel", this); auto* ok = new QPushButton("Save", this); ok->setDefault(true);
+    btns->addWidget(cancel); btns->addWidget(ok);
+
+    connect(m_presets, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* it, QListWidgetItem*) { if (it) selectPalette(it->data(Qt::UserRole).toString()); });
+    connect(reset, &QPushButton::clicked, this, [this] { selectPalette(m_palette.id); });
+    connect(m_saveAs, &QPushButton::clicked, this, [this] {
+        bool ok = false;
+        QString name = QInputDialog::getText(this, "New theme", "Name:", QLineEdit::Normal, m_palette.name + " (custom)", &ok).trimmed();
+        if (!ok || name.isEmpty()) return;
+        theme::Palette p = m_palette; p.name = name;
+        // The settings key is derived from the name; saving the same name again just overwrites that theme.
+        QString key = name; key.replace(QRegularExpression("[^A-Za-z0-9_-]"), "_");
+        p.id = "user:" + key;
+        theme::saveUserTheme(p); theme::saveTheme(p); m_palette = p; reloadList(p.id);
+    });
+    connect(m_delete, &QPushButton::clicked, this, [this] {
+        if (!theme::isUserTheme(m_palette.id)) return;
+        if (QMessageBox::question(this, "Delete theme", "Delete \"" + m_palette.name + "\"?") != QMessageBox::Yes) return;
+        theme::deleteUserTheme(m_palette.id); reloadList("midnight");
+    });
+    connect(cancel, &QPushButton::clicked, this, [this] { theme::applyTheme(m_entry); reject(); });   // put back what was there
+    connect(ok, &QPushButton::clicked, this, [this] { if (theme::isUserTheme(m_palette.id)) theme::saveUserTheme(m_palette); theme::saveTheme(m_palette); accept(); });
+    reloadList(m_palette.id);
+}
+// Built-in presets first, then whatever the user has saved. A custom theme starts life as a copy of whichever palette
+// was selected when "Save as new theme..." was pressed, so the default theme is the natural starting point.
+void ThemeDialog::reloadList(const QString& selectId) {
+    QSignalBlocker block(m_presets);
+    m_presets->clear();
+    auto add = [this](const theme::Palette& p) { auto* it = new QListWidgetItem(p.name, m_presets); it->setData(Qt::UserRole, p.id); QPixmap pm(14, 14); pm.fill(p.accent); it->setIcon(QIcon(pm)); return it; };
+    for (auto& p : theme::presets()) add(p);
+    auto users = theme::userThemes();
+    if (!users.empty()) { auto* sepItem = new QListWidgetItem("- my themes -", m_presets); sepItem->setFlags(Qt::NoItemFlags); }
+    for (auto& p : users) add(p);
+    for (int i = 0; i < m_presets->count(); ++i) if (m_presets->item(i)->data(Qt::UserRole).toString() == selectId) m_presets->setCurrentRow(i);
+    selectPalette(selectId);
+}
+void ThemeDialog::selectPalette(const QString& id) {
+    if (const theme::Palette* p = theme::preset(id)) m_palette = *p;
+    else if (theme::isUserTheme(id)) { for (auto& u : theme::userThemes()) if (u.id == id) { m_palette = u; break; } }
+    m_delete->setEnabled(theme::isUserTheme(m_palette.id));
+    apply(); refreshSwatches();
+}
+void ThemeDialog::apply() { theme::applyTheme(m_palette); }
+void ThemeDialog::refreshSwatches() {
+    for (auto& [role, sw] : m_swatches) {
+        QColor c = theme::paletteRole(m_palette, role);
+        sw->setStyleSheet(QString("QToolButton { background:%1; border:1px solid %2; border-radius:3px; }").arg(c.name(), theme::border().name()));
+    }
 }
 
 } // namespace mt

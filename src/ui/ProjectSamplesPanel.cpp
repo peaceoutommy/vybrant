@@ -19,11 +19,11 @@ QMimeData* SampleTable::mimeData(const QList<QTableWidgetItem*>& items) const {
 
 ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(4, 4, 4, 4); lay->setSpacing(4);
-    auto* top = new QHBoxLayout(); m_summary = new QLabel(this); m_summary->setStyleSheet("color:#8a919a;"); top->addWidget(m_summary, 1);
+    auto* top = new QHBoxLayout(); m_summary = new QLabel(this); theme::styled(m_summary, "color:@textDim@;"); top->addWidget(m_summary, 1);
     auto* purge = new QToolButton(this); purge->setText("Remove unused"); purge->setToolTip("Forget samples that are not used by any clip or channel"); top->addWidget(purge); lay->addLayout(top);
     m_table = new SampleTable(this); m_table->setColumnCount(4); m_table->setHorizontalHeaderLabels({"Sample", "Used", "Length", "Location"}); m_table->horizontalHeader()->setStretchLastSection(true); m_table->verticalHeader()->setVisible(false); m_table->setSelectionBehavior(QAbstractItemView::SelectRows); m_table->setEditTriggers(QAbstractItemView::NoEditTriggers); m_table->setDragEnabled(true); m_table->setDragDropMode(QAbstractItemView::DragOnly); m_table->setContextMenuPolicy(Qt::CustomContextMenu); m_table->setShowGrid(false); m_table->setAlternatingRowColors(true); m_table->verticalHeader()->setDefaultSectionSize(20);
     lay->addWidget(m_table, 1);
-    auto* hint = new QLabel("Click to preview - drag a row onto the Playlist to place it again - double-click adds it at the playhead", this); hint->setStyleSheet("color:#6a717a; font-size:8pt;"); lay->addWidget(hint);
+    auto* hint = new QLabel("Click to preview - drag a row onto the Playlist to place it again - double-click adds it at the playhead", this); theme::styled(hint, "color:@textDim@; font-size:8pt;"); lay->addWidget(hint);
     connect(m_table, &QTableWidget::cellClicked, this, [this](int r, int) { if (auto* it = m_table->item(r, 0)) m_app.previewFile(it->data(Qt::UserRole).toString()); });
     connect(m_table, &QTableWidget::cellDoubleClicked, this, [this](int r, int) { if (auto* it = m_table->item(r, 0)) { QString p = it->data(Qt::UserRole).toString(); Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id; m_app.addAudioClip(track, p, (Tick)m_app.engine().positionTicks()); } });
     connect(m_table, &QTableWidget::customContextMenuRequested, this, &ProjectSamplesPanel::onContext);

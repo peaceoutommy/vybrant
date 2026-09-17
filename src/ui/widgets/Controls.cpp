@@ -17,9 +17,9 @@ void Knob::setValue(float v, bool emitSignal) { v = clamp(v, 0.f, 1.f); if (std:
 void Knob::paintEvent(QPaintEvent*) {
     QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
     int d = std::min(width() - 4, height() - (m_showLabel ? 14 : 2)); QRectF r((width() - d) / 2.0, 1, d, d);
-    p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x1e, 0x21, 0x26)); p.drawEllipse(r.adjusted(3, 3, -3, -3));
+    p.setPen(QPen(theme::border(), 1)); p.setBrush(theme::panel()); p.drawEllipse(r.adjusted(3, 3, -3, -3));
     const double startAngle = 225, span = -270; QRectF arc = r.adjusted(1.5, 1.5, -1.5, -1.5);
-    p.setPen(QPen(QColor(0x2b, 0x30, 0x37), 2, Qt::SolidLine, Qt::RoundCap)); p.drawArc(arc, (int)(startAngle * 16), (int)(span * 16));
+    p.setPen(QPen(theme::border(), 2, Qt::SolidLine, Qt::RoundCap)); p.drawArc(arc, (int)(startAngle * 16), (int)(span * 16));
     p.setPen(QPen(m_color, 2, Qt::SolidLine, Qt::RoundCap));
     if (m_bipolar) { double mid = startAngle + span * 0.5; double a = span * (m_value - 0.5); p.drawArc(arc, (int)(mid * 16), (int)(a * 16)); }
     else p.drawArc(arc, (int)(startAngle * 16), (int)(span * m_value * 16));
@@ -39,7 +39,7 @@ Fader::Fader(QWidget* parent) : QWidget(parent) { setCursor(Qt::PointingHandCurs
 void Fader::setValue(float v, bool emitSignal) { v = clamp(v, 0.f, 1.f); if (std::fabs(v - m_value) < 1e-6f) return; m_value = v; update(); if (emitSignal) Q_EMIT valueChanged(v); }
 void Fader::paintEvent(QPaintEvent*) {
     QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
-    int trackX = width() / 2; int top = 8, bottom = height() - 8; p.setPen(QPen(QColor(0x11, 0x13, 0x16), 3, Qt::SolidLine, Qt::RoundCap)); p.drawLine(trackX, top, trackX, bottom);
+    int trackX = width() / 2; int top = 8, bottom = height() - 8; p.setPen(QPen(theme::surface(), 3, Qt::SolidLine, Qt::RoundCap)); p.drawLine(trackX, top, trackX, bottom);
     // unity mark (0.64 = 0.8/1.25)
     int unityY = bottom - (int)((bottom - top) * 0.64f); p.setPen(QPen(theme::textDim(), 1)); p.drawLine(trackX - 8, unityY, trackX + 8, unityY);
     int y = bottom - (int)((bottom - top) * m_value); p.setPen(QPen(theme::accent(), 3, Qt::SolidLine, Qt::RoundCap)); p.drawLine(trackX, bottom, trackX, y);
@@ -76,7 +76,7 @@ void LevelMeter::paintEvent(QPaintEvent*) {
 // ---------------------------------------------------------------- DragValue
 DragValue::DragValue(QWidget* parent) : QWidget(parent) { setCursor(Qt::SizeVerCursor); }
 void DragValue::setValue(double v, bool emitSignal) { v = clamp(v, m_min, m_max); double q = std::pow(10.0, -m_decimals); v = std::round(v / q) * q; if (std::fabs(v - m_value) < 1e-9) return; m_value = v; update(); if (emitSignal) Q_EMIT valueChanged(v); }
-void DragValue::paintEvent(QPaintEvent*) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); theme::drawPanel(p, rect().adjusted(0, 0, -1, -1), QColor(0x11, 0x13, 0x16)); p.setPen(QPen(theme::border(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 3, 3); p.setPen(theme::accent()); QFont f = theme::boldFont(); f.setPointSizeF(9.5); p.setFont(f); p.drawText(rect(), Qt::AlignCenter, m_prefix + QString::number(m_value, 'f', m_decimals) + m_suffix); }
+void DragValue::paintEvent(QPaintEvent*) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); theme::drawPanel(p, rect().adjusted(0, 0, -1, -1), theme::surface()); p.setPen(QPen(theme::border(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(rect().adjusted(0, 0, -1, -1), 3, 3); p.setPen(theme::accent()); QFont f = theme::boldFont(); f.setPointSizeF(9.5); p.setFont(f); p.drawText(rect(), Qt::AlignCenter, m_prefix + QString::number(m_value, 'f', m_decimals) + m_suffix); }
 // The step depends on where the cursor is: over the integer digits = whole units, over the decimals = 1/10^decimals
 double DragValue::stepAt(int x) const {
     if (m_decimals <= 0) return std::max(m_step, 1.0);
@@ -91,7 +91,7 @@ void DragValue::wheelEvent(QWheelEvent* e) { double s = stepAt(e->position().toP
 
 // ---------------------------------------------------------------- LedButton
 LedButton::LedButton(const QString& text, const QColor& onColor, QWidget* parent) : QWidget(parent), m_text(text), m_on(onColor) { setCursor(Qt::PointingHandCursor); setToolTip(text); }
-void LedButton::paintEvent(QPaintEvent*) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); QRectF r = rect().adjusted(0, 0, -1, -1); p.setPen(QPen(m_checked ? m_on.darker(120) : theme::border(), 1)); p.setBrush(m_checked ? m_on : QColor(0x1e, 0x21, 0x26)); p.drawRoundedRect(r, 2, 2); p.setPen(m_checked ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, m_text); }
+void LedButton::paintEvent(QPaintEvent*) { QPainter p(this); p.setRenderHint(QPainter::Antialiasing); QRectF r = rect().adjusted(0, 0, -1, -1); p.setPen(QPen(m_checked ? m_on.darker(120) : theme::border(), 1)); p.setBrush(m_checked ? m_on : theme::panel()); p.drawRoundedRect(r, 2, 2); p.setPen(m_checked ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, m_text); }
 void LedButton::mousePressEvent(QMouseEvent* e) { if (e->button() == Qt::RightButton) { Q_EMIT rightClicked(); return; } m_checked = !m_checked; update(); Q_EMIT toggled(m_checked); }
 
 } // namespace mt
