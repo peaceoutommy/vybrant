@@ -23,7 +23,7 @@ namespace mt {
 
 PlaylistView::PlaylistView(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     setFocusPolicy(Qt::StrongFocus); setMouseTracking(true); setAcceptDrops(true);
-    m_hbar = new QScrollBar(Qt::Horizontal, this); m_vbar = new QScrollBar(Qt::Vertical, this);
+    m_hbar = new QScrollBar(Qt::Horizontal, this); m_vbar = new QScrollBar(Qt::Vertical, this); m_hbar->setCursor(Qt::ArrowCursor); m_vbar->setCursor(Qt::ArrowCursor);   // tool cursors are for the canvas only
     connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollTick = (Tick)v * PPQ / 4; invalidate(); } });
     connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollY = v; invalidate(); } });
     m_ticker = new anim::Ticker(this);

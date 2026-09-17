@@ -81,9 +81,9 @@ void MainWindow::buildDocks() {
     m_rack->setMinimumHeight(180); m_dRack->setMinimumHeight(200); resizeDocks({m_dBrowser}, {260}, Qt::Horizontal); resizeDocks({m_dRack}, {330}, Qt::Vertical);
     connect(m_browser, &BrowserPanel::openEditor, this, [this](Id id) { openEditor(id); });
     connect(m_rack, &ChannelRackPanel::openEditor, this, [this](Id id) { openEditor(id); });
-    connect(m_rack, &ChannelRackPanel::openPianoRoll, this, [this](Id id) { m_app.selectChannel(id); showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(id); });
-    QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); });   // edge-based docking only (see eventFilter)
-    connect(m_dRack, &QDockWidget::topLevelChanged, this, [this](bool floating) { if (floating) m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); if (floating) { QSize s = m_dRack->size(); int w = std::min(s.width(), 900); if (s.width() > 950) QTimer::singleShot(0, m_dRack, [this, w, s] { m_dRack->resize(w, std::min(s.height(), 420)); }); } });
+    connect(m_rack, &ChannelRackPanel::openPianoRoll, this, [this](Id id) { m_app.selectChannel(id); closeAllWindows(); /* rack, editors, mixer page out of the way: the piano roll takes the stage */ showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(id); m_dPiano->raise(); m_pianoRoll->setFocus(); syncWindowButtons(); });
+    QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); updateWorkspaceSeparators(); });   // edge-based docking only (see eventFilter)
+    connect(m_dRack, &QDockWidget::topLevelChanged, this, [this](bool floating) { QTimer::singleShot(0, this, [this] { updateWorkspaceSeparators(); }); if (floating) m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); if (floating) { QSize s = m_dRack->size(); int w = std::min(s.width(), 900); if (s.width() > 950) QTimer::singleShot(0, m_dRack, [this, w, s] { m_dRack->resize(w, std::min(s.height(), 420)); }); } });
     connect(m_mixer, &MixerPanel::openEditor, this, [this](Id id, const QString& t) { openEditor(id, t); });
     connect(m_playlist, &PlaylistPanel::openPattern, this, [this](Id) { showWorkspaceDock(m_dPiano); m_pianoRoll->showChannel(m_app.project().selectedChannelId); });
     connect(m_playlist, &PlaylistPanel::openAudioClip, this, [this](Id id) { auto* e = new AudioClipEditor(m_app, id, this); e->show(); });
@@ -195,7 +195,7 @@ void MainWindow::syncWindowButtons() {
 }
 void MainWindow::startupChecks() { if (m_app.hasRecoveryFile()) { auto r = QMessageBox::question(this, "Recover project", "An autosaved recovery file from a previous session was found. Recover it?", QMessageBox::Yes | QMessageBox::No); if (r == QMessageBox::Yes) m_app.recoverAutosave(); else QFile::remove(m_app.autosavePath()); } }
 void MainWindow::closeEvent(QCloseEvent* e) { if (!m_forceClose && !maybeSave()) { e->ignore(); return; } QSettings s; s.setValue("ui/geometry", saveGeometry()); s.setValue("ui/state", saveState()); s.setValue("ui/workspace", m_workspace->saveState()); for (auto& [id, w] : m_editors) w->close(); e->accept(); }
-bool MainWindow::saveScreenshot(const QString& path) { QPixmap pm = grab(); bool ok = pm.save(path); if (QWidget* m = QApplication::activeModalWidget()) { QString p = path; p.insert(p.lastIndexOf('.'), "_dialog"); m->grab().save(p); } for (auto* d : {m_dRack}) if (d->isFloating() && d->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), "_" + d->objectName()); d->grab().save(p); } return ok; }
+bool MainWindow::saveScreenshot(const QString& path) { QPixmap pm = grab(); bool ok = pm.save(path); if (QWidget* m = QApplication::activeModalWidget()) { QString p = path; p.insert(p.lastIndexOf('.'), "_dialog"); m->grab().save(p); } int ei = 0; for (auto& [id, w] : m_editors) if (w && w->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), QString("_editor%1").arg(ei++)); w->grab().save(p); } for (auto* d : {m_dRack}) if (d->isFloating() && d->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), "_" + d->objectName()); d->grab().save(p); } return ok; }
 
 int MainWindow::typingNote(int key) const {
     static const char lower[] = "zsxdcvgbhnjm,l.;/"; static const char upper[] = "q2w3er5t6y7ui9o0p";
@@ -246,11 +246,14 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
     return QMainWindow::eventFilter(o, e);
 }
 // Slide the freshly docked rack open instead of letting the layout jump (undocking is already animated by Qt)
+// The workspace is a QMainWindow whose central widget is empty, so Qt still offers a resize separator along its bottom edge.
+// Only show separators when the rack is actually docked there (then the playlist/rack split is a real resize).
+void MainWindow::updateWorkspaceSeparators() { bool rackDocked = m_dRack && !m_dRack->isFloating() && m_dRack->parentWidget() && m_workspace->isAncestorOf(m_dRack); m_workspace->setStyleSheet(rackDocked ? QString() : QStringLiteral("QMainWindow::separator { width: 0px; height: 0px; margin: 0; padding: 0; }")); }
 void MainWindow::animateRackDock() {
     int h = m_rack->heightForContent() + 24; bool dbg = qEnvironmentVariableIsSet("MT_DEBUG_DOCK");
     auto* a = new QVariantAnimation(this); a->setDuration(anim::kDurationMs * 2); a->setEasingCurve(QEasingCurve::OutCubic); a->setStartValue(1); a->setEndValue(h);
     connect(a, &QVariantAnimation::valueChanged, this, [this, dbg](const QVariant& v) { int hh = v.toInt(); m_dRack->setFixedHeight(hh); m_workspace->resizeDocks({m_dRack}, {hh}, Qt::Vertical); if (dbg) fprintf(stderr, "dock anim %d -> rack %d playlist y %d\n", hh, m_dRack->height(), m_dPlaylist->y()); });
-    connect(a, &QVariantAnimation::finished, this, [this, h] { m_dRack->setMinimumHeight(0); m_dRack->setMaximumHeight(QWIDGETSIZE_MAX); m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks); });
+    connect(a, &QVariantAnimation::finished, this, [this, h] { updateWorkspaceSeparators(); m_dRack->setMinimumHeight(0); m_dRack->setMaximumHeight(QWIDGETSIZE_MAX); m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks); });
     QTimer::singleShot(30, a, [a] { a->start(QAbstractAnimation::DeleteWhenStopped); });
 }
 void MainWindow::debugSearch(const QString& t) { QElapsedTimer et; et.start(); m_browser->debugSearch(t); fprintf(stderr, "search '%s' took %lld ms\n", t.toUtf8().constData(), (long long)et.elapsed()); }

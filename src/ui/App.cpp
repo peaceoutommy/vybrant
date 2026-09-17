@@ -1,4 +1,5 @@
 #include "ui/App.h"
+#include <QRegularExpression>
 #include <cstdio>
 #include "audio/RenderEngine.h"
 #include "dsp/NativeRegistry.h"
@@ -197,7 +198,12 @@ void App::setChannelPan(Id id, float v, bool commit) { if (auto* c = m_engine->r
 void App::setChannelMute(Id id, bool m) { m_model.edit<Channel>(id, m ? "Mute channel" : "Unmute channel", [m](Channel& c) { c.mute = m; }); }
 void App::setChannelSolo(Id id, bool s) { m_model.edit<Channel>(id, "Solo channel", [s](Channel& c) { c.solo = s; }); }
 void App::setChannelEnabled(Id id, bool e) { m_model.edit<Channel>(id, "Enable channel", [e](Channel& c) { c.enabled = e; }); }
-void App::setChannelMixerTrack(Id id, Id trackId) { m_model.edit<Channel>(id, "Route channel", [trackId](Channel& c) { c.mixerTrackId = trackId; }); }
+void App::setChannelMixerTrack(Id id, Id trackId) {
+    const Channel* ch = project().channel(id); const MixerTrack* t = project().mixerTrack(trackId); if (!ch || !t) return;
+    std::vector<std::unique_ptr<Command>> cmds; cmds.push_back(std::make_unique<EditObjectCommand<Channel>>(m_model, id, "", [trackId](Channel& c) { c.mixerTrackId = trackId; }, 0));
+    static const QRegularExpression defaultName("^Insert \\d+$"); if (!t->isMaster && defaultName.match(t->name).hasMatch()) { QString n = ch->name; cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, trackId, "", [n](MixerTrack& x) { x.name = n; }, 0)); }   // FL: the insert takes the channel's name
+    m_model.macro("Route channel", std::move(cmds));
+}
 void App::setChannelSample(Id id, const QString& path) {
     auto* ch = project().channel(id); if (!ch) return;
     if (ch->type == ChannelType::Sampler || ch->type == ChannelType::DrumSampler) {

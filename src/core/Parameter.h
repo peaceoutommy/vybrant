@@ -18,18 +18,21 @@ struct ParamDesc {
     float min = 0.f, max = 1.f, def = 0.f;
     ParamUnit unit = ParamUnit::Generic;
     bool automatable = true;
-    bool logarithmic = false;      // map normalized value logarithmically (Hz, ms)
+    bool logarithmic = false;      // map normalized value logarithmically (Hz, ms); with min = 0 an exponential curve from 0 is used
+    static constexpr float kExpCurve = 3000.f;   // e^k-1 style curve steepness for zero-based log params (5 s range: 10% of the knob = ~2 ms)
     int steps = 0;                 // >0 = discrete (Choice/Toggle)
     std::vector<std::string> choices;
 
     float toNormalized(float plain) const {
         plain = clamp(plain, min, max);
         if (logarithmic && min > 0.f) return std::log(plain / min) / std::log(max / min);
+        if (logarithmic && max > 0.f) return std::log(1.f + plain / max * (kExpCurve - 1.f)) / std::log(kExpCurve);   // log-like curve that still reaches 0 (times: 0 ms is a valid setting)
         return (max > min) ? (plain - min) / (max - min) : 0.f;
     }
     float fromNormalized(float n) const {
         n = clamp(n, 0.f, 1.f);
         if (logarithmic && min > 0.f) return min * std::pow(max / min, n);
+        if (logarithmic && max > 0.f) return max * (std::pow(kExpCurve, n) - 1.f) / (kExpCurve - 1.f);
         float v = min + n * (max - min);
         if (steps > 0) v = std::round(v);
         return v;

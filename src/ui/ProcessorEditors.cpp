@@ -1,6 +1,11 @@
 // Custom editors for native processors (installed into the DSP layer through nativeEditorFactory()).
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
+#include <array>
+#include <QToolButton>
+#include <QSettings>
+#include <QInputDialog>
+#include <algorithm>
 #include "dsp/instruments/Instruments.h"
 #include "dsp/effects/Effects.h"
 #include <QPainter>
@@ -33,6 +38,7 @@ public:
     std::function<bool()> reversed;                   // play backwards
     std::function<std::pair<float, float>()> loop;    // loop region (fractions), enabled when first < second
     std::function<QString()> caption;                 // extra info line
+    std::function<bool()> showEnvelope;               // draw the envelope line + translucent fill (only once the user has touched the envelope)
     void paintEvent(QPaintEvent*) override {
         QPainter p(this); p.fillRect(rect(), theme::surface()); auto a = asset ? asset() : nullptr;
         if (!a || a->frames == 0) { p.setPen(theme::textDim()); p.drawText(rect(), Qt::AlignCenter, "Drop an audio file here or use Load"); return; }
@@ -49,7 +55,10 @@ public:
             if (mx < mn) continue; float g = envelope ? envelope(frac) : 1.f; bool active = frac >= st; QColor c = active ? QColor("#5ad1c9") : QColor(0x3a, 0x45, 0x50); if (g > 1.f && active) c = c.lighter(110 + (int)std::min(60.f, (g - 1) * 40));
             p.setPen(c); p.drawLine(x, mid - (int)(clamp(mx * g, -1.f, 1.f) * hh), x, mid - (int)(clamp(mn * g, -1.f, 1.f) * hh));
         }
-        if (envelope) { QPolygonF env; for (int x = 0; x < wave.width(); x += 2) env << QPointF(x, mid - clamp(envelope((double)x / wave.width()), 0.f, 1.f) * hh); p.setPen(QPen(theme::withAlpha(theme::accent(), 150), 1)); p.drawPolyline(env); }
+        if (envelope && (!showEnvelope || showEnvelope())) { // envelope: line over the sound with a translucent body underneath it
+            QPolygonF env; for (int x = 0; x <= wave.width(); x += 2) env << QPointF(x, mid - clamp(envelope((double)x / wave.width()), 0.f, 1.f) * hh);
+            QPolygonF body = env; body << QPointF(wave.width(), mid) << QPointF(0, mid); p.setRenderHint(QPainter::Antialiasing); p.setPen(Qt::NoPen); p.setBrush(theme::withAlpha(theme::accent(), 34)); p.drawPolygon(body);
+            p.setPen(QPen(theme::withAlpha(theme::accent(), 200), 1.5)); p.setBrush(Qt::NoBrush); p.drawPolyline(env); p.setRenderHint(QPainter::Antialiasing, false); }
         int sx = (int)(st * wave.width()); p.setPen(QPen(theme::accent(), 2)); p.drawLine(sx, wave.top(), sx, wave.bottom());
         if (hasLoop) { p.setPen(QPen(theme::accent2(), 1, Qt::DashLine)); int lx1 = (int)(lp.first * wave.width()), lx2 = (int)(lp.second * wave.width()); p.drawLine(lx1, wave.top(), lx1, wave.bottom()); p.drawLine(lx2, wave.top(), lx2, wave.bottom()); }
         p.setPen(theme::textDim()); p.setFont(theme::smallFont()); QString info = QString("%1  |  %2 s  |  %3 Hz  |  %4%5").arg(QFileInfo(a->path).fileName()).arg(a->seconds(), 0, 'f', 2).arg((int)a->originalSampleRate).arg(a->channels == 1 ? "mono" : "stereo").arg(rev ? "  |  reversed" : ""); if (caption) info += "  |  " + caption(); p.drawText(4, 12, info);
@@ -82,8 +91,33 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
     wave->caption = [s] { auto& ps = s->params(); float semis = ps.get(Sampler::pTune) + ps.get(Sampler::pFine) / 100.f; QString c = QString("level %1 dB").arg(gainToDb(ps.get(Sampler::pLevel)), 0, 'f', 1); if (std::fabs(semis) > 0.01f) c += QString("  |  tune %1 st").arg(semis, 0, 'f', 2); if (ps.get(Sampler::pCutoff) < 19000.f) c += QString("  |  %1 %2 Hz").arg(ps.getInt(Sampler::pFilterType) == 0 ? "LP" : ps.getInt(Sampler::pFilterType) == 1 ? "HP" : "BP").arg((int)ps.get(Sampler::pCutoff)); return c; };
     wave->onDrop = [&app, owner, name](const QString& p) { app.setChannelSample(owner, p); name->setText(QFileInfo(p).fileName()); };
     QObject::connect(load, &QPushButton::clicked, w, [&app, owner, name, w] { QString p = QFileDialog::getOpenFileName(w, "Load sample", QString(), "Audio (*.wav *.aif *.aiff *.flac *.ogg *.mp3)"); if (!p.isEmpty()) { app.setChannelSample(owner, p); name->setText(QFileInfo(p).fileName()); } });
-    lay->addWidget(wave); auto* params = new GenericParamPanel(app, owner, s, nullptr, 7, w); lay->addWidget(params);
-    auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [wave, params] { wave->update(); params->sync(); }); t->start(100);
+    lay->addWidget(wave);
+    // knobs grouped by what they do: sample / envelope / filter / output
+    struct Group { const char* title; std::vector<uint32_t> ids; int cols; };
+    static const std::vector<Group> groups = { {"Envelope", {Sampler::pAttack, Sampler::pDecay, Sampler::pSustain, Sampler::pRelease}, 4}, {"Sample", {Sampler::pStart, Sampler::pReverse, Sampler::pLoopMode, Sampler::pLoopStart, Sampler::pLoopEnd}, 5}, {"Pitch", {Sampler::pRoot, Sampler::pTune, Sampler::pFine}, 3}, {"Filter", {Sampler::pFilterType, Sampler::pCutoff, Sampler::pReso}, 3}, {"Output", {Sampler::pLevel, Sampler::pPan, Sampler::pVelSens, Sampler::pPitchBendRange, Sampler::pGlide}, 5} };
+    // three rows of groups so the window stays compact: Sample + Pitch / Envelope + Filter / Output
+    static const int rowOf[] = {0, 0, 1, 1, 2}; /* Envelope + Sample / Pitch + Filter / Output */ auto* grid = new QGridLayout(); grid->setHorizontalSpacing(14); grid->setVerticalSpacing(4); std::vector<GenericParamPanel*> panels; int col[3] = {0, 0, 0};
+    for (size_t i = 0; i < groups.size(); ++i) { auto& g = groups[i]; auto* box = new QVBoxLayout(); box->setSpacing(2); auto* title = new QLabel(g.title, w); theme::styled(title, "color:@textDim@; font-weight:bold; font-size:8pt;"); auto* th = new QHBoxLayout(); th->setSpacing(6); th->addWidget(title);
+        if (i == 0) { // envelope presets: built-ins (808, pluck, pad...) plus your own, stored in the settings
+            auto* pb = new QToolButton(w); pb->setText("Presets \u25BE"); pb->setPopupMode(QToolButton::InstantPopup); pb->setToolTip("Envelope presets: apply a built-in shape or save the current A/D/S/R as your own"); pb->setStyleSheet("QToolButton { padding: 0 6px; font-size: 8pt; }"); th->addWidget(pb);
+            auto* pm = new QMenu(pb); pb->setMenu(pm);
+            struct EnvPreset { QString name; float a, d, s, r; }; auto applyEnv = [&app, owner, s](const EnvPreset& e) { auto& ps = s->params(); auto set = [&](uint32_t id, float v) { app.setProcessorParam(owner, id, ps.desc(ps.indexOf(id)).toNormalized(v), true); }; set(Sampler::pAttack, e.a); set(Sampler::pDecay, e.d); set(Sampler::pSustain, e.s); set(Sampler::pRelease, e.r); };
+            auto userPresets = [] { std::vector<EnvPreset> v; for (auto& line : QSettings().value("sampler/envPresets").toStringList()) { auto f = line.split('|'); if (f.size() == 5) v.push_back({f[0], f[1].toFloat(), f[2].toFloat(), f[3].toFloat(), f[4].toFloat()}); } return v; };
+            auto saveUser = [](const std::vector<EnvPreset>& v) { QStringList l; for (auto& e : v) l << QString("%1|%2|%3|%4|%5").arg(e.name).arg(e.a).arg(e.d).arg(e.s).arg(e.r); QSettings().setValue("sampler/envPresets", l); };
+            QObject::connect(pm, &QMenu::aboutToShow, pm, [pm, applyEnv, userPresets, saveUser, s, w] { pm->clear();
+                static const std::vector<EnvPreset> builtIn = { {"808 / long bass", 0.f, 1.5f, 1.f, 0.25f}, {"One-shot (whole sample)", 0.f, 0.1f, 1.f, 0.05f}, {"Punchy", 0.f, 0.35f, 0.f, 0.06f}, {"Pluck", 0.f, 0.15f, 0.f, 0.1f}, {"Soft attack", 0.05f, 0.3f, 0.8f, 0.3f}, {"Pad", 0.4f, 0.5f, 0.85f, 0.9f}, {"Gate (no tail)", 0.f, 0.1f, 1.f, 0.f} };
+                for (auto& e : builtIn) pm->addAction(e.name, [applyEnv, e] { applyEnv(e); });
+                auto user = userPresets(); if (!user.empty()) { pm->addSeparator(); for (auto& e : user) pm->addAction(e.name, [applyEnv, e] { applyEnv(e); }); }
+                pm->addSeparator(); pm->addAction("Save current as...", [s, userPresets, saveUser, w] { bool ok; QString n = QInputDialog::getText(w, "Save envelope preset", "Name:", QLineEdit::Normal, "My 808", &ok); if (!ok || n.trimmed().isEmpty()) return; auto v = userPresets(); auto& ps = s->params(); EnvPreset e{n.trimmed(), ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; bool replaced = false; for (auto& x : v) if (x.name == e.name) { x = e; replaced = true; } if (!replaced) v.push_back(e); saveUser(v); });
+                if (!user.empty()) { auto* del = pm->addMenu("Delete preset"); for (auto& e : user) del->addAction(e.name, [userPresets, saveUser, name = e.name] { auto v = userPresets(); std::erase_if(v, [&](const EnvPreset& x) { return x.name == name; }); saveUser(v); }); } });
+        }
+        th->addStretch(1); box->addLayout(th); auto ids = g.ids; auto* gp = new GenericParamPanel(app, owner, s, [ids](const ParamDesc& d) { return std::find(ids.begin(), ids.end(), d.id) != ids.end(); }, g.cols, w); box->addWidget(gp); int r = rowOf[i]; grid->addLayout(box, r, col[r]++, Qt::AlignLeft | Qt::AlignTop); panels.push_back(gp); }
+    for (int r = 0; r < 3; ++r) grid->setColumnStretch(col[r], 1); lay->addLayout(grid);
+    // the envelope overlay appears once the envelope has been touched (now, or earlier in this project)
+    auto* envTouched = new bool(false); auto* lastEnv = new std::array<float, 4>{}; { auto& ps = s->params(); *lastEnv = {ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; for (int i = 0; i < ps.count(); ++i) { auto& d = ps.desc(i); if ((d.id == Sampler::pAttack || d.id == Sampler::pDecay || d.id == Sampler::pSustain || d.id == Sampler::pRelease) && std::fabs(ps.get(d.id) - d.def) > 1e-5f) *envTouched = true; } }
+    QObject::connect(w, &QObject::destroyed, [envTouched, lastEnv] { delete envTouched; delete lastEnv; });
+    wave->showEnvelope = [envTouched] { return *envTouched; };
+    auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [wave, panels, s, envTouched, lastEnv] { auto& ps = s->params(); std::array<float, 4> cur = {ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; if (cur != *lastEnv) { *lastEnv = cur; *envTouched = true; } wave->update(); for (auto* gp : panels) gp->sync(); }); t->start(100);
     return w;
 }
 

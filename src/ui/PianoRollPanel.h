@@ -42,6 +42,7 @@ public:
 Q_SIGNALS:
     void toolChanged(int tool); void channelRequested(Id channelId); void modeChanged(int tool);   // tool currently shown in the toolbar (temporary modes included)
 protected:
+    bool event(QEvent* e) override;
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; void resizeEvent(QResizeEvent*) override; void contextMenuEvent(QContextMenuEvent*) override; void leaveEvent(QEvent*) override;
 private:
     enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect, Muting, Seek, LaneResize };
@@ -70,7 +71,7 @@ class PianoRollPanel : public QWidget {
 public:
     explicit PianoRollPanel(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags); void uiTick();
-    void showChannel(Id id);
+    void showChannel(Id id); PianoRollView* view() const { return m_view; }
 private:
     App& m_app; PianoRollView* m_view; QComboBox *m_channel, *m_snap, *m_scale, *m_root, *m_chord, *m_labels; QToolButton *m_draw, *m_select, *m_erase, *m_mute, *m_ghost, *m_repeat; bool m_updating = false;
 };

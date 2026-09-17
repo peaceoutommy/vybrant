@@ -25,14 +25,16 @@ public:
     int stepsPerBar() const; int patternSteps() const; void setFitSteps(int n) { if (n != m_fitSteps) { m_fitSteps = n; refresh(); } } int m_fitSteps = 16;
     int widthForSteps(int n) const { return m_leftW + 18 + (n / 4) * (4 * stepW() + 4); }
 Q_SIGNALS:
-    void openEditor(Id channelId); void openPianoRoll(Id channelId);
+    void openEditor(Id channelId); void openPianoRoll(Id channelId); void addChannelRequested(const QPoint& globalPos);
 protected:
     void paintEvent(QPaintEvent*) override; void keyPressEvent(QKeyEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
+    void leaveEvent(QEvent*) override { update(); }
     void dragEnterEvent(QDragEnterEvent*) override; void dragMoveEvent(QDragMoveEvent*) override; void dropEvent(QDropEvent*) override;
 private:
-    enum Hit { None, Grip, Enable, Name, Mute, Solo, Pan, Vol, Mixer, StepCell, Graph };
+    enum Hit { None, Grip, Enable, Name, Mute, Solo, Pan, Vol, Mixer, StepCell, Graph, AddButton };
     struct HitInfo { Hit hit = None; int row = -1; int step = -1; };
     HitInfo hitTest(const QPoint& p) const;
+    int graphTop() const { return ((int)m_app.project().channels.size() + 1) * m_rowH; }   // channel rows, then the '+' row, then the graph
     QRect rowRect(int row) const; int stepX(int step) const; int stepW() const;
     Pattern* pattern() const; const Step* stepAt(Id ch, int step) const; int visibleSteps() const;   // steps covering the pattern's full (bar-rounded) length
     void showChannelMenu(int row, const QPoint& global);
@@ -57,10 +59,10 @@ public:
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;
 Q_SIGNALS:
-    void openEditor(Id channelId); void openPianoRoll(Id channelId);
+    void openEditor(Id channelId); void openPianoRoll(Id channelId); void addChannelRequested(const QPoint& globalPos);
 private:
     void fitStepsToWidth();
-    App& m_app; RackView* m_view; QScrollArea* m_scroll; QTimer* m_fitTimer = nullptr; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;
+    App& m_app; RackView* m_view; QMenu* m_addMenu = nullptr; QScrollArea* m_scroll; QTimer* m_fitTimer = nullptr; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;
 };
 
 } // namespace mt

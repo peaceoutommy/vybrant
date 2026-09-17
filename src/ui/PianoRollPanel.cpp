@@ -20,15 +20,29 @@
 
 namespace mt {
 
-static const int kScales[][12] = { {1,1,1,1,1,1,1,1,1,1,1,1}, {1,0,1,0,1,1,0,1,0,1,0,1}, {1,0,1,1,0,1,0,1,1,0,1,0}, {1,0,1,1,0,1,0,1,1,0,0,1}, {1,0,1,0,1,0,0,1,0,1,0,0}, {1,0,0,1,0,1,0,1,0,0,1,0}, {1,0,1,1,0,1,0,1,0,1,0,1}, {1,1,0,1,0,1,0,1,1,0,1,0}, {1,0,1,0,1,0,1,1,0,1,0,1}, {1,0,0,1,0,1,1,1,0,0,1,0} };
-QStringList PianoRollView::scaleNames() { return {"Off", "Major", "Natural minor", "Harmonic minor", "Pentatonic major", "Pentatonic minor", "Dorian", "Phrygian", "Lydian", "Blues"}; }
+// Scale highlighting: the set FL Studio ships (modes, pentatonics, blues, symmetric and "world" scales), as semitone offsets from the root
+struct ScaleDef { const char* name; std::vector<int> steps; };
+static const std::vector<ScaleDef>& scaleDefs() {
+    static const std::vector<ScaleDef> d = {
+        {"Off", {}},
+        {"Major (Ionian)", {0, 2, 4, 5, 7, 9, 11}}, {"Minor (Aeolian)", {0, 2, 3, 5, 7, 8, 10}}, {"Harmonic minor", {0, 2, 3, 5, 7, 8, 11}}, {"Melodic minor", {0, 2, 3, 5, 7, 9, 11}},
+        {"Dorian", {0, 2, 3, 5, 7, 9, 10}}, {"Phrygian", {0, 1, 3, 5, 7, 8, 10}}, {"Lydian", {0, 2, 4, 6, 7, 9, 11}}, {"Mixolydian", {0, 2, 4, 5, 7, 9, 10}}, {"Locrian", {0, 1, 3, 5, 6, 8, 10}},
+        {"Major pentatonic", {0, 2, 4, 7, 9}}, {"Minor pentatonic", {0, 3, 5, 7, 10}}, {"Blues", {0, 3, 5, 6, 7, 10}}, {"Major blues", {0, 2, 3, 4, 7, 9}},
+        {"Whole tone", {0, 2, 4, 6, 8, 10}}, {"Diminished (whole-half)", {0, 2, 3, 5, 6, 8, 9, 11}}, {"Diminished (half-whole)", {0, 1, 3, 4, 6, 7, 9, 10}}, {"Chromatic", {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}},
+        {"Hungarian minor", {0, 2, 3, 6, 7, 8, 11}}, {"Hungarian major", {0, 3, 4, 6, 7, 9, 10}}, {"Neapolitan major", {0, 1, 3, 5, 7, 9, 11}}, {"Neapolitan minor", {0, 1, 3, 5, 7, 8, 11}},
+        {"Arabic", {0, 2, 4, 5, 6, 8, 10}}, {"Byzantine (double harmonic)", {0, 1, 4, 5, 7, 8, 11}}, {"Persian", {0, 1, 4, 5, 6, 8, 11}}, {"Spanish (Phrygian dominant)", {0, 1, 4, 5, 7, 8, 10}}, {"Spanish 8-tone", {0, 1, 3, 4, 5, 6, 8, 10}},
+        {"Gypsy", {0, 2, 3, 6, 7, 8, 10}}, {"Hindu", {0, 2, 4, 5, 7, 8, 10}}, {"Japanese (Hirajoshi)", {0, 2, 3, 7, 8}}, {"Japanese (In sen)", {0, 1, 5, 7, 10}}, {"Enigmatic", {0, 1, 4, 6, 8, 10, 11}},
+    };
+    return d;
+}
+QStringList PianoRollView::scaleNames() { QStringList l; for (auto& d : scaleDefs()) l << d.name; return l; }
 static const std::vector<std::vector<int>> kChords = { {}, {0,4,7}, {0,3,7}, {0,4,7,11}, {0,3,7,10}, {0,4,7,10}, {0,3,6}, {0,4,8}, {0,5,7}, {0,2,7}, {0,7}, {0,12}, {0,4,7,12}, {0,3,7,12}, {0,4,7,11,14}, {0,3,7,10,14} };
 QStringList PianoRollView::chordNames() { return {"None", "Major", "Minor", "Maj7", "Min7", "Dom7", "Dim", "Aug", "Sus4", "Sus2", "Power (5th)", "Octave", "Major + oct", "Minor + oct", "Maj9", "Min9"}; }
 
 PianoRollView::PianoRollView(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     setFocusPolicy(Qt::StrongFocus); setMouseTracking(true);
     m_velH = clamp(QSettings().value("pianoroll/laneHeight", 80).toInt(), 40, 400); m_ticker = new anim::Ticker(this);
-    m_hbar = new QScrollBar(Qt::Horizontal, this); m_vbar = new QScrollBar(Qt::Vertical, this);
+    m_hbar = new QScrollBar(Qt::Horizontal, this); m_vbar = new QScrollBar(Qt::Vertical, this); m_hbar->setCursor(Qt::ArrowCursor); m_vbar->setCursor(Qt::ArrowCursor);   // tool cursors are for the canvas only
     connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollTick = (Tick)v * PPQ / 16; invalidate(); } });
     connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_topPitch = 127 - v; invalidate(); } });
     connect(&m_repeatTimer, &QTimer::timeout, this, [this] { if (m_previewPitch >= 0) { m_app.noteOff(m_previewPitch); m_app.noteOn(m_previewPitch); } });
@@ -63,7 +77,7 @@ int PianoRollView::pitchToY(int pitch) const { return layout().rulerH + (m_topPi
 Tick PianoRollView::snapTicks() const { if (m_snapDiv == 0) return 1; if (m_snapDiv < 0) return m_app.project().transport.timeSig.ticksPerBar() * -m_snapDiv; return PPQ / m_snapDiv; }
 Tick PianoRollView::snap(Tick t, bool force) const { if (m_altHeld && !force) return t; Tick s = snapTicks(); if (s <= 1) return t; return (t / s) * s; }
 Tick PianoRollView::snapNear(Tick t) const { if (m_altHeld) return t; Tick s = snapTicks(); if (s <= 1) return t; return ((t + s / 2) / s) * s; }
-bool PianoRollView::inScale(int pitch) const { if (m_scale <= 0) return true; return kScales[m_scale][((pitch - m_scaleRoot) % 12 + 12) % 12] != 0; }
+bool PianoRollView::inScale(int pitch) const { if (m_scale <= 0 || m_scale >= (int)scaleDefs().size()) return true; int d = ((pitch - m_scaleRoot) % 12 + 12) % 12; for (int st : scaleDefs()[m_scale].steps) if (st == d) return true; return false; }
 void PianoRollView::updateScrollbars() { m_updatingBars = true; Pattern* p = pattern(); Tick visible = (Tick)(layout().grid.width() / m_ppt); Tick len = std::max<Tick>((p ? p->effectiveLength(m_app.project().transport.timeSig) : PPQ * 16) + PPQ * 8, m_scrollTick + visible); int hmax = (int)std::max<Tick>(0, (len - visible) * 16 / PPQ); m_hbar->setRange(0, hmax); m_hbar->setPageStep((int)(visible * 16 / PPQ)); if (m_scrollTick * 16 / PPQ > hmax) m_scrollTick = (Tick)hmax * PPQ / 16; m_hbar->setValue((int)(m_scrollTick * 16 / PPQ)); int rows = layout().grid.height() / m_rowH; m_vbar->setRange(0, std::max(0, 127 - rows)); m_vbar->setPageStep(rows); m_vbar->setValue(127 - m_topPitch); m_updatingBars = false; }
 void PianoRollView::refresh() { updateScrollbars(); invalidate(); }
 void PianoRollView::zoomToFit() { Pattern* p = pattern(); if (!p) return; Tick len = std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), PPQ); m_ppt = std::max(0.01, (double)layout().grid.width() / (len + PPQ)); m_scrollTick = 0; int lo = 127, hi = 0; for (auto& n : notesView()) { lo = std::min(lo, n.pitch); hi = std::max(hi, n.pitch); } if (lo <= hi) m_topPitch = std::min(127, hi + 4); refresh(); }
@@ -80,7 +94,9 @@ void PianoRollView::renderCache() {
     Pattern* pat = pattern(); PatternChannelData* d = data(); const auto& ts = m_app.project().transport.timeSig; Tick patLen = pat ? pat->effectiveLength(ts) : 0;
     // grid rows
     p.setClipRect(L.grid);
-    for (int pitch = m_topPitch; pitch >= 0; --pitch) { int y = pitchToY(pitch); if (y > L.grid.bottom()) break; bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10); QColor c = black ? QColor(0x17, 0x1a, 0x1f) : QColor(0x1c, 0x1f, 0x25); if (!inScale(pitch)) c = c.darker(130); p.fillRect(QRect(L.grid.left(), y, L.grid.width(), m_rowH), c); if (pitch % 12 == 0) { p.setPen(theme::gridStrong()); p.drawLine(L.grid.left(), y + m_rowH, L.grid.right(), y + m_rowH); } }
+    for (int pitch = m_topPitch; pitch >= 0; --pitch) { int y = pitchToY(pitch); if (y > L.grid.bottom()) break; bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10); QColor c = black ? QColor(0x17, 0x1a, 0x1f) : QColor(0x1c, 0x1f, 0x25);
+        if (m_scale > 0) c = inScale(pitch) ? QColor(0x1c, 0x1f, 0x25) : QColor(0x17, 0x1a, 0x1f);   // scale: the same two colours, but light = in the scale, dark = outside it
+        p.fillRect(QRect(L.grid.left(), y, L.grid.width(), m_rowH), c); if (pitch % 12 == 0) { p.setPen(theme::gridStrong()); p.drawLine(L.grid.left(), y + m_rowH, L.grid.right(), y + m_rowH); } }
     // grid columns
     Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar(); Tick step = snapTicks(); if (step * m_ppt < 8) step = beat; if (beat * m_ppt < 8) step = bar; Tick barStep = bar; while (barStep * m_ppt < 10) barStep *= 2; if (bar * m_ppt < 10) step = barStep; Tick first = (m_scrollTick / step) * step; Tick last = xToTick(L.grid.right());
     for (Tick t = first; t <= last; t += step) { int x = tickToX(t); QColor c = (t % bar == 0) ? theme::gridStrong().lighter(130) : (t % beat == 0) ? theme::gridStrong() : theme::grid(); p.setPen(c); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
@@ -170,8 +186,9 @@ void PianoRollView::commitEdit(const QString& desc) {
     }
     if (same) { invalidate(); return; }
     // real notes get proper project ids
-    for (auto& n : after.notes) if (n.id >= kVirtualBase) n.id = m_app.project().newId();
-    m_selected.clear();
+    // real notes get proper project ids; the selection follows them so transpose / move / quantize keep the notes selected
+    std::set<Id> keep; for (auto& n : after.notes) { bool sel = m_selected.count(n.id); if (n.id >= kVirtualBase) n.id = m_app.project().newId(); if (sel) keep.insert(n.id); }
+    m_selected = keep;
     m_app.editPattern(pid, desc, [after, ch](Pattern& p) { p.ensureChannel(ch) = after; });
 }
 void PianoRollView::cancelEdit() { PatternChannelData* d = data(); if (d && m_editing) *d = m_before; m_editing = false; invalidate(); }
@@ -275,6 +292,8 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
     e->accept();
 }
 void PianoRollView::leaveEvent(QEvent*) { update(); }
+// Arrow keys (with any modifier) are note editing while the piano roll has focus: claim them before application shortcuts (Ctrl+Up/Down = tempo) can take them
+bool PianoRollView::event(QEvent* e) { if (e->type() == QEvent::ShortcutOverride) { auto* ke = static_cast<QKeyEvent*>(e); int k = ke->key(); if (k == Qt::Key_Up || k == Qt::Key_Down || k == Qt::Key_Left || k == Qt::Key_Right) { ke->accept(); return true; } } return QWidget::event(e); }
 // FL Studio default keybinds (typing keyboard mode intercepts unmodified letters before this, see MainWindow)
 void PianoRollView::keyPressEvent(QKeyEvent* e) {
     PatternChannelData* d = data(); if (!d) { QWidget::keyPressEvent(e); return; } bool ctrl = e->modifiers() & Qt::ControlModifier, shift = e->modifiers() & Qt::ShiftModifier, alt = e->modifiers() & Qt::AltModifier;
@@ -374,8 +393,8 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent) : QWidget(parent), m_a
     sep();
     m_snap = TransportBar::makeSnapCombo(this); m_snap->setFixedHeight(kH); m_snap->setFixedWidth(96); m_snap->setToolTip("Snap: the grid notes are placed and resized to (hold Alt to bypass)"); m_snap->setFocusPolicy(Qt::NoFocus); top->addWidget(m_snap);
     sep();
-    m_root = mkCombo(50, "Scale root: notes outside the scale are dimmed in the grid"); for (int i = 0; i < 12; ++i) m_root->addItem(theme::noteName(i).left(theme::noteName(i).size() - 2));
-    m_scale = mkCombo(108, "Scale highlight: notes outside the scale are dimmed in the grid"); m_scale->addItems(PianoRollView::scaleNames());
+    m_root = mkCombo(62, "Scale root: notes outside the scale are dimmed in the grid"); for (int i = 0; i < 12; ++i) m_root->addItem(theme::noteName(i).left(theme::noteName(i).size() - 2));
+    m_scale = mkCombo(150, "Scale highlight: notes outside the scale are dimmed in the grid"); m_scale->addItems(PianoRollView::scaleNames());
     m_chord = mkCombo(100, "Chord helper: drawing a note adds the chord intervals"); m_chord->addItems(PianoRollView::chordNames());
     sep();
     { auto* g = group(); m_ghost = mkTool(g, theme::Glyph::Ghost, "Ghost notes: show the other channels behind this one", 30); m_ghost->setChecked(true); m_repeat = mkTool(g, theme::Glyph::Repeat, "Note repeat: holding a key on the keyboard retriggers at the snap rate", 30); }

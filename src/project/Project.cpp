@@ -74,6 +74,7 @@ Project makeDefaultProject(bool demo) {
         c.instrumentState = QJsonObject{{"builtin", names[i]}};
         p.channels.push_back(c);
     }
+    if (!demo) { Channel c; c.id = p.newId(); c.name = "Sampler"; c.color = QColor("#8fd0ff"); c.type = ChannelType::Sampler; c.instrumentKey = "native.sampler"; c.mixerTrackId = master.id; p.channels.push_back(c); }   // FL-style: a fresh project has one empty sampler to drop a sound on
     if (demo) { Channel c; c.id = p.newId(); c.name = "Synth"; c.color = QColor("#c07be0"); c.type = ChannelType::Synth; c.instrumentKey = "native.synth"; c.mixerTrackId = p.mixerTracks[5].id; p.channels.push_back(c); }
     Pattern pat; pat.id = p.newId(); pat.name = "Pattern 1";
     for (auto& c : p.channels) pat.ensureChannel(c.id);

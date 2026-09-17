@@ -222,7 +222,11 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
     m_samplesProcessed.fetch_add(frames);
 }
 
-static inline void sortMidi(MidiEventList& l) { for (int i = 1; i < l.count; ++i) { MidiEvent k = l.events[i]; int j = i - 1; while (j >= 0 && l.events[j].sampleOffset > k.sampleOffset) { l.events[j + 1] = l.events[j]; --j; } l.events[j + 1] = k; } }
+// Stable sort by sample offset; at the same offset note-offs go first so a note ending exactly where the next one (same pitch) starts
+// doesn't cut the new note (back-to-back 808s, legato step sequences)
+static inline int midiRank(const MidiEvent& e) { return e.type == MidiEvent::NoteOff ? 0 : 1; }
+static inline bool midiBefore(const MidiEvent& a, const MidiEvent& b) { return a.sampleOffset < b.sampleOffset || (a.sampleOffset == b.sampleOffset && midiRank(a) < midiRank(b)); }
+static inline void sortMidi(MidiEventList& l) { for (int i = 1; i < l.count; ++i) { MidiEvent k = l.events[i]; int j = i - 1; while (j >= 0 && midiBefore(k, l.events[j])) { l.events[j + 1] = l.events[j]; --j; } l.events[j + 1] = k; } }
 
 void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float* outR, int n, Snapshot* snap, Tick t0, Tick t1) {
     if (!snap) return;

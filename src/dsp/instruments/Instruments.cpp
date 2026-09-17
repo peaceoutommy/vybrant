@@ -9,8 +9,8 @@ static inline void panGains(float pan, float& gl, float& gr) { float a = (pan + 
 // ============================================================ Sampler
 Sampler::Sampler() {
     auto& p = m_params;
-    p.add(pRoot, "Root Note", 0, 127, 60, ParamUnit::Semitones); p.add(pAttack, "Attack", 0.001f, 5, 0.002f, ParamUnit::Seconds, true); p.add(pDecay, "Decay", 0.001f, 5, 0.1f, ParamUnit::Seconds, true);
-    p.add(pSustain, "Sustain", 0, 1, 1); p.add(pRelease, "Release", 0.001f, 8, 0.05f, ParamUnit::Seconds, true); p.add(pStart, "Start", 0, 1, 0, ParamUnit::Percent);
+    p.add(pRoot, "Root Note", 0, 127, 60, ParamUnit::Semitones); p.add(pAttack, "Attack", 0.f, 5, 0.002f, ParamUnit::Seconds, true); p.add(pDecay, "Decay", 0.f, 5, 0.1f, ParamUnit::Seconds, true);
+    p.add(pSustain, "Sustain", 0, 1, 1); p.add(pRelease, "Release", 0.f, 8, 0.05f, ParamUnit::Seconds, true); p.add(pStart, "Start", 0, 1, 0, ParamUnit::Percent);
     p.addChoice(pLoopMode, "Loop", {"Off", "Forward", "Ping-Pong"}); p.add(pTune, "Tune", -24, 24, 0, ParamUnit::Semitones); p.add(pFine, "Fine", -100, 100, 0, ParamUnit::Cents);
     p.add(pCutoff, "Cutoff", 20, 20000, 20000, ParamUnit::Hertz, true); p.add(pReso, "Resonance", 0, 1, 0); p.addChoice(pFilterType, "Filter", {"Low-pass", "High-pass", "Band-pass"});
     p.addToggle(pReverse, "Reverse"); p.add(pLevel, "Level", 0, 2, 1); p.add(pPan, "Pan", -1, 1, 0); p.add(pVelSens, "Vel. Sensitivity", 0, 1, 1); p.add(pPitchBendRange, "Bend Range", 0, 24, 2, ParamUnit::Semitones);
@@ -34,7 +34,8 @@ void Sampler::noteOn(const MidiEvent& e) {
     v->fl.reset(); v->fr.reset();
     m_lastNote = e.data1;
 }
-void Sampler::noteOff(const MidiEvent& e) { for (auto& v : m_voices) if (v.active && v.note == e.data1 && v.env.stage != ADSR::Release) v.env.noteOff(); }
+// A sequenced note-off carries the id of the note that started the voice: only that voice is released (live MIDI has no id and releases by pitch)
+void Sampler::noteOff(const MidiEvent& e) { for (auto& v : m_voices) if (v.active && v.note == e.data1 && v.env.stage != ADSR::Release && (e.noteId < 0 || v.noteId < 0 || v.noteId == e.noteId)) v.env.noteOff(); }
 
 void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
     m_sample.rtTick();
@@ -79,8 +80,8 @@ void Sampler::restoreState(const QJsonObject& s) { IProcessor::restoreState(s); 
 // ============================================================ DrumSampler
 DrumSampler::DrumSampler() {
     auto& p = m_params;
-    p.add(pLevel, "Level", 0, 2, 1); p.add(pRoot, "Root Note", 0, 127, 60, ParamUnit::Semitones); p.add(pAttack, "Attack", 0.001f, 2, 0.001f, ParamUnit::Seconds, true); p.add(pDecay, "Decay", 0.01f, 10, 10, ParamUnit::Seconds, true);
-    p.add(pRelease, "Release", 0.001f, 4, 0.02f, ParamUnit::Seconds, true); p.add(pPitch, "Pitch", -24, 24, 0, ParamUnit::Semitones); p.add(pCutoff, "Cutoff", 20, 20000, 20000, ParamUnit::Hertz, true); p.add(pVelSens, "Vel. Sensitivity", 0, 1, 1); p.add(pPan, "Pan", -1, 1, 0);
+    p.add(pLevel, "Level", 0, 2, 1); p.add(pRoot, "Root Note", 0, 127, 60, ParamUnit::Semitones); p.add(pAttack, "Attack", 0.f, 2, 0.001f, ParamUnit::Seconds, true); p.add(pDecay, "Decay", 0.f, 10, 10, ParamUnit::Seconds, true);
+    p.add(pRelease, "Release", 0.f, 4, 0.02f, ParamUnit::Seconds, true); p.add(pPitch, "Pitch", -24, 24, 0, ParamUnit::Semitones); p.add(pCutoff, "Cutoff", 20, 20000, 20000, ParamUnit::Hertz, true); p.add(pVelSens, "Vel. Sensitivity", 0, 1, 1); p.add(pPan, "Pan", -1, 1, 0);
     for (int i = 0; i < kPads; ++i) {
         std::string nm = "Pad " + std::to_string(i + 1) + " ";
         p.add(padParam(i, 0), (nm + "Level").c_str(), 0, 2, 1); p.add(padParam(i, 1), (nm + "Pan").c_str(), -1, 1, 0); p.add(padParam(i, 2), (nm + "Pitch").c_str(), -24, 24, 0, ParamUnit::Semitones);
@@ -168,7 +169,7 @@ Synth::Synth() {
     p.add(pUnison, "Unison", 1, 8, 1); p.add(pDetune, "Detune", 0, 100, 12, ParamUnit::Cents); p.add(pNoise, "Noise", 0, 1, 0); p.add(pSub, "Sub Osc", 0, 1, 0);
     p.addChoice(pFilterType, "Filter", {"Low-pass", "High-pass", "Band-pass", "Notch"}); p.add(pCutoff, "Cutoff", 20, 20000, 8000, ParamUnit::Hertz, true); p.add(pReso, "Resonance", 0, 1, 0.2f); p.add(pFilterEnv, "Filter Env", -1, 1, 0.4f); p.add(pFilterKeyTrack, "Key Track", 0, 1, 0.5f);
     p.add(pFA, "F. Attack", 0.001f, 5, 0.01f, ParamUnit::Seconds, true); p.add(pFD, "F. Decay", 0.001f, 5, 0.3f, ParamUnit::Seconds, true); p.add(pFS, "F. Sustain", 0, 1, 0.3f); p.add(pFR, "F. Release", 0.001f, 8, 0.3f, ParamUnit::Seconds, true);
-    p.add(pAA, "Attack", 0.001f, 5, 0.005f, ParamUnit::Seconds, true); p.add(pAD, "Decay", 0.001f, 5, 0.2f, ParamUnit::Seconds, true); p.add(pAS, "Sustain", 0, 1, 0.7f); p.add(pAR, "Release", 0.001f, 8, 0.25f, ParamUnit::Seconds, true);
+    p.add(pAA, "Attack", 0.f, 5, 0.005f, ParamUnit::Seconds, true); p.add(pAD, "Decay", 0.f, 5, 0.2f, ParamUnit::Seconds, true); p.add(pAS, "Sustain", 0, 1, 0.7f); p.add(pAR, "Release", 0.f, 8, 0.25f, ParamUnit::Seconds, true);
     p.add(pLfoRate, "LFO Rate", 0.01f, 30, 4, ParamUnit::Hertz, true); p.addChoice(pLfoShape, "LFO Shape", {"Sine", "Triangle", "Saw", "Square", "S&H"}); p.add(pLfoPitch, "LFO > Pitch", 0, 12, 0, ParamUnit::Semitones); p.add(pLfoFilter, "LFO > Filter", 0, 1, 0); p.addToggle(pLfoSync, "LFO Sync");
     p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds); p.add(pLevel, "Level", 0, 2, 0.6f); p.add(pVoices, "Polyphony", 1, 16, 8); p.addToggle(pMono, "Mono"); p.add(pSpread, "Stereo Spread", 0, 1, 0.5f); p.add(pBendRange, "Bend Range", 0, 24, 2, ParamUnit::Semitones); p.add(pDrive, "Drive", 0, 1, 0);
 }
@@ -250,7 +251,7 @@ WavetableSynth::WavetableSynth() {
     p.add(pPosition, "Position", 0, 1, 0.2f); p.add(pPosEnv, "Pos < Env", -1, 1, 0.3f); p.add(pPosLfo, "Pos < LFO", 0, 1, 0); p.add(pOctave, "Octave", -3, 3, 0); p.add(pSemi, "Semi", -12, 12, 0, ParamUnit::Semitones); p.add(pFine, "Fine", -100, 100, 0, ParamUnit::Cents);
     p.add(pUnison, "Unison", 1, 8, 2); p.add(pDetune, "Detune", 0, 100, 10, ParamUnit::Cents); p.addChoice(pFilterType, "Filter", {"Low-pass", "High-pass", "Band-pass", "Notch"}); p.add(pCutoff, "Cutoff", 20, 20000, 12000, ParamUnit::Hertz, true); p.add(pReso, "Resonance", 0, 1, 0.1f); p.add(pFilterEnv, "Filter Env", -1, 1, 0.2f);
     p.add(pFA, "F. Attack", 0.001f, 5, 0.01f, ParamUnit::Seconds, true); p.add(pFD, "F. Decay", 0.001f, 5, 0.4f, ParamUnit::Seconds, true); p.add(pFS, "F. Sustain", 0, 1, 0.5f); p.add(pFR, "F. Release", 0.001f, 8, 0.3f, ParamUnit::Seconds, true);
-    p.add(pAA, "Attack", 0.001f, 5, 0.01f, ParamUnit::Seconds, true); p.add(pAD, "Decay", 0.001f, 5, 0.3f, ParamUnit::Seconds, true); p.add(pAS, "Sustain", 0, 1, 0.8f); p.add(pAR, "Release", 0.001f, 8, 0.3f, ParamUnit::Seconds, true);
+    p.add(pAA, "Attack", 0.f, 5, 0.01f, ParamUnit::Seconds, true); p.add(pAD, "Decay", 0.f, 5, 0.3f, ParamUnit::Seconds, true); p.add(pAS, "Sustain", 0, 1, 0.8f); p.add(pAR, "Release", 0.f, 8, 0.3f, ParamUnit::Seconds, true);
     p.add(pLfoRate, "LFO Rate", 0.01f, 30, 1, ParamUnit::Hertz, true); p.addChoice(pLfoShape, "LFO Shape", {"Sine", "Triangle", "Saw", "Square", "S&H"}); p.add(pLevel, "Level", 0, 2, 0.6f); p.addChoice(pBank, "Bank", {"Basic", "Harmonic", "Digital"}); p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds); p.add(pSpread, "Stereo Spread", 0, 1, 0.5f);
     buildTables();
 }
@@ -323,7 +324,7 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
 FMSynth::FMSynth() {
     auto& p = m_params;
     p.addChoice(pAlgorithm, "Algorithm", {"1>2>3>4", "(1+2)>3>4", "1>2, 3>4", "1>(2+3+4)", "(1>2)+(3>4)", "1>2>3, 4", "1+2+3+4", "1>2>(3+4)"}); p.add(pFeedback, "Feedback", 0, 1, 0.1f); p.add(pLevel, "Level", 0, 2, 0.6f);
-    p.add(pAA, "Attack", 0.001f, 5, 0.005f, ParamUnit::Seconds, true); p.add(pAD, "Decay", 0.001f, 5, 0.5f, ParamUnit::Seconds, true); p.add(pAS, "Sustain", 0, 1, 0.6f); p.add(pAR, "Release", 0.001f, 8, 0.4f, ParamUnit::Seconds, true);
+    p.add(pAA, "Attack", 0.f, 5, 0.005f, ParamUnit::Seconds, true); p.add(pAD, "Decay", 0.f, 5, 0.5f, ParamUnit::Seconds, true); p.add(pAS, "Sustain", 0, 1, 0.6f); p.add(pAR, "Release", 0.f, 8, 0.4f, ParamUnit::Seconds, true);
     p.add(pLfoRate, "LFO Rate", 0.01f, 30, 5, ParamUnit::Hertz, true); p.add(pLfoDepth, "Vibrato", 0, 1, 0); p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds); p.add(pBendRange, "Bend Range", 0, 24, 2, ParamUnit::Semitones);
     const float defRatio[4] = {1, 2, 1, 3}; const float defLevel[4] = {1, 0.5f, 0.3f, 0.2f};
     for (int o = 0; o < 4; ++o) {
@@ -377,7 +378,7 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
 // ============================================================ ToneGenerator
 ToneGenerator::ToneGenerator() {
     auto& p = m_params; p.addChoice(pWave, "Wave", {"Sine", "Saw", "Square", "Triangle", "White Noise"}); p.add(pFreq, "Frequency", 20, 20000, 440, ParamUnit::Hertz, true); p.add(pLevel, "Level", 0, 1, 0.5f);
-    p.addToggle(pGate, "Always On", false); p.add(pAttack, "Attack", 0.001f, 2, 0.01f, ParamUnit::Seconds, true); p.add(pRelease, "Release", 0.001f, 4, 0.1f, ParamUnit::Seconds, true);
+    p.addToggle(pGate, "Always On", false); p.add(pAttack, "Attack", 0.f, 2, 0.01f, ParamUnit::Seconds, true); p.add(pRelease, "Release", 0.f, 4, 0.1f, ParamUnit::Seconds, true);
 }
 void ToneGenerator::process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
     auto& p = m_params; int mi = 0; int wave = p.getInt(pWave); float level = p.get(pLevel); bool always = p.getBool(pGate);

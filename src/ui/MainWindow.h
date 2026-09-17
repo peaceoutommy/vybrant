@@ -22,11 +22,12 @@ public:
     void startupChecks();
     bool saveScreenshot(const QString& path);
     void setForceClose(bool f) { m_forceClose = f; }
+    MixerPanel* mixer() const { return m_mixer; } PianoRollPanel* pianoRoll() const { return m_pianoRoll; }
     void debugSearch(const QString& t); void debugDock(Qt::DockWidgetArea a) { m_rackCandidate = a; dockRackAtCandidate(); }
 protected:
     void closeEvent(QCloseEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; bool eventFilter(QObject* o, QEvent* e) override;
 private:
-    void buildMenus(); void buildDocks(); void onChanged(uint32_t flags); void uiTick(); void updateTitle(); bool maybeSave(); void resetLayout(); void applyDefaultLayout(); void showHelp(); void showMixerPage(bool on); void dockRackAtCandidate(); void updateRackDockCandidate(); void animateRackDock(); void setTypingKeyboard(bool on); bool typingKeyEvent(QObject* o, QEvent* e); void showDockIndicator(Qt::DockWidgetArea area); void hideDockIndicator(); void showWorkspaceDock(QDockWidget* d); void enforceSingleEditor(); void closeAllWindows(); void syncWindowButtons();
+    void buildMenus(); void buildDocks(); void onChanged(uint32_t flags); void uiTick(); void updateTitle(); bool maybeSave(); void resetLayout(); void applyDefaultLayout(); void showHelp(); void showMixerPage(bool on); void dockRackAtCandidate(); void updateRackDockCandidate(); void animateRackDock(); void updateWorkspaceSeparators(); void setTypingKeyboard(bool on); bool typingKeyEvent(QObject* o, QEvent* e); void showDockIndicator(Qt::DockWidgetArea area); void hideDockIndicator(); void showWorkspaceDock(QDockWidget* d); void enforceSingleEditor(); void closeAllWindows(); void syncWindowButtons();
     bool doOpen(const QString& path = QString()); bool doSave(); bool doSaveAs();
     int typingNote(int key) const;
     App& m_app; TransportBar* m_transport; BrowserPanel* m_browser; ChannelRackPanel* m_rack; PianoRollPanel* m_pianoRoll; PlaylistPanel* m_playlist; MixerPanel* m_mixer;
