@@ -34,7 +34,7 @@ public:
     std::function<std::pair<float, float>()> loop;    // loop region (fractions), enabled when first < second
     std::function<QString()> caption;                 // extra info line
     void paintEvent(QPaintEvent*) override {
-        QPainter p(this); p.fillRect(rect(), QColor(0x11, 0x13, 0x16)); auto a = asset ? asset() : nullptr;
+        QPainter p(this); p.fillRect(rect(), theme::surface()); auto a = asset ? asset() : nullptr;
         if (!a || a->frames == 0) { p.setPen(theme::textDim()); p.drawText(rect(), Qt::AlignCenter, "Drop an audio file here or use Load"); return; }
         bool rev = reversed && reversed(); float st = startFrac ? startFrac() : 0.f; std::pair<float, float> lp = loop ? loop() : std::make_pair(0.f, 0.f); bool hasLoop = lp.first < lp.second;
         QRect wave = rect().adjusted(0, 16, 0, 0); double spp = (double)a->frames / wave.width(); const auto& lv = a->levelFor(spp); int mid = wave.center().y(); int hh = wave.height() / 2 - 2;
@@ -104,7 +104,7 @@ private: App& m_app; Id m_owner; DrumSampler* m_ds;
 };
 static QWidget* makeDrumEditor(DrumSampler* ds, QWidget* parent) {
     App& app = *App::instance(); Id owner = ownerOf(ds); auto* w = new QWidget(parent); auto* lay = new QHBoxLayout(w); lay->setContentsMargins(4, 4, 4, 4);
-    auto* left = new QVBoxLayout(); auto* hint = new QLabel("Pads: click to audition (C1 = pad 1), right-click / drop files to assign. Steps trigger pad 1 at the root note.", w); hint->setWordWrap(true); hint->setStyleSheet("color:#8a919a;"); left->addWidget(hint);
+    auto* left = new QVBoxLayout(); auto* hint = new QLabel("Pads: click to audition (C1 = pad 1), right-click / drop files to assign. Steps trigger pad 1 at the root note.", w); hint->setWordWrap(true); theme::styled(hint, "color:@textDim@;"); left->addWidget(hint);
     auto* grid = new PadGrid(app, owner, ds, w); left->addWidget(grid, 1);
     auto* padWave = new WaveView(w); padWave->setMinimumHeight(90); left->addWidget(padWave);
     auto* playRow = new QHBoxLayout(); auto* play = new QPushButton("\u25B6 Play pad", w); play->setToolTip("Play the selected pad (pads are one-shot)"); play->setFocusPolicy(Qt::NoFocus); playRow->addWidget(play); playRow->addStretch(1); left->addLayout(playRow); lay->addLayout(left, 1);
@@ -134,7 +134,7 @@ public:
     static double xToHz(int x, int w) { return 20.0 * std::pow(1000.0, (double)x / w); } static int hzToX(double hz, int w) { return (int)(std::log(hz / 20.0) / std::log(1000.0) * w); }
     int yToDb(int y) const { return (int)std::lround((height() / 2.0 - y) / (height() / 2.0) * 24); } int dbToY(double db) const { return (int)(height() / 2.0 - db / 24.0 * height() / 2.0); }
     void paintEvent(QPaintEvent*) override {
-        QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); p.setPen(theme::grid()); for (double hz : {50., 100., 200., 500., 1000., 2000., 5000., 10000.}) { int x = hzToX(hz, width()); p.drawLine(x, 0, x, height()); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(x + 2, height() - 4, hz >= 1000 ? QString::number(hz / 1000) + "k" : QString::number(hz)); p.setPen(theme::grid()); }
+        QPainter p(this); p.setRenderHint(QPainter::Antialiasing); p.fillRect(rect(), theme::surface()); p.setPen(theme::grid()); for (double hz : {50., 100., 200., 500., 1000., 2000., 5000., 10000.}) { int x = hzToX(hz, width()); p.drawLine(x, 0, x, height()); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(x + 2, height() - 4, hz >= 1000 ? QString::number(hz / 1000) + "k" : QString::number(hz)); p.setPen(theme::grid()); }
         for (int db = -18; db <= 18; db += 6) { int y = dbToY(db); p.setPen(db == 0 ? theme::gridStrong() : theme::grid()); p.drawLine(0, y, width(), y); }
         QPolygonF poly; for (int x = 0; x < width(); ++x) poly << QPointF(x, dbToY(clamp(m_eq->magnitudeDb((float)xToHz(x, width())), -24.f, 24.f))); p.setPen(QPen(theme::accent(), 2)); p.drawPolyline(poly);
         static const QColor cols[] = {QColor("#e2665c"), QColor("#e0a040"), QColor("#6dc26d"), QColor("#5aa9e6"), QColor("#c07be0"), QColor("#5ad1c9")};
@@ -156,7 +156,7 @@ class SpectrumView : public QWidget {
 public:
     SpectrumView(SpectrumAnalyzer* sa, QWidget* parent) : QWidget(parent), m_sa(sa) { setMinimumSize(400, 200); auto* t = new QTimer(this); connect(t, &QTimer::timeout, this, [this] { update(); }); t->start(33); }
     void paintEvent(QPaintEvent*) override {
-        QPainter p(this); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); m_sa->readSpectrum(m_mag); if (m_mag.empty()) return; double sr = App::instance()->engine().sampleRate(); float range = m_sa->params().get(SpectrumAnalyzer::pRange);
+        QPainter p(this); p.fillRect(rect(), theme::surface()); m_sa->readSpectrum(m_mag); if (m_mag.empty()) return; double sr = App::instance()->engine().sampleRate(); float range = m_sa->params().get(SpectrumAnalyzer::pRange);
         p.setPen(theme::grid()); for (double hz : {50., 100., 200., 500., 1000., 2000., 5000., 10000.}) { int x = (int)(std::log(hz / 20.0) / std::log(1000.0) * width()); p.drawLine(x, 0, x, height()); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(x + 2, height() - 4, hz >= 1000 ? QString::number(hz / 1000) + "k" : QString::number(hz)); p.setPen(theme::grid()); }
         QPolygonF poly; poly << QPointF(0, height()); int bins = (int)m_mag.size();
         for (int x = 0; x < width(); ++x) { double hz = 20.0 * std::pow(1000.0, (double)x / width()); int bin = clamp((int)(hz / (sr / 2) * bins), 0, bins - 1); float db = m_mag[bin]; poly << QPointF(x, height() - clamp((db + range) / range, 0.f, 1.f) * height()); }
@@ -167,7 +167,7 @@ private: SpectrumAnalyzer* m_sa; std::vector<float> m_mag;
 class MeterView : public QWidget {
 public:
     MeterView(MeterEffect* m, QWidget* parent) : QWidget(parent), m_m(m) { setMinimumSize(220, 200); auto* t = new QTimer(this); connect(t, &QTimer::timeout, this, [this] { update(); }); t->start(33); }
-    void paintEvent(QPaintEvent*) override { QPainter p(this); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); auto lv = m_m->levels(); auto bar = [&](int x, float pk, float rms, float hold, const QString& name) { QRect r(x, 20, 40, height() - 50); p.fillRect(r, theme::bg()); auto pos = [&](float v) { return clamp((gainToDb(v) + 60.f) / 66.f, 0.f, 1.f); }; QLinearGradient g(0, r.bottom(), 0, r.top()); g.setColorAt(0, theme::green()); g.setColorAt(0.8, theme::accent()); g.setColorAt(1, theme::red()); p.fillRect(QRect(r.left(), r.bottom() - (int)(r.height() * pos(pk)), r.width(), (int)(r.height() * pos(pk))), g); p.fillRect(QRect(r.left() + 12, r.bottom() - (int)(r.height() * pos(rms)), 16, (int)(r.height() * pos(rms))), theme::withAlpha(Qt::white, 90)); int hy = r.bottom() - (int)(r.height() * pos(hold)); p.setPen(Qt::white); p.drawLine(r.left(), hy, r.right(), hy); p.setPen(theme::text()); p.setFont(theme::smallFont()); p.drawText(QRect(x - 10, height() - 28, 60, 12), Qt::AlignCenter, name); p.drawText(QRect(x - 10, height() - 16, 60, 12), Qt::AlignCenter, QString("%1 / %2").arg(gainToDb(pk), 0, 'f', 1).arg(gainToDb(rms), 0, 'f', 1)); }; bar(40, lv.peakL, lv.rmsL, lv.holdL, "L"); bar(120, lv.peakR, lv.rmsR, lv.holdR, "R"); p.setPen(theme::textDim()); p.drawText(4, 12, "Peak (bar) / RMS (inner) in dBFS, hold line"); }
+    void paintEvent(QPaintEvent*) override { QPainter p(this); p.fillRect(rect(), theme::surface()); auto lv = m_m->levels(); auto bar = [&](int x, float pk, float rms, float hold, const QString& name) { QRect r(x, 20, 40, height() - 50); p.fillRect(r, theme::bg()); auto pos = [&](float v) { return clamp((gainToDb(v) + 60.f) / 66.f, 0.f, 1.f); }; QLinearGradient g(0, r.bottom(), 0, r.top()); g.setColorAt(0, theme::green()); g.setColorAt(0.8, theme::accent()); g.setColorAt(1, theme::red()); p.fillRect(QRect(r.left(), r.bottom() - (int)(r.height() * pos(pk)), r.width(), (int)(r.height() * pos(pk))), g); p.fillRect(QRect(r.left() + 12, r.bottom() - (int)(r.height() * pos(rms)), 16, (int)(r.height() * pos(rms))), theme::withAlpha(Qt::white, 90)); int hy = r.bottom() - (int)(r.height() * pos(hold)); p.setPen(Qt::white); p.drawLine(r.left(), hy, r.right(), hy); p.setPen(theme::text()); p.setFont(theme::smallFont()); p.drawText(QRect(x - 10, height() - 28, 60, 12), Qt::AlignCenter, name); p.drawText(QRect(x - 10, height() - 16, 60, 12), Qt::AlignCenter, QString("%1 / %2").arg(gainToDb(pk), 0, 'f', 1).arg(gainToDb(rms), 0, 'f', 1)); }; bar(40, lv.peakL, lv.rmsL, lv.holdL, "L"); bar(120, lv.peakR, lv.rmsR, lv.holdR, "R"); p.setPen(theme::textDim()); p.drawText(4, 12, "Peak (bar) / RMS (inner) in dBFS, hold line"); }
 private: MeterEffect* m_m;
 };
 

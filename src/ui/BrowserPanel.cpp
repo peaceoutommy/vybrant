@@ -131,7 +131,7 @@ void BrowserModel::moveLibraryDir(const QString& path, int delta) { int i = m_di
 PreviewBar::PreviewBar(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setToolTip("Sample preview: click to seek, right-click to stop. Previews stop when the transport starts."); setCursor(Qt::PointingHandCursor); }
 void PreviewBar::tick() { bool playing = m_app.engine().previewPlaying(); double pos = m_app.engine().previewPosition(); auto b = m_app.previewBuffer(); bool loading = b && !b->done.load(); if (playing != m_lastPlaying || loading || (playing && std::fabs(pos - m_lastPos) > 200)) { m_lastPlaying = playing; m_lastPos = pos; update(); } }
 void PreviewBar::paintEvent(QPaintEvent*) {
-    QPainter p(this); p.fillRect(rect(), QColor(0x15, 0x18, 0x1c)); p.setPen(theme::border()); p.drawRect(rect().adjusted(0, 0, -1, -1));
+    QPainter p(this); p.fillRect(rect(), theme::surface()); p.setPen(theme::border()); p.drawRect(rect().adjusted(0, 0, -1, -1));
     QString path = m_app.previewPath(); auto b = m_app.previewBuffer(); QRect wave = rect().adjusted(2, 16, -2, -2);
     p.setFont(theme::smallFont()); p.setPen(theme::textDim());
     if (path.isEmpty() || !b) { p.drawText(rect(), Qt::AlignCenter, "Click a sample to preview it"); return; }

@@ -57,12 +57,19 @@ float PlaylistView::autoValueAtY(const Clip& c, int y) const { QRect r = clipRec
 Tick PlaylistView::autoTickAtX(const Clip& c, int x) const { return clamp<Tick>(xToTick(x) - c.start + c.sourceOffset, 0, c.length + c.sourceOffset); }
 
 // ---------------------------------------------------------------- painting
+// A clip is coloured by what it points at: its pattern, its automation lane, or a fixed tint for audio.
+QColor PlaylistView::clipColor(const Clip& c) const {
+    auto& proj = m_app.project();
+    if (c.type == ClipType::Pattern) { if (auto* pat = proj.pattern(c.sourceId)) return pat->color; }
+    else if (c.type == ClipType::Audio) return QColor("#5ad1c9");
+    else if (c.type == ClipType::Automation) { if (auto* l = proj.lane(c.sourceId)) return l->color; }
+    return theme::accent2();
+}
 void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, double alpha) {
     QRect r = rectF.toRect(); Layout L = layout(); if (r.isNull() || r.right() < L.area.left() || r.left() > L.area.right() || r.bottom() < L.area.top() || r.top() > L.area.bottom()) return;
     p.save();   // the caller clips to the clip area; save/restore keeps that intact instead of dropping it per clip
     if (alpha < 0.999) p.setOpacity(alpha);
-    auto& proj = m_app.project(); bool sel = m_selected.count(c.id); QColor col = theme::accent2();
-    if (c.type == ClipType::Pattern) { if (auto* pat = proj.pattern(c.sourceId)) col = pat->color; } else if (c.type == ClipType::Audio) col = QColor("#5ad1c9"); else if (c.type == ClipType::Automation) { if (auto* l = proj.lane(c.sourceId)) col = l->color; }
+    auto& proj = m_app.project(); bool sel = m_selected.count(c.id); QColor col = clipColor(c);
     if (c.muted) col = col.darker(220);
     p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(col.darker(125), 1)); p.setBrush(col.darker(sel ? 135 : 190)); p.drawRoundedRect(r, 2, 2);
     p.setClipRect(r.adjusted(1, 1, -1, -1), Qt::IntersectClip);   // intersect, so a clip scrolled off the left never paints over the track headers
@@ -106,7 +113,7 @@ void PlaylistView::renderCache() {
     Layout L = layout(); m_cache = QPixmap(size()); m_cache.fill(theme::bg()); QPainter p(&m_cache); auto& proj = m_app.project(); const auto& ts = proj.transport.timeSig; Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar();
     // tracks background
     p.setClipRect(L.area); int y = L.rulerH - m_scrollY;
-    for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect tr(L.area.left(), y, L.area.width(), th); p.fillRect(tr, i % 2 ? QColor(0x18, 0x1b, 0x20) : QColor(0x1a, 0x1d, 0x22)); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += th; }
+    for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect tr(L.area.left(), y, L.area.width(), th); p.fillRect(tr, i % 2 ? theme::altRow() : theme::panel()); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += th; }
     // grid density adapts to the zoom: never draw lines closer than ~10 px; bars are stronger than beats, beats than snap subdivisions
     Tick step = snapTicks(); if (step * m_ppt < 10) step = beat; if (beat * m_ppt < 10) step = bar; Tick barStep = bar; while (barStep * m_ppt < 14) barStep *= 2; if (step < barStep && bar * m_ppt < 14) step = barStep;
     Tick last = xToTick(L.area.right());
@@ -124,7 +131,7 @@ void PlaylistView::renderCache() {
     // headers
     p.fillRect(L.headers, theme::panel()); p.setClipRect(L.headers); y = L.rulerH - m_scrollY;
     for (size_t i = 0; i < proj.playlistTracks.size(); ++i) {
-        auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect hr(0, y, L.headerW, th); p.fillRect(hr, i % 2 ? QColor(0x1c, 0x1f, 0x24) : QColor(0x1e, 0x21, 0x27)); p.fillRect(QRect(0, y + 2, 3, th - 4), t.color); p.setPen(theme::border()); p.drawLine(0, hr.bottom(), L.headerW, hr.bottom());
+        auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect hr(0, y, L.headerW, th); p.fillRect(hr, i % 2 ? theme::panel() : theme::altRow()); p.fillRect(QRect(0, y + 2, 3, th - 4), t.color); p.setPen(theme::border()); p.drawLine(0, hr.bottom(), L.headerW, hr.bottom());
         p.setPen(theme::text()); p.setFont(theme::uiFont()); p.drawText(QRect(10, y + 3, L.headerW - 14, 16), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(t.name, Qt::ElideRight, L.headerW - 16));
         auto btn = [&](QRect r, const QString& s, bool on, QColor c) { p.setPen(QPen(on ? c.darker(120) : theme::border(), 1)); p.setBrush(on ? c : QColor(0x16, 0x19, 0x1e)); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, s); };
         if (th >= 40) { btn(QRect(10, y + 22, 18, 14), "M", t.mute, theme::red()); btn(QRect(31, y + 22, 18, 14), "S", t.solo, theme::accent()); btn(QRect(52, y + 22, 18, 14), "L", t.locked, theme::textDim()); int mi = proj.mixerIndex(t.mixerTrackId); btn(QRect(73, y + 22, 40, 14), mi <= 0 ? "> Master" : QString("> Ins %1").arg(mi), false, theme::bg()); }
@@ -136,6 +143,7 @@ void PlaylistView::renderCache() {
     m_cacheValid = true;
 }
 void PlaylistView::paintEvent(QPaintEvent*) {
+    if (m_themeRev != theme::revision()) { m_themeRev = theme::revision(); m_cacheValid = false; }   // the cached pixmap still holds the old theme
     if (!m_cacheValid) renderCache(); QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
     { // clips: animated (appear / move / vanish), instant while being dragged
         p.save(); p.setClipRect(L.area); auto& proj = m_app.project(); bool dragging = m_drag == Moving || m_drag == ResizingL || m_drag == ResizingR || m_drag == FadeIn || m_drag == FadeOut;
@@ -143,8 +151,12 @@ void PlaylistView::paintEvent(QPaintEvent*) {
         // tracked in song space (tick / track index) so scrolling, zooming or resizing the view never "moves" clips
         auto trackIndex = [&](Id id) { auto& tr = proj.playlistTracks; for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == id) return (int)i; return -1; };
         auto toPx = [&](const QRectF& m) { int i = std::max(0, (int)std::floor(m.y())); double th = trackH(i); return QRectF(tickToX(0) + m.x() * m_ppt, trackTop(i) + (m.y() - i) * th + 1, std::max(3.0, m.width() * m_ppt), m.height() * th - 2); };
-        for (auto& c : proj.clips) { int ti = trackIndex(c.trackId); if (ti < 0) continue; QRectF target(c.start, ti, proj.clipLength(c), 1); double alpha = 1; QRectF r = toPx(m_clipAnim.item(c.id, target, dragging && m_selected.count(c.id), &alpha)); drawClip(p, c, r, alpha); }
-        m_clipAnim.end([&](Id) { return theme::accent2(); });
+        for (auto& c : proj.clips) { int ti = trackIndex(c.trackId); if (ti < 0) continue; m_clipColor[c.id] = clipColor(c); QRectF target(c.start, ti, proj.clipLength(c), 1); double alpha = 1; QRectF r = toPx(m_clipAnim.item(c.id, target, dragging && m_selected.count(c.id), &alpha)); drawClip(p, c, r, alpha); }
+        // The clip is already gone from the project by now, so the ghost uses the colour remembered while it was drawn.
+        m_clipAnim.end([&](Id id) { auto it = m_clipColor.find(id); return it != m_clipColor.end() ? it->second : theme::accent2(); });
+        // Deliberately not cleared per frame: the ghost of a just-deleted clip still needs its colour, and the clip is
+        // already out of the project by then. Pruned only once the map has grown well past any plausible clip count.
+        if (m_clipColor.size() > 4096 && !m_clipAnim.active()) { m_clipColor.clear(); for (auto& c : proj.clips) m_clipColor[c.id] = clipColor(c); }
         m_clipAnim.drawGhosts([&](const QRectF& m, const QColor& c, double a) { QRectF r = toPx(m); QColor cc = c; cc.setAlphaF(a * 0.6); p.setPen(Qt::NoPen); p.setBrush(cc); p.drawRoundedRect(r, 2, 2); });
         p.restore(); m_ticker->keepAlive(m_clipAnim.active());
     }
@@ -364,14 +376,14 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent) : QWidget(parent), m_app
     auto sep = [&] { top->addSpacing(4); top->addWidget(theme::barSeparator(this)); top->addSpacing(4); };
     const theme::Glyph icons[] = {theme::Glyph::Pencil, theme::Glyph::Marquee, theme::Glyph::Eraser, theme::Glyph::Slice, theme::Glyph::MuteSpeaker}; const char* tips[] = {"Draw (1): click to place the selected pattern; drag clips to move, edges to resize; right-click deletes", "Select (2): drag a rectangle to select clips", "Erase (3)", "Slice (4): click a clip to split it", "Mute (5): click a clip to toggle mute"};
     auto* tg = new QHBoxLayout(); tg->setSpacing(1); tg->setContentsMargins(0, 0, 0, 0); top->addLayout(tg);
-    for (int i = 0; i < 5; ++i) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(icons[i], QColor(0xe8, 0xeb, 0xef), 20)); b->setIconSize(QSize(20, 20)); b->setToolTip(tips[i]); b->setCheckable(true); b->setChecked(i == 0); b->setFixedSize(kH, kH); b->setFocusPolicy(Qt::NoFocus); tg->addWidget(b); m_tools.push_back(b); connect(b, &QToolButton::clicked, this, [this, i] { m_view->setTool((PlaylistView::Tool)i); for (int k = 0; k < 5; ++k) m_tools[k]->setChecked(k == i); }); }
+    for (int i = 0; i < 5; ++i) { auto* b = new QToolButton(this); theme::setGlyph(b, icons[i], 20); b->setToolTip(tips[i]); b->setCheckable(true); b->setChecked(i == 0); b->setFixedSize(kH, kH); b->setFocusPolicy(Qt::NoFocus); tg->addWidget(b); m_tools.push_back(b); connect(b, &QToolButton::clicked, this, [this, i] { m_view->setTool((PlaylistView::Tool)i); for (int k = 0; k < 5; ++k) m_tools[k]->setChecked(k == i); }); }
     sep();
     m_snap = TransportBar::makeSnapCombo(this); m_snap->setCurrentIndex(1); m_snap->setFixedHeight(kH); m_snap->setFixedWidth(96); m_snap->setToolTip("Snap: the grid clips are placed and resized to (hold Alt to bypass)"); m_snap->setFocusPolicy(Qt::NoFocus); top->addWidget(m_snap);
     sep();
     auto* addTrack = new QToolButton(this); addTrack->setText("+ Track"); addTrack->setToolTip("Add a playlist track"); addTrack->setFixedHeight(kH); addTrack->setFocusPolicy(Qt::NoFocus); top->addWidget(addTrack);
     auto* fit = new QToolButton(this); fit->setText("Fit"); fit->setToolTip("Zoom to fit the song"); fit->setFixedHeight(kH); fit->setFocusPolicy(Qt::NoFocus); top->addWidget(fit);
     top->addStretch(1);
-    auto* hint = new QLabel("Drag samples / patterns / automation from the Browser · Ctrl+drag the ruler selects the loop area · Ctrl+B duplicates it · Ctrl+Shift+drag duplicates clips", this); hint->setStyleSheet("color:#6a717a; font-size:8pt;"); top->addWidget(hint); lay->addLayout(top);
+    auto* hint = new QLabel("Drag samples / patterns / automation from the Browser · Ctrl+drag the ruler selects the loop area · Ctrl+B duplicates it · Ctrl+Shift+drag duplicates clips", this); theme::styled(hint, "color:@textDim@; font-size:8pt;"); top->addWidget(hint); lay->addLayout(top);
     m_view = new PlaylistView(app, this); lay->addWidget(m_view, 1); m_view->setSnapDivision(-1);
     auto showMode = [this](int t) { for (int k = 0; k < 5; ++k) m_tools[k]->setChecked(k == t); };
     connect(m_view, &PlaylistView::toolChanged, this, showMode); connect(m_view, &PlaylistView::modeChanged, this, showMode);

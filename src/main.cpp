@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     // distro package - its chainloader searches PATH first, so put that directory in front for this process and its plugin hosts.
     { QString yab = QDir::homePath() + "/.local/share/yabridge"; if (QFileInfo(yab + "/yabridge-host.exe").exists()) { QByteArray path = qgetenv("PATH"); if (!path.startsWith(yab.toUtf8() + ":")) qputenv("PATH", yab.toUtf8() + ":" + path); } }
     QApplication app(argc, argv);
-    QCoreApplication::setOrganizationName("MusicThingy"); QCoreApplication::setApplicationName("MusicThingy"); QApplication::setStyle("Fusion"); app.setStyleSheet(mt::theme::stylesheet());
+    QCoreApplication::setOrganizationName("MusicThingy"); QCoreApplication::setApplicationName("MusicThingy"); QApplication::setStyle("Fusion"); mt::theme::setPalette(mt::theme::loadSavedTheme()); app.setStyleSheet(mt::theme::stylesheet());
     mt::App daw; daw.initialize();
     if (argc >= 2 && std::strcmp(argv[1], "--selftest") == 0) { daw.newProject(true); int rc = mt::runSelfTest(daw); return rc; }   /* the tests exercise the demo content */
     if (argc >= 2 && std::strcmp(argv[1], "--duptest") == 0) { daw.newProject(true); return mt::runDuplicateTest(daw); }

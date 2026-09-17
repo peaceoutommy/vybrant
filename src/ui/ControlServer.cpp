@@ -1,5 +1,6 @@
 #include "ui/ControlServer.h"
 #include "ui/App.h"
+#include "ui/Theme.h"
 #include "ui/MainWindow.h"
 #include <QLocalSocket>
 #include <QStandardPaths>
@@ -32,8 +33,9 @@ QString ControlServer::handle(const QString& line) {
     if (c == "action" && a.size() >= 2) { if (auto* act = m_app.commands().action(a[1])) { act->trigger(); return "ok"; } return "err no such action"; }
     if (c == "params") { if (m_app.project().channels.empty()) return "err"; auto* pr = m_app.processor(m_app.project().channels.back().id); if (!pr) return "err no processor"; QStringList l; auto& ps = pr->params(); int n = std::min(ps.count(), a.size() > 1 ? a[1].toInt() : 40); for (int i = 0; i < n; ++i) l << QString("%1:%2=%3").arg(i).arg(QString::fromStdString(ps.desc(i).name)).arg(ps.getNormalized(ps.desc(i).id), 0, 'f', 3); return l.join(" | "); }
     if (c == "param" && a.size() >= 3) { if (m_app.project().channels.empty()) return "err"; Id owner = m_app.project().channels.back().id; auto* pr = m_app.processor(owner); if (!pr) return "err no processor"; auto& ps = pr->params(); int idx = -1; for (int i = 0; i < ps.count(); ++i) if (QString::fromStdString(ps.desc(i).name).compare(a[1], Qt::CaseInsensitive) == 0 || QString::number(i) == a[1]) { idx = i; break; } if (idx < 0) return "err no such param"; m_app.setProcessorParam(owner, ps.desc(idx).id, a[2].toFloat(), true); return "ok"; }
+    if (c == "theme" && a.size() >= 2) { if (const theme::Palette* t = theme::preset(a[1])) { theme::applyTheme(*t); return "ok " + t->name; } return "err no such theme"; }
     if (c == "quit") { QTimer::singleShot(0, qApp, [] { qApp->quit(); }); return "ok"; }
-    return "err unknown command (ping play stop note select channels stats screenshot editor action quit)";
+    return "err unknown command (ping play stop note select channels stats screenshot editor action theme quit)";
 }
 
 } // namespace mt

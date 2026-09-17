@@ -100,20 +100,21 @@ void PianoRollView::renderCache() {
     p.setClipping(false);
     // keys
     p.fillRect(L.keys, theme::panel()); p.setClipRect(L.keys);
-    for (int pitch = m_topPitch; pitch >= 0; --pitch) { int y = pitchToY(pitch); if (y > L.keys.bottom()) break; bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10); QRect kr(0, y, black ? L.keyW * 0.6 : L.keyW - 1, m_rowH); p.fillRect(QRect(0, y, L.keyW - 1, m_rowH), black ? QColor(0x1a, 0x1c, 0x20) : QColor(0xc9, 0xcd, 0xd3)); if (black) p.fillRect(kr, QColor(0x1a, 0x1c, 0x20)); else p.fillRect(kr, QColor(0xc9, 0xcd, 0xd3)); if (m_previewPitch == pitch) p.fillRect(kr, theme::accent()); p.setPen(theme::border()); p.drawLine(0, y + m_rowH, L.keyW, y + m_rowH); if ((m_keyLabels == LabelsAll || (m_keyLabels == LabelsC && pitch % 12 == 0)) && m_rowH >= 9) { p.setPen(black ? QColor(0x9a, 0x9f, 0xa6) : QColor(0x40, 0x44, 0x4a)); p.setFont(theme::smallFont()); p.drawText(QRect(0, y, L.keyW - 4, m_rowH), Qt::AlignRight | Qt::AlignVCenter, theme::noteName(pitch)); } }
+    for (int pitch = m_topPitch; pitch >= 0; --pitch) { int y = pitchToY(pitch); if (y > L.keys.bottom()) break; bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10); QRect kr(0, y, black ? L.keyW * 0.6 : L.keyW - 1, m_rowH); p.fillRect(QRect(0, y, L.keyW - 1, m_rowH), black ? theme::panel().darker(120) : QColor(0xc9, 0xcd, 0xd3)); if (black) p.fillRect(kr, theme::panel().darker(120)); else p.fillRect(kr, QColor(0xc9, 0xcd, 0xd3)); if (m_previewPitch == pitch) p.fillRect(kr, theme::accent()); p.setPen(theme::border()); p.drawLine(0, y + m_rowH, L.keyW, y + m_rowH); if ((m_keyLabels == LabelsAll || (m_keyLabels == LabelsC && pitch % 12 == 0)) && m_rowH >= 9) { p.setPen(black ? QColor(0x9a, 0x9f, 0xa6) : QColor(0x40, 0x44, 0x4a)); p.setFont(theme::smallFont()); p.drawText(QRect(0, y, L.keyW - 4, m_rowH), Qt::AlignRight | Qt::AlignVCenter, theme::noteName(pitch)); } }
     p.setClipping(false);
     // velocity lane
-    p.fillRect(L.vel, QColor(0x15, 0x18, 0x1c)); p.setPen(theme::border()); p.drawLine(L.vel.left(), L.vel.top(), L.vel.right(), L.vel.top()); p.setClipRect(L.vel);
+    p.fillRect(L.vel, theme::surface()); p.setPen(theme::border()); p.drawLine(L.vel.left(), L.vel.top(), L.vel.right(), L.vel.top()); p.setClipRect(L.vel);
     { int bw = laneBarWidth(); bool bip = laneBipolar(); int midY = L.vel.top() + L.vel.height() / 2; if (bip) { p.setPen(theme::gridStrong()); p.drawLine(L.vel.left(), midY, L.vel.right(), midY); }
       if (d) for (auto& n : notesView()) { int x = tickToX(n.start); if (x < L.vel.left() - bw || x > L.vel.right()) continue; float v = laneValue(n); bool sel = m_selected.count(n.id); p.setPen(sel ? Qt::white : base); p.setBrush(sel ? base.lighter(150) : base);
         if (bip) { int h = (int)((v - 0.5f) * (L.vel.height() - 8)); p.drawRect(QRect(x, h >= 0 ? midY - h : midY, bw, std::abs(h))); p.drawRect(QRect(x, midY - 1, bw, 2)); } else { int h = (int)(v * (L.vel.height() - 6)); p.drawRect(QRect(x, L.vel.bottom() - h, bw, h)); } }
-      { QFont f = theme::smallFont(); p.setFont(f); QString t = laneName() + "  \u25BE"; int tw = p.fontMetrics().horizontalAdvance(t) + 12; m_laneLabelRect = QRect(L.vel.left() + 4, L.vel.top() + 3, tw, 16); p.setPen(Qt::NoPen); p.setBrush(QColor(0x23, 0x27, 0x2d)); p.drawRoundedRect(m_laneLabelRect, 3, 3); p.setPen(theme::text()); p.drawText(m_laneLabelRect, Qt::AlignCenter, t); }
+      { QFont f = theme::smallFont(); p.setFont(f); QString t = laneName() + "  \u25BE"; int tw = p.fontMetrics().horizontalAdvance(t) + 12; m_laneLabelRect = QRect(L.vel.left() + 4, L.vel.top() + 3, tw, 16); p.setPen(Qt::NoPen); p.setBrush(theme::raised()); p.drawRoundedRect(m_laneLabelRect, 3, 3); p.setPen(theme::text()); p.drawText(m_laneLabelRect, Qt::AlignCenter, t); }
       p.setPen(theme::border()); p.drawLine(L.vel.left(), L.vel.top(), L.vel.right(), L.vel.top()); }
     p.setClipping(false);
     if (virt) { p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(L.grid.left() + 6, L.grid.top() + 3, 500, 14), Qt::AlignLeft, "Showing the channel's step-sequencer steps - editing anything here turns them into piano roll notes"); }
     m_cacheValid = true;
 }
 void PianoRollView::paintEvent(QPaintEvent*) {
+    if (m_themeRev != theme::revision()) { m_themeRev = theme::revision(); m_cacheValid = false; }   // the cached pixmap still holds the old theme
     if (!m_cacheValid) renderCache();
     QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
     { // notes: animated (appear / move / vanish), instant while being dragged
@@ -359,7 +360,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent) : QWidget(parent), m_a
     auto sep = [&] { top->addSpacing(4); top->addWidget(theme::barSeparator(this)); top->addSpacing(4); };
     auto group = [&]() -> QHBoxLayout* { auto* g = new QHBoxLayout(); g->setSpacing(1); g->setContentsMargins(0, 0, 0, 0); top->addLayout(g); return g; };
     // The icon is painted in one fixed light colour, so a checked button only changes its background - no orange glyphs.
-    auto mkTool = [&](QHBoxLayout* g, theme::Glyph icon, const QString& tip, int w = 0) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(icon, QColor(0xe8, 0xeb, 0xef), 20)); b->setIconSize(QSize(20, 20)); b->setToolTip(tip); b->setCheckable(true); b->setFixedSize(w ? w : kH, kH); b->setFocusPolicy(Qt::NoFocus); g->addWidget(b); return b; };
+    auto mkTool = [&](QHBoxLayout* g, theme::Glyph icon, const QString& tip, int w = 0) { auto* b = new QToolButton(this); theme::setGlyph(b, icon, 20); b->setToolTip(tip); b->setCheckable(true); b->setFixedSize(w ? w : kH, kH); b->setFocusPolicy(Qt::NoFocus); g->addWidget(b); return b; };
     auto mkCombo = [&](int w, const QString& tip) { auto* c = new QComboBox(this); c->setFixedHeight(kH); c->setFixedWidth(w); c->setToolTip(tip); c->setFocusPolicy(Qt::NoFocus); top->addWidget(c); return c; };
 
     auto* menuBtn = new QToolButton(this); menuBtn->setText("\u2261"); menuBtn->setToolTip("Piano roll tools and edit actions"); menuBtn->setFixedSize(30, kH); menuBtn->setFocusPolicy(Qt::NoFocus); menuBtn->setPopupMode(QToolButton::InstantPopup); top->addWidget(menuBtn);
