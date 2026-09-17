@@ -27,6 +27,8 @@
 #include <QFileInfo>
 #include <QPixmap>
 #include <QScreen>
+#include <QActionGroup>
+#include <QCursor>
 #include <QDebug>
 
 namespace mt {
@@ -38,13 +40,14 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
     m_transport = new TransportBar(app, this); auto* tb = new QToolBar("Transport", this); tb->setObjectName("transportBar"); tb->setMovable(false); tb->addWidget(m_transport); addToolBar(Qt::TopToolBarArea, tb);
     buildDocks(); buildMenus();
     { // FL-style window toggles on the right of the toolbar
-        auto mk = [&](const QString& key, theme::Glyph g, const QString& actionId, const QString& tip) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, QColor(0xc8, 0xcc, 0xd3))); b->setIconSize(QSize(15, 15)); b->setCheckable(true); b->setFocusPolicy(Qt::NoFocus); b->setToolTip(tip); b->setFixedSize(28, 22); connect(b, &QToolButton::clicked, this, [this, actionId] { if (auto* a = m_app.commands().action(actionId)) a->trigger(); }); m_transport->addWindowButton(b); m_winButtons[key] = b; };
+        auto mk = [&](const QString& key, theme::Glyph g, const QString& actionId, const QString& tip) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, QColor(0xc8, 0xcc, 0xd3), 18)); b->setIconSize(QSize(18, 18)); b->setCheckable(true); b->setFocusPolicy(Qt::NoFocus); b->setToolTip(tip); b->setFixedSize(32, 26); connect(b, &QToolButton::clicked, this, [this, actionId] { if (auto* a = m_app.commands().action(actionId)) a->trigger(); }); m_transport->addWindowButton(b); m_winButtons[key] = b; };
         mk("playlist", theme::Glyph::Playlist, "view.playlist", "Playlist - arrange patterns, audio and automation clips into a song (F5)"); mk("pianoroll", theme::Glyph::PianoRoll, "view.pianoRoll", "Piano Roll - edit the notes of the selected channel (F7)"); mk("rack", theme::Glyph::ChannelRack, "view.rack", "Channel Rack - instruments and the step sequencer of the current pattern (F6)"); mk("mixer", theme::Glyph::Mixer, "view.mixer", "Mixer - effects, routing, sends and levels (F9)"); mk("browser", theme::Glyph::Browser, "view.browser", "Browser - samples, instruments, effects, plugins and presets (F8)"); mk("samples", theme::Glyph::Samples, "view.samples", "Project samples - every sample this project uses (Alt+S)");
-        auto* plug = new QToolButton(this); plug->setIcon(theme::glyphIcon(theme::Glyph::Plugins, QColor(0xc8, 0xcc, 0xd3))); plug->setIconSize(QSize(15, 15)); plug->setFixedSize(28, 22); plug->setFocusPolicy(Qt::NoFocus); plug->setToolTip("Plugin manager - scan and organise VST2 / VST3 plugins"); connect(plug, &QToolButton::clicked, this, [this] { m_app.commands().action("options.plugins")->trigger(); }); m_transport->addWindowButton(plug);
-        auto* gear = new QToolButton(this); gear->setIcon(theme::glyphIcon(theme::Glyph::Settings, QColor(0xc8, 0xcc, 0xd3))); gear->setIconSize(QSize(15, 15)); gear->setFixedSize(28, 22); gear->setFocusPolicy(Qt::NoFocus); gear->setToolTip("Audio settings - device, sample rate, buffer size"); connect(gear, &QToolButton::clicked, this, [this] { m_app.commands().action("options.audio")->trigger(); }); m_transport->addWindowButton(gear);
-        auto* help = new QToolButton(this); help->setIcon(theme::glyphIcon(theme::Glyph::Help, QColor(0xc8, 0xcc, 0xd3))); help->setIconSize(QSize(15, 15)); help->setFixedSize(28, 22); help->setFocusPolicy(Qt::NoFocus); help->setToolTip("Quick help and keyboard shortcuts (F1)"); connect(help, &QToolButton::clicked, this, [this] { showHelp(); }); m_transport->addWindowButton(help);
+        auto* plug = new QToolButton(this); plug->setIcon(theme::glyphIcon(theme::Glyph::Plugins, QColor(0xc8, 0xcc, 0xd3), 18)); plug->setIconSize(QSize(18, 18)); plug->setFixedSize(32, 26); plug->setFocusPolicy(Qt::NoFocus); plug->setToolTip("Plugin manager - scan and organise VST2 / VST3 plugins"); connect(plug, &QToolButton::clicked, this, [this] { m_app.commands().action("options.plugins")->trigger(); }); m_transport->addWindowButton(plug);
+        auto* gear = new QToolButton(this); gear->setIcon(theme::glyphIcon(theme::Glyph::Settings, QColor(0xc8, 0xcc, 0xd3), 18)); gear->setIconSize(QSize(18, 18)); gear->setFixedSize(32, 26); gear->setFocusPolicy(Qt::NoFocus); gear->setToolTip("Audio settings - device, sample rate, buffer size"); connect(gear, &QToolButton::clicked, this, [this] { m_app.commands().action("options.audio")->trigger(); }); m_transport->addWindowButton(gear);
+        auto* help = new QToolButton(this); help->setIcon(theme::glyphIcon(theme::Glyph::Help, QColor(0xc8, 0xcc, 0xd3), 18)); help->setIconSize(QSize(18, 18)); help->setFixedSize(32, 26); help->setFocusPolicy(Qt::NoFocus); help->setToolTip("Quick help and keyboard shortcuts (F1)"); connect(help, &QToolButton::clicked, this, [this] { showHelp(); }); m_transport->addWindowButton(help);
     }
     qApp->installEventFilter(this);
+    connect(&m_rackReleasePoll, &QTimer::timeout, this, [this] { if (!(QApplication::mouseButtons() & Qt::LeftButton)) { if (m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate(); else m_rackReleasePoll.stop(); } });
     m_status = new QLabel(this); statusBar()->addWidget(m_status, 1); m_undoLabel = new QLabel(this); m_undoLabel->setStyleSheet("color:#8a919a;"); statusBar()->addPermanentWidget(m_undoLabel);
     connect(&m_app, &App::statusMessage, this, [this](const QString& m, int t) { if (t == 0) m_status->setText(m); else statusBar()->showMessage(m, t); });
     connect(&m_app, &App::requestOpenEditor, this, [this](Id id, const QString& t) { openEditor(id, t); });
@@ -119,7 +122,8 @@ void MainWindow::buildMenus() {
     view->addAction(reg.add("view.closeAll", "Close all windows", "View", QKeySequence("F12"), [this] { closeAllWindows(); }, this));
     view->addSeparator(); view->addAction(reg.add("view.resetLayout", "Reset workspace layout", "View", QKeySequence(), [this] { resetLayout(); }, this));
     auto* opt = mb->addMenu("&Options");
-    opt->addAction(reg.add("options.audio", "Audio settings...", "Options", QKeySequence(), [this] { AudioSettingsDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.midi", "MIDI settings...", "Options", QKeySequence("F10"), [this] { MidiSettingsDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.plugins", "Plugin manager...", "Options", QKeySequence(), [this] { PluginManagerDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.autosave", "Autosave / backups...", "Options", QKeySequence(), [this] { AutosaveDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.shortcuts", "Keyboard shortcuts...", "Options", QKeySequence(), [this] { ShortcutsDialog d(m_app, this); d.exec(); }, this));
+    opt->addAction(reg.add("options.audio", "Audio settings...", "Options", QKeySequence(), [this] { AudioSettingsDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.midi", "MIDI settings...", "Options", QKeySequence("F10"), [this] { MidiSettingsDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.plugins", "Plugin manager...", "Options", QKeySequence(), [this] { PluginManagerDialog d(m_app, this); d.exec(); }, this)); { auto* pv = opt->addMenu("Note preview (Piano Roll)"); auto* grp = new QActionGroup(pv); const char* labels[] = {"When placing or re-pitching notes, only while stopped (default)", "Always, even while the song plays", "Never"}; for (int i = 0; i < 3; ++i) { auto* a = pv->addAction(labels[i]); a->setCheckable(true); a->setActionGroup(grp); a->setChecked(QSettings().value("pianoroll/preview", 0).toInt() == i); connect(a, &QAction::triggered, this, [i] { QSettings().setValue("pianoroll/preview", i); }); } }
+    opt->addAction(reg.add("options.autosave", "Autosave / backups...", "Options", QKeySequence(), [this] { AutosaveDialog d(m_app, this); d.exec(); }, this)); opt->addAction(reg.add("options.shortcuts", "Keyboard shortcuts...", "Options", QKeySequence(), [this] { ShortcutsDialog d(m_app, this); d.exec(); }, this));
     auto* help = mb->addMenu("&Help"); help->addAction(reg.add("help.help", "Quick help", "Help", QKeySequence("F1"), [this] { showHelp(); }, this)); help->addAction(reg.add("help.about", "About MusicThingy", "Help", QKeySequence(), [this] { QMessageBox::about(this, "About MusicThingy", "<b>MusicThingy</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3 hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer."); }, this));
 }
 
@@ -177,10 +181,24 @@ void MainWindow::keyReleaseEvent(QKeyEvent* e) { if (e->isAutoRepeat()) { QMainW
 
 // FL behaviour: clicking in the main workspace (playlist / piano roll / mixer) closes the floating Channel Rack; the Browser is exempt so you can browse sounds while the rack stays open.
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
+    // Dock the floating rack by its *own* edges: while it is dragged we only remember which edge it touches; the
+    // dock happens when the button is released (so it can be pulled away again without snapping straight back).
+    if (e->type() == QEvent::Move && o == m_dRack && m_dRack->isFloating() && m_dRack->isVisible() && (QApplication::mouseButtons() & Qt::LeftButton)) {
+        QRect r = m_dRack->frameGeometry(); QRect main = geometry(); const int th = 14;
+        bool overlapsX = r.right() > main.left() + 40 && r.left() < main.right() - 40; int topLimit = main.top() + menuBar()->height() + m_transport->height() + 6;
+        m_rackCandidate = (overlapsX && r.bottom() >= main.bottom() - th) ? Qt::BottomDockWidgetArea : (overlapsX && r.top() <= topLimit + th) ? Qt::TopDockWidgetArea : Qt::NoDockWidgetArea;
+        if (!m_rackReleasePoll.isActive()) m_rackReleasePoll.start(30);
+    }
+    if ((e->type() == QEvent::MouseButtonRelease || e->type() == QEvent::NonClientAreaMouseButtonRelease) && m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate();
     if (e->type() == QEvent::MouseButtonPress && m_dRack && m_dRack->isFloating() && m_dRack->isVisible()) {
         QWidget* w = qobject_cast<QWidget*>(o); if (w && w->window() == this && !m_dRack->isAncestorOf(w)) { QWidget* p = w; bool inMain = false; while (p) { if (p == m_dBrowser || p == m_dSamples) return QMainWindow::eventFilter(o, e); if (p == m_pages) { inMain = true; break; } p = p->parentWidget(); } if (inMain) m_dRack->hide(); }
     }
     return QMainWindow::eventFilter(o, e);
+}
+void MainWindow::dockRackAtCandidate() {
+    Qt::DockWidgetArea area = m_rackCandidate; m_rackCandidate = Qt::NoDockWidgetArea; m_rackReleasePoll.stop();
+    if (area == Qt::NoDockWidgetArea || !m_dRack->isFloating()) return;
+    QTimer::singleShot(0, this, [this, area] { if (m_dRack->isFloating()) { m_dRack->setFloating(false); addDockWidget(area, m_dRack); m_dRack->show(); } });
 }
 void MainWindow::showHelp() {
     QMessageBox::information(this, "Quick help", R"(<b>Workflow</b><br>

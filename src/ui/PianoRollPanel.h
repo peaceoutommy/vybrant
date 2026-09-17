@@ -8,6 +8,7 @@
 #include <QPixmap>
 #include <QTimer>
 #include <set>
+#include <map>
 
 namespace mt {
 
@@ -25,6 +26,8 @@ public:
     void setChord(int chordIdx) { m_chord = chordIdx; }
     void setNoteRepeat(bool r) { m_noteRepeat = r; }
     void setSnapDivision(int div) { m_snapDiv = div; }
+    void setLane(int lane) { m_lane = lane; invalidate(); }   // 0 velocity, 1 pan, 2 release velocity, 3 fine pitch
+    float laneValue(const Note& n) const; void setLaneValue(Note& n, float v) const; bool laneBipolar() const; QString laneName() const; int laneBarWidth() const { return std::max(6, std::min(48, (int)(snapTicks() * m_ppt * 0.6))); }
     void refresh(); void uiTick();
     // tools
     void quantize(bool lengths); void arpeggiate(); void strum(); void legato(); void randomize(float velAmt, float panAmt); void transpose(int semis); void selectAll(); void deleteSelected(); void copySelected(); void cutSelected(); void paste(); void duplicateSelected(); void setSelectedLength(Tick len);
@@ -36,7 +39,7 @@ Q_SIGNALS:
 protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; void resizeEvent(QResizeEvent*) override; void contextMenuEvent(QContextMenuEvent*) override; void leaveEvent(QEvent*) override;
 private:
-    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect, Muting };
+    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect, Muting, Seek, LaneResize };
     struct Layout { int keyW = 60, rulerH = 22, velH = 70; QRect grid, ruler, keys, vel; };
     Layout layout() const;
     Pattern* pattern() const; PatternChannelData* data() const;
@@ -46,13 +49,13 @@ private:
     void beginEdit(); void commitEdit(const QString& desc); void cancelEdit(); void seekToPatternTick(Tick t);
     void invalidate() { m_cacheValid = false; update(); }
     void renderCache(); void updateScrollbars();
-    void previewNote(int pitch, bool on); void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
+    void previewNote(int pitch, bool on); bool previewAllowed() const; std::map<Id, Note> m_created; void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
     bool inScale(int pitch) const;
     App& m_app; Tool m_tool = Draw; Id m_channel = 0; bool m_ghost = true; int m_scaleRoot = 0, m_scale = 0, m_chord = 0; bool m_noteRepeat = false; int m_snapDiv = 4;
     double m_ppt = 0.08; int m_rowH = 12; Tick m_scrollTick = 0; int m_topPitch = 84; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
     std::set<Id> m_selected; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
-    Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer; bool m_altHeld = false; bool m_erasedAny = false;
-    Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
+    Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer, m_autoScroll; QPoint m_lastMouse; bool m_altHeld = false; bool m_erasedAny = false;
+    int m_lane = 0; int m_velH = 80; int m_laneResizeStart = 0; QRect m_laneLabelRect; Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
     std::vector<Note> m_clipboard; QPixmap m_cache; bool m_cacheValid = false; double m_playTick = -1; QPoint m_hoverPos;
 };
 

@@ -22,9 +22,9 @@ inline QColor green() { return QColor(0x5f, 0xc0, 0x74); }
 inline QColor red() { return QColor(0xe0, 0x5a, 0x5a); }
 inline QColor playhead() { return QColor(0xff, 0xd2, 0x66); }
 inline QColor selection() { return QColor(0xf0, 0xa1, 0x3a, 70); }
-inline QFont smallFont() { QFont f; f.setPointSizeF(7.5); return f; }
-inline QFont uiFont() { QFont f; f.setPointSizeF(8.5); return f; }
-inline QFont boldFont() { QFont f; f.setPointSizeF(8.5); f.setBold(true); return f; }
+inline QFont smallFont() { QFont f; f.setPointSizeF(8.0); return f; }
+inline QFont uiFont() { QFont f; f.setPointSizeF(9.0); return f; }
+inline QFont boldFont() { QFont f; f.setPointSizeF(9.0); f.setBold(true); return f; }
 QString stylesheet();
 inline void drawPanel(QPainter& p, const QRectF& r, const QColor& c, qreal radius = 3.0) { p.setPen(Qt::NoPen); p.setBrush(c); p.drawRoundedRect(r, radius, radius); }
 inline QColor lighter(const QColor& c, int f = 130) { return c.lighter(f); }

@@ -26,7 +26,7 @@ Pattern* RackView::pattern() const { return m_app.project().pattern(m_app.projec
 const Step* RackView::stepAt(Id ch, int step) const { Pattern* p = pattern(); if (!p) return nullptr; auto* d = p->channelData(ch); if (!d || step < 0 || step >= (int)d->steps.size()) return nullptr; return &d->steps[step]; }
 int RackView::stepsPerBar() const { Pattern* p = pattern(); const auto& ts = m_app.project().transport.timeSig; return std::max(1, (int)(ts.ticksPerBar() / (p ? p->stepTicks() : PPQ / 4))); }
 int RackView::visibleSteps() const { Pattern* p = pattern(); if (!p) return 16; return (int)(p->effectiveLength(m_app.project().transport.timeSig) / p->stepTicks()); }
-int RackView::stepW() const { return 20; }
+int RackView::stepW() const { return 23; }
 int RackView::stepX(int step) const { return m_leftW + 6 + step * stepW() + (step / 4) * 4; }
 QRect RackView::rowRect(int row) const { return QRect(0, row * m_rowH, width(), m_rowH); }
 QSize RackView::sizeHint() const { int steps = visibleSteps(); int rows = (int)m_app.project().channels.size(); return QSize(stepX(steps) + 12, rows * m_rowH + (m_graphMode >= 0 ? m_graphH : 0) + 4); }
@@ -36,7 +36,7 @@ void RackView::uiTick() { auto tv = m_app.engine().transport(); int ps = -1; Pat
 RackView::HitInfo RackView::hitTest(const QPoint& pt) const {
     HitInfo h; int rows = (int)m_app.project().channels.size(); int row = pt.y() / m_rowH; if (row < 0 || row >= rows) { if (m_graphMode >= 0 && pt.y() >= rows * m_rowH && pt.y() < rows * m_rowH + m_graphH) { h.hit = Graph; int steps = visibleSteps(); for (int s = 0; s < steps; ++s) if (pt.x() >= stepX(s) && pt.x() < stepX(s) + stepW()) h.step = s; } return h; }
     h.row = row; int x = pt.x();
-    if (x < 10) h.hit = Grip; else if (x < 24) h.hit = Enable; else if (x < 118) h.hit = Name; else if (x < 134) h.hit = Mute; else if (x < 150) h.hit = Solo; else if (x < 172) h.hit = Pan; else if (x < 194) h.hit = Vol; else if (x < m_leftW) h.hit = Mixer;
+    if (x < 12) h.hit = Grip; else if (x < 28) h.hit = Enable; else if (x < 134) h.hit = Name; else if (x < 152) h.hit = Mute; else if (x < 170) h.hit = Solo; else if (x < 196) h.hit = Pan; else if (x < 222) h.hit = Vol; else if (x < m_leftW) h.hit = Mixer;
     else { int steps = visibleSteps(); for (int s = 0; s < steps; ++s) if (x >= stepX(s) && x < stepX(s) + stepW()) { h.hit = StepCell; h.step = s; break; } }
     return h;
 }
@@ -49,18 +49,18 @@ void RackView::paintEvent(QPaintEvent*) {
         const Channel& c = chans[r]; QRect rr = rowRect(r); bool selected = c.id == proj.selectedChannelId;
         bool multi = m_multi.count(c.id) > 0; p.fillRect(rr.adjusted(0, 0, 0, -1), (selected || multi) ? QColor(0x27, 0x2c, 0x33) : (r % 2 ? QColor(0x1a, 0x1d, 0x22) : QColor(0x18, 0x1b, 0x20))); if (multi) { p.fillRect(QRect(0, rr.top(), 2, rr.height() - 1), theme::accent()); }
         if (m_reorderTarget == r && m_dragging && m_press.hit == Grip) { p.setPen(QPen(theme::accent(), 2)); p.drawLine(rr.left(), rr.top(), rr.right(), rr.top()); }
-        p.setPen(QColor(0x3a, 0x40, 0x48)); for (int i = 0; i < 3; ++i) p.drawLine(3, rr.top() + 8 + i * 4, 7, rr.top() + 8 + i * 4);
-        QRectF led(13, rr.top() + 8.5, 7, 7); p.setPen(Qt::NoPen); p.setBrush(c.enabled ? theme::green() : QColor(0x2b, 0x30, 0x37)); p.drawEllipse(led);
+        p.setPen(QColor(0x3a, 0x40, 0x48)); for (int i = 0; i < 3; ++i) p.drawLine(4, rr.top() + 10 + i * 4, 8, rr.top() + 10 + i * 4);
+        QRectF led(15, rr.top() + 10, 8, 8); p.setPen(Qt::NoPen); p.setBrush(c.enabled ? theme::green() : QColor(0x2b, 0x30, 0x37)); p.drawEllipse(led);
         // name tag: flat panel with a colour bar, accent outline when selected
-        QRectF nb(26, rr.top() + 3, 90, m_rowH - 6); p.setPen(Qt::NoPen); p.setBrush(selected ? QColor(0x2c, 0x31, 0x39) : QColor(0x23, 0x27, 0x2d)); p.drawRoundedRect(nb, 3, 3); p.setBrush(c.color); p.drawRoundedRect(QRectF(nb.left(), nb.top(), 4, nb.height()), 2, 2);
+        QRectF nb(30, rr.top() + 3, 102, m_rowH - 6); p.setPen(Qt::NoPen); p.setBrush(selected ? QColor(0x2c, 0x31, 0x39) : QColor(0x23, 0x27, 0x2d)); p.drawRoundedRect(nb, 3, 3); p.setBrush(c.color); p.drawRoundedRect(QRectF(nb.left(), nb.top(), 4, nb.height()), 2, 2);
         if (selected) { p.setPen(QPen(theme::accent(), 1)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(nb, 3, 3); }
         p.setPen(c.enabled ? theme::text() : theme::textDim()); p.setFont(theme::uiFont()); p.drawText(nb.adjusted(8, 0, -3, 0), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(c.name, Qt::ElideRight, (int)nb.width() - 11));
         auto smallBtn = [&](QRectF r, const QString& t, bool on, QColor col) { p.setPen(QPen(on ? col.darker(120) : theme::border(), 1)); p.setBrush(on ? col : QColor(0x1c, 0x1f, 0x24)); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, t); };
-        smallBtn(QRectF(120, rr.top() + 5, 13, 14), "M", c.mute, theme::red()); smallBtn(QRectF(136, rr.top() + 5, 13, 14), "S", c.solo, theme::accent());
+        smallBtn(QRectF(136, rr.top() + 6, 15, 16), "M", c.mute, theme::red()); smallBtn(QRectF(154, rr.top() + 6, 15, 16), "S", c.solo, theme::accent());
         auto knob = [&](QRectF r, float v, bool bipolar) { p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x1e, 0x21, 0x26)); p.drawEllipse(r); QRectF a = r.adjusted(1.5, 1.5, -1.5, -1.5); p.setPen(QPen(theme::accent2(), 1.5, Qt::SolidLine, Qt::RoundCap)); if (bipolar) p.drawArc(a, 90 * 16, (int)(-270 * (v - 0.5) * 16)); else p.drawArc(a, 225 * 16, (int)(-270 * v * 16)); };
         float pan = m_app.engine().registry().channelIfExists(c.id) ? m_app.engine().registry().channelIfExists(c.id)->pan.load() : c.pan; float vol = m_app.engine().registry().channelIfExists(c.id) ? m_app.engine().registry().channelIfExists(c.id)->volume.load() : c.volume;
-        knob(QRectF(154, rr.top() + 4, 16, 16), (pan + 1) * 0.5f, true); knob(QRectF(176, rr.top() + 4, 16, 16), vol, false);
-        QRectF mb(198, rr.top() + 5, 24, m_rowH - 10); p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x11, 0x13, 0x16)); p.drawRoundedRect(mb, 2, 2); int mi = proj.mixerIndex(c.mixerTrackId); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(mb, Qt::AlignCenter, mi <= 0 ? "M" : QString::number(mi));
+        knob(QRectF(174, rr.top() + 4, 20, 20), (pan + 1) * 0.5f, true); knob(QRectF(200, rr.top() + 4, 20, 20), vol, false);
+        QRectF mb(226, rr.top() + 5, 28, m_rowH - 10); p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x11, 0x13, 0x16)); p.drawRoundedRect(mb, 2, 2); int mi = proj.mixerIndex(c.mixerTrackId); p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(mb, Qt::AlignCenter, mi <= 0 ? "M" : QString::number(mi));
         const PatternChannelData* d = pat ? pat->channelData(c.id) : nullptr;
         if (d && !d->notes.empty()) {   // channel has piano-roll notes: show them instead of the step buttons
             QRectF area(stepX(0), rr.top() + 3, stepX(steps) - stepX(0) - 2, m_rowH - 6); p.setPen(QPen(theme::border(), 1)); p.setBrush(QColor(0x11, 0x13, 0x16)); p.drawRoundedRect(area, 3, 3);
@@ -244,7 +244,7 @@ void ChannelRackPanel::fitStepsToWidth() {
     p->stepCount = n; for (auto& c : p->channels) if ((int)c.steps.size() < n) c.steps.resize(n);
     m_app.model().notifyClean(ChangePatterns);
 }
-int ChannelRackPanel::heightForContent() const { int rows = std::max(1, (int)m_app.project().channels.size()); return 34 + rows * 24 + (m_view->graphMode() >= 0 ? 90 : 0) + 22; }
+int ChannelRackPanel::heightForContent() const { int rows = std::max(1, (int)m_app.project().channels.size()); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }
 void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }
 void ChannelRackPanel::uiTick() { m_view->uiTick(); }
 

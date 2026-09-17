@@ -18,7 +18,7 @@ public:
     explicit PlaylistView(App& app, QWidget* parent = nullptr);
     void setTool(Tool t); Tool tool() const { return m_tool; }
     void setSnapDivision(int d) { m_snapDiv = d; }
-    void refresh(); void uiTick(); void zoomToFit();
+    void refresh(); void uiTick(); void zoomToFit(); Tick maxExtent() const;
     void deleteSelected(); void selectAll(); void duplicateSelected(); void muteSelected(bool m); void crossfadeSelected();
 Q_SIGNALS:
     void openPattern(Id patternId); void openAudioClip(Id clipId); void toolChanged(int tool); void modeChanged(int tool);

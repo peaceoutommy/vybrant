@@ -36,7 +36,7 @@ private:
     Pattern* pattern() const; const Step* stepAt(Id ch, int step) const; int visibleSteps() const;   // steps covering the pattern's full (bar-rounded) length
     void showChannelMenu(int row, const QPoint& global);
     void applyGraphAt(const QPoint& p, bool commit);
-    App& m_app; int m_rowH = 24, m_leftW = 238, m_graphH = 90; int m_graphMode = -1;
+    App& m_app; int m_rowH = 28, m_leftW = 270, m_graphH = 100; int m_graphMode = -1;
     // drag state
     std::set<Id> m_multi; Id m_anchor = 0;   // multi-selection (Ctrl / Shift click); the project's selectedChannelId is the primary
     std::vector<Id> selectedIds() const;

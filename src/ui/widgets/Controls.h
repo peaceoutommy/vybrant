@@ -9,7 +9,7 @@ namespace mt {
 class Knob : public QWidget {
     Q_OBJECT
 public:
-    explicit Knob(QWidget* parent = nullptr, int size = 32);
+    explicit Knob(QWidget* parent = nullptr, int size = 36);
     float value() const { return m_value; }            // normalized 0..1
     void setValue(float v, bool emitSignal = false);
     void setDefault(float d) { m_default = d; }
@@ -87,13 +87,13 @@ class LedButton : public QWidget {
 public:
     explicit LedButton(const QString& text, const QColor& onColor, QWidget* parent = nullptr);
     bool isChecked() const { return m_checked; } void setChecked(bool c) { if (m_checked != c) { m_checked = c; update(); } }
-    QSize sizeHint() const override { return {m_w, 18}; } void setWidth(int w) { m_w = w; updateGeometry(); }
+    QSize sizeHint() const override { return {m_w, 20}; } void setWidth(int w) { m_w = w; updateGeometry(); }
 Q_SIGNALS:
     void toggled(bool); void rightClicked();
 protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override;
 private:
-    QString m_text; QColor m_on; bool m_checked = false; int m_w = 22;
+    QString m_text; QColor m_on; bool m_checked = false; int m_w = 26;
 };
 
 } // namespace mt

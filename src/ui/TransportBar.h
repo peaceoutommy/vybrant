@@ -14,7 +14,7 @@ namespace mt {
 class ModeSwitch : public QWidget {
     Q_OBJECT
 public:
-    explicit ModeSwitch(QWidget* parent = nullptr) : QWidget(parent) { setFixedSize(44, 26); setCursor(Qt::PointingHandCursor); setToolTip("Pattern / Song mode (L)"); }
+    explicit ModeSwitch(QWidget* parent = nullptr) : QWidget(parent) { setFixedSize(50, 30); setCursor(Qt::PointingHandCursor); setToolTip("Pattern / Song mode (L)"); }
     void setSong(bool s) { if (m_song != s) { m_song = s; update(); } }
     bool song() const { return m_song; }
 Q_SIGNALS:
