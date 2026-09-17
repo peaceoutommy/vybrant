@@ -47,6 +47,10 @@ QCursor deleteCursor() {
     static QCursor cur = [] { QPixmap pm(24, 24); pm.fill(Qt::transparent); QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(Qt::black, 3.5, Qt::SolidLine, Qt::RoundCap)); p.drawLine(6, 6, 18, 18); p.drawLine(18, 6, 6, 18); p.setPen(QPen(QColor(0xe0, 0x5a, 0x5a), 2, Qt::SolidLine, Qt::RoundCap)); p.drawLine(6, 6, 18, 18); p.drawLine(18, 6, 6, 18); return QCursor(pm, 12, 12); }();
     return cur;
 }
+QCursor muteCursor() {
+    static QCursor cur = [] { QPixmap pm(24, 24); pm.fill(Qt::transparent); QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(Qt::black, 2)); p.setBrush(QColor(0xf0, 0xa1, 0x3a)); p.drawEllipse(QRectF(3, 3, 18, 18)); QFont f; f.setPointSizeF(9); f.setBold(true); p.setFont(f); p.setPen(Qt::black); p.drawText(QRect(3, 3, 18, 18), Qt::AlignCenter, "M"); return QCursor(pm, 12, 12); }();
+    return cur;
+}
 QIcon glyphIcon(Glyph g, const QColor& color, int size) {
     QPixmap pm(size * 2, size * 2); pm.setDevicePixelRatio(2); pm.fill(Qt::transparent); QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(Qt::NoPen); p.setBrush(color); double s = size;
     switch (g) {

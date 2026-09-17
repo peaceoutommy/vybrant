@@ -17,6 +17,7 @@
 #include <QLabel>
 #include <QUrl>
 #include <climits>
+#include <QDateTime>
 
 namespace mt {
 
@@ -26,21 +27,21 @@ PlaylistView::PlaylistView(App& app, QWidget* parent) : QWidget(parent), m_app(a
     connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollTick = (Tick)v * PPQ / 4; invalidate(); } });
     connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) { if (!m_updatingBars) { m_scrollY = v; invalidate(); } });
 }
-void PlaylistView::setTool(Tool t) { m_tool = t; setCursor(t == Erase ? Qt::ForbiddenCursor : t == Slice ? Qt::SplitHCursor : t == Select ? Qt::CrossCursor : Qt::ArrowCursor); }
+void PlaylistView::setTool(Tool t) { m_tool = t; setCursor(t == Erase ? theme::deleteCursor() : t == MuteTool ? theme::muteCursor() : t == Slice ? Qt::SplitHCursor : t == Select ? Qt::CrossCursor : Qt::ArrowCursor); Q_EMIT modeChanged(t); }
 PlaylistView::Layout PlaylistView::layout() const { Layout l; int w = width() - 14, h = height() - 14; l.ruler = QRect(l.headerW, 0, w - l.headerW, l.rulerH); l.headers = QRect(0, l.rulerH, l.headerW, h - l.rulerH); l.area = QRect(l.headerW, l.rulerH, w - l.headerW, h - l.rulerH); return l; }
 void PlaylistView::resizeEvent(QResizeEvent*) { Layout L = layout(); m_hbar->setGeometry(L.headerW, height() - 14, width() - L.headerW - 14, 14); m_vbar->setGeometry(width() - 14, L.rulerH, 14, height() - L.rulerH - 14); updateScrollbars(); invalidate(); }
 Tick PlaylistView::xToTick(int x) const { return m_scrollTick + (Tick)((x - layout().headerW) / m_ppt); }
 int PlaylistView::tickToX(Tick t) const { return layout().headerW + (int)((t - m_scrollTick) * m_ppt); }
-int PlaylistView::trackH(int idx) const { auto& tr = m_app.project().playlistTracks; return (idx >= 0 && idx < (int)tr.size()) ? tr[idx].height : 60; }
+int PlaylistView::trackH(int idx) const { auto& tr = m_app.project().playlistTracks; return (int)std::lround(((idx >= 0 && idx < (int)tr.size()) ? tr[idx].height : 60) * m_vzoom); }
 int PlaylistView::trackTop(int idx) const { int y = layout().rulerH - m_scrollY; for (int i = 0; i < idx; ++i) y += trackH(i); return y; }
-int PlaylistView::trackAtY(int y) const { auto& tr = m_app.project().playlistTracks; int top = layout().rulerH - m_scrollY; for (int i = 0; i < (int)tr.size(); ++i) { if (y >= top && y < top + tr[i].height) return i; top += tr[i].height; } return -1; }
+int PlaylistView::trackAtY(int y) const { auto& tr = m_app.project().playlistTracks; int top = layout().rulerH - m_scrollY; for (int i = 0; i < (int)tr.size(); ++i) { int h = trackH(i); if (y >= top && y < top + h) return i; top += h; } return -1; }
 Tick PlaylistView::snapTicks() const { if (m_snapDiv == 0) return 1; if (m_snapDiv < 0) return m_app.project().transport.timeSig.ticksPerBar() * -m_snapDiv; return PPQ / m_snapDiv; }
 Tick PlaylistView::snap(Tick t, bool force) const { if (m_altHeld && !force) return t; Tick s = snapTicks(); if (s <= 1) return t; return (t / s) * s; }
 Tick PlaylistView::snapNear(Tick t) const { if (m_altHeld) return t; Tick s = snapTicks(); if (s <= 1) return t; return ((t + s / 2) / s) * s; }   // nearest grid line, past halfway rounds up
 Tick PlaylistView::snapRound(Tick t) const { Tick s = snapTicks(); if (s <= 1) s = PPQ / 4; return ((t + s / 2) / s) * s; }   // nearest grid line (rounds up past halfway)
 QRect PlaylistView::clipRect(const Clip& c) const { auto& tr = m_app.project().playlistTracks; int idx = -1; for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == c.trackId) idx = (int)i; if (idx < 0) return QRect(); return QRect(tickToX(c.start), trackTop(idx) + 1, std::max(3, (int)(m_app.project().clipLength(c) * m_ppt)), trackH(idx) - 2); }
 Clip* PlaylistView::clipAt(const QPoint& p, int* edge) const { auto& clips = m_app.project().clips; for (auto it = clips.rbegin(); it != clips.rend(); ++it) { QRect r = clipRect(*it); if (r.contains(p)) { if (edge) { *edge = 0; if (r.width() > 14) { if (p.x() >= r.right() - 6) *edge = 1; else if (p.x() <= r.left() + 5) *edge = -1; } } return const_cast<Clip*>(&*it); } } return nullptr; }
-void PlaylistView::updateScrollbars() { m_updatingBars = true; Tick len = std::max<Tick>(m_app.project().songLength(), PPQ * 4) + PPQ * 32; Tick visible = (Tick)(layout().area.width() / m_ppt); m_hbar->setRange(0, (int)std::max<Tick>(0, (len - visible) * 4 / PPQ)); m_hbar->setPageStep((int)(visible * 4 / PPQ)); m_hbar->setValue((int)(m_scrollTick * 4 / PPQ)); int total = 0; for (auto& t : m_app.project().playlistTracks) total += t.height; m_vbar->setRange(0, std::max(0, total + 60 - layout().area.height())); m_vbar->setPageStep(layout().area.height()); m_vbar->setValue(m_scrollY); m_updatingBars = false; }
+void PlaylistView::updateScrollbars() { m_updatingBars = true; Tick len = std::max<Tick>(m_app.project().songLength(), PPQ * 4) + PPQ * 32; Tick visible = (Tick)(layout().area.width() / m_ppt); m_hbar->setRange(0, (int)std::max<Tick>(0, (len - visible) * 4 / PPQ)); m_hbar->setPageStep((int)(visible * 4 / PPQ)); m_hbar->setValue((int)(m_scrollTick * 4 / PPQ)); int total = 0; for (size_t i = 0; i < m_app.project().playlistTracks.size(); ++i) total += trackH((int)i); m_vbar->setRange(0, std::max(0, total + 60 - layout().area.height())); m_vbar->setPageStep(layout().area.height()); m_vbar->setValue(m_scrollY); m_updatingBars = false; }
 void PlaylistView::refresh() { updateScrollbars(); invalidate(); }
 void PlaylistView::zoomToFit() { Tick len = std::max<Tick>(m_app.project().songLength(), PPQ * 16); m_ppt = clamp((double)layout().area.width() / (len + PPQ * 4), 0.002, 1.0); m_scrollTick = 0; refresh(); }
 void PlaylistView::uiTick() { auto tv = m_app.engine().transport(); double pt = tv.songMode ? tv.positionTicks : -1; if (pt != m_playTick) { m_playTick = pt; update(); } }
@@ -98,7 +99,7 @@ void PlaylistView::renderCache() {
     Layout L = layout(); m_cache = QPixmap(size()); m_cache.fill(theme::bg()); QPainter p(&m_cache); auto& proj = m_app.project(); const auto& ts = proj.transport.timeSig; Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar();
     // tracks background
     p.setClipRect(L.area); int y = L.rulerH - m_scrollY;
-    for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; QRect tr(L.area.left(), y, L.area.width(), t.height); p.fillRect(tr, i % 2 ? QColor(0x18, 0x1b, 0x20) : QColor(0x1a, 0x1d, 0x22)); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += t.height; }
+    for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect tr(L.area.left(), y, L.area.width(), th); p.fillRect(tr, i % 2 ? QColor(0x18, 0x1b, 0x20) : QColor(0x1a, 0x1d, 0x22)); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += th; }
     // grid density adapts to the zoom: never draw lines closer than ~10 px; bars are stronger than beats, beats than snap subdivisions
     Tick step = snapTicks(); if (step * m_ppt < 10) step = beat; if (beat * m_ppt < 10) step = bar; Tick barStep = bar; while (barStep * m_ppt < 14) barStep *= 2; if (step < barStep && bar * m_ppt < 14) step = barStep;
     Tick last = xToTick(L.area.right());
@@ -117,11 +118,11 @@ void PlaylistView::renderCache() {
     // headers
     p.fillRect(L.headers, theme::panel()); p.setClipRect(L.headers); y = L.rulerH - m_scrollY;
     for (size_t i = 0; i < proj.playlistTracks.size(); ++i) {
-        auto& t = proj.playlistTracks[i]; QRect hr(0, y, L.headerW, t.height); p.fillRect(hr, i % 2 ? QColor(0x1c, 0x1f, 0x24) : QColor(0x1e, 0x21, 0x27)); p.fillRect(QRect(0, y + 2, 3, t.height - 4), t.color); p.setPen(theme::border()); p.drawLine(0, hr.bottom(), L.headerW, hr.bottom());
+        auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect hr(0, y, L.headerW, th); p.fillRect(hr, i % 2 ? QColor(0x1c, 0x1f, 0x24) : QColor(0x1e, 0x21, 0x27)); p.fillRect(QRect(0, y + 2, 3, th - 4), t.color); p.setPen(theme::border()); p.drawLine(0, hr.bottom(), L.headerW, hr.bottom());
         p.setPen(theme::text()); p.setFont(theme::uiFont()); p.drawText(QRect(10, y + 3, L.headerW - 14, 16), Qt::AlignVCenter | Qt::AlignLeft, p.fontMetrics().elidedText(t.name, Qt::ElideRight, L.headerW - 16));
         auto btn = [&](QRect r, const QString& s, bool on, QColor c) { p.setPen(QPen(on ? c.darker(120) : theme::border(), 1)); p.setBrush(on ? c : QColor(0x16, 0x19, 0x1e)); p.drawRoundedRect(r, 2, 2); p.setPen(on ? theme::bg() : theme::textDim()); p.setFont(theme::smallFont()); p.drawText(r, Qt::AlignCenter, s); };
-        if (t.height >= 40) { btn(QRect(10, y + 22, 18, 14), "M", t.mute, theme::red()); btn(QRect(31, y + 22, 18, 14), "S", t.solo, theme::accent()); btn(QRect(52, y + 22, 18, 14), "L", t.locked, theme::textDim()); int mi = proj.mixerIndex(t.mixerTrackId); btn(QRect(73, y + 22, 40, 14), mi <= 0 ? "> Master" : QString("> Ins %1").arg(mi), false, theme::bg()); }
-        y += t.height;
+        if (th >= 40) { btn(QRect(10, y + 22, 18, 14), "M", t.mute, theme::red()); btn(QRect(31, y + 22, 18, 14), "S", t.solo, theme::accent()); btn(QRect(52, y + 22, 18, 14), "L", t.locked, theme::textDim()); int mi = proj.mixerIndex(t.mixerTrackId); btn(QRect(73, y + 22, 40, 14), mi <= 0 ? "> Master" : QString("> Ins %1").arg(mi), false, theme::bg()); }
+        y += th;
     }
     p.setPen(theme::textDim()); p.setFont(theme::smallFont()); p.drawText(QRect(6, y + 4, L.headerW - 12, 14), Qt::AlignLeft, "+ double-click to add track");
     p.setClipping(false);
@@ -153,18 +154,18 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
     if (L.ruler.contains(e->pos())) { Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x()))); if (e->button() == Qt::RightButton) { QMenu m; m.addAction("Add marker here", [this, t] { bool ok; QString n = QInputDialog::getText(this, "Marker", "Name:", QLineEdit::Normal, QString("Marker %1").arg(m_app.project().markers.size() + 1), &ok); if (ok) m_app.addMarker(t, n); }); for (auto& mk : proj.markers) if (std::abs(tickToX(mk.position) - e->pos().x()) < 8) { m.addAction("Rename marker '" + mk.name + "'", [this, id = mk.id, n = mk.name] { bool ok; QString nn = QInputDialog::getText(this, "Marker", "Name:", QLineEdit::Normal, n, &ok); if (ok) m_app.model().edit<Marker>(id, "Rename marker", [nn](Marker& x) { x.name = nn; }); }); m.addAction("Delete marker '" + mk.name + "'", [this, id = mk.id] { m_app.model().remove<Marker>(id, "Delete marker"); }); } m.addAction("Set punch in/out to loop", [this] { auto& t = m_app.project().transport; m_app.setPunch(true, t.loopStart, t.loopEnd); }); m.exec(e->globalPosition().toPoint()); return; } if (e->modifiers() & Qt::ControlModifier) { m_drag = LoopRange; m_loopDragStart = t; } else m_drag = Seek; m_pressTick = t; return; }
     if (L.headers.contains(e->pos())) {
         int idx = trackAtY(e->pos().y()); if (idx < 0) return; auto& t = proj.playlistTracks[idx]; int y = trackTop(idx); int ly = e->pos().y() - y;
-        if (ly >= t.height - 5) { m_drag = TrackHeight; m_heightTrack = idx; m_heightStart = t.height; return; }
+        if (ly >= trackH(idx) - 5) { m_drag = TrackHeight; m_heightTrack = idx; m_heightStart = t.height; return; }
         if (e->button() == Qt::RightButton) { showTrackMenu(idx, e->globalPosition().toPoint()); return; }
-        if (t.height >= 40 && ly >= 22 && ly <= 36) { int x = e->pos().x(); if (x >= 10 && x < 28) m_app.editTrack(t.id, t.mute ? "Unmute track" : "Mute track", [](PlaylistTrack& x) { x.mute = !x.mute; }); else if (x >= 31 && x < 49) m_app.editTrack(t.id, "Solo track", [](PlaylistTrack& x) { x.solo = !x.solo; }); else if (x >= 52 && x < 70) m_app.editTrack(t.id, "Lock track", [](PlaylistTrack& x) { x.locked = !x.locked; }); else if (x >= 73 && x < 113) { QMenu m; for (auto& mt : proj.mixerTracks) { auto* a = m.addAction(mt.name, [this, tid = t.id, mid = mt.id] { m_app.editTrack(tid, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; }); }); a->setCheckable(true); a->setChecked(mt.id == t.mixerTrackId); } m.exec(e->globalPosition().toPoint()); } }
+        if (trackH(idx) >= 40 && ly >= 22 && ly <= 36) { int x = e->pos().x(); if (x >= 10 && x < 28) m_app.editTrack(t.id, t.mute ? "Unmute track" : "Mute track", [](PlaylistTrack& x) { x.mute = !x.mute; }); else if (x >= 31 && x < 49) m_app.editTrack(t.id, "Solo track", [](PlaylistTrack& x) { x.solo = !x.solo; }); else if (x >= 52 && x < 70) m_app.editTrack(t.id, "Lock track", [](PlaylistTrack& x) { x.locked = !x.locked; }); else if (x >= 73 && x < 113) { QMenu m; for (auto& mt : proj.mixerTracks) { auto* a = m.addAction(mt.name, [this, tid = t.id, mid = mt.id] { m_app.editTrack(tid, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; }); }); a->setCheckable(true); a->setChecked(mt.id == t.mixerTrackId); } m.exec(e->globalPosition().toPoint()); } }
         return;
     }
     if (!L.area.contains(e->pos())) return;
     int edge = 0; Clip* c = clipAt(e->pos(), &edge); int trackIdx = trackAtY(e->pos().y());
     if (c && proj.track(c->trackId) && proj.track(c->trackId)->locked && m_tool != MuteTool) return;
-    if (e->button() == Qt::RightButton) { m_erasedAny = false; setCursor(theme::deleteCursor()); if (c) { if (m_tool == Draw || m_tool == Erase) { m_selected.clear(); m_app.deleteClips({c->id}); m_erasedAny = true; } else { showClipMenu(c, e->globalPosition().toPoint()); return; } } m_drag = Erasing; return; }
+    if (e->button() == Qt::RightButton) { m_erasedAny = false; setCursor(theme::deleteCursor()); Q_EMIT modeChanged(Erase); if (c) { if (m_tool == Draw || m_tool == Erase) { m_selected.clear(); m_app.deleteClips({c->id}); m_erasedAny = true; } else { showClipMenu(c, e->globalPosition().toPoint()); return; } } m_drag = Erasing; return; }
     if (m_tool == Erase) { if (c) { m_drag = Erasing; m_app.deleteClips({c->id}); } return; }
     if (m_tool == Slice) { if (c) m_app.splitClip(c->id, snap(xToTick(e->pos().x()))); return; }
-    if (m_tool == MuteTool) { if (c) m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; }); return; }
+    if (m_tool == MuteTool) { m_drag = Muting; m_touched.clear(); if (c) { m_touched.insert(c->id); m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; }); } return; }
     if (c) {
         // automation point editing
         if (c->type == ClipType::Automation && !(e->modifiers() & Qt::ControlModifier)) { int pi = autoPointAt(*c, e->pos()); if (pi >= 0) { m_autoLane = c->sourceId; m_autoPoint = pi; m_dragClip = c->id; m_laneBefore = *proj.lane(m_autoLane); m_drag = AutoPoint; return; } }
@@ -185,9 +186,10 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == NoDrag) { int edge = 0; Clip* c = L.area.contains(e->pos()) ? clipAt(e->pos(), &edge) : nullptr; if (m_tool == Draw || m_tool == Select) { if (L.headers.contains(e->pos())) { int idx = trackAtY(e->pos().y()); setCursor(idx >= 0 && e->pos().y() - trackTop(idx) >= trackH(idx) - 5 ? Qt::SizeVerCursor : Qt::ArrowCursor); } else setCursor(c ? (edge != 0 ? Qt::SizeHorCursor : Qt::SizeAllCursor) : (m_tool == Select ? Qt::CrossCursor : Qt::ArrowCursor)); } if (m_tool == Draw) update(); return; }
     if (m_drag == Pan) { int dx = e->pos().x() - m_lastPos.x(), dy = e->pos().y() - m_lastPos.y(); m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(dx / m_ppt)); m_scrollY = std::max(0, m_scrollY - dy); m_lastPos = e->pos(); updateScrollbars(); invalidate(); return; }
     if (m_drag == LoopRange) { Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x()))); if (std::abs(e->pos().x() - m_pressPos.x()) > 3) { Tick a = std::min(m_loopDragStart, t), b = std::max(m_loopDragStart, t); if (b > a) { proj.transport.loopStart = a; proj.transport.loopEnd = b; proj.transport.loopEnabled = true; m_app.engine().setLoop(true, a, b); invalidate(); } } return; }
-    if (m_drag == TrackHeight) { int h = clamp(m_heightStart + (e->pos().y() - m_pressPos.y()), 24, 300); proj.playlistTracks[m_heightTrack].height = h; updateScrollbars(); invalidate(); return; }
+    if (m_drag == TrackHeight) { int h = clamp(m_heightStart + (int)((e->pos().y() - m_pressPos.y()) / m_vzoom), 24, 300); proj.playlistTracks[m_heightTrack].height = h; updateScrollbars(); invalidate(); return; }
     if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); m_selected = m_selBase; for (auto& c : proj.clips) if (r.intersects(clipRect(c))) m_selected.insert(c.id); invalidate(); return; }
     if (m_drag == Erasing) { if (Clip* c = clipAt(e->pos())) { m_app.deleteClips({c->id}); m_erasedAny = true; } return; }
+    if (m_drag == Muting) { if (Clip* c = clipAt(e->pos())) { if (!m_touched.count(c->id)) { m_touched.insert(c->id); m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; }); } } return; }
     if (m_drag == AutoPoint) { auto* l = proj.lane(m_autoLane); const Clip* c = proj.clip(m_dragClip); if (!l || !c || m_autoPoint < 0 || m_autoPoint >= (int)l->points.size()) return; auto& pt = l->points[m_autoPoint]; pt.value = autoValueAtY(*c, e->pos().y()); Tick lo = m_autoPoint > 0 ? l->points[m_autoPoint - 1].time : 0, hi = m_autoPoint + 1 < (int)l->points.size() ? l->points[m_autoPoint + 1].time : LLONG_MAX; if (m_autoPoint > 0 && m_autoPoint + 1 < (int)l->points.size()) pt.time = clamp(snap(autoTickAtX(*c, e->pos().x())), lo, hi); invalidate(); return; }
     if (m_drag == FadeIn || m_drag == FadeOut) { Clip* c = proj.clip(m_dragClip); if (!c) return; Tick t = xToTick(e->pos().x()); if (m_drag == FadeIn) c->fadeIn = clamp<Tick>(t - c->start, 0, c->length); else c->fadeOut = clamp<Tick>(c->start + c->length - t, 0, c->length); invalidate(); return; }
     if (m_drag == Moving) {
@@ -215,13 +217,18 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
     case TrackHeight: { int h = proj.playlistTracks[m_heightTrack].height; proj.playlistTracks[m_heightTrack].height = m_heightStart; m_app.editTrack(proj.playlistTracks[m_heightTrack].id, "Track height", [h](PlaylistTrack& t) { t.height = h; }); break; }
     case AutoPoint: { auto* l = proj.lane(m_autoLane); if (l) { AutomationLane after = *l; *l = m_laneBefore; m_app.editLane(m_autoLane, "Move automation point", [after](AutomationLane& x) { x = after; }); } break; }
     case Rubber: if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); break;
-    case Erasing: setTool(m_tool); if (!m_erasedAny && (e->pos() - m_pressPos).manhattanLength() < 4 && e->button() == Qt::RightButton) { m_drag = NoDrag; showAreaMenu(e->pos(), e->globalPosition().toPoint()); } break;
+    case Erasing: setTool(m_tool); m_lastEraseWasClick = m_erasedAny && (e->pos() - m_pressPos).manhattanLength() < 4; m_lastEraseTime = QDateTime::currentMSecsSinceEpoch(); if (!m_erasedAny && (e->pos() - m_pressPos).manhattanLength() < 4 && e->button() == Qt::RightButton) { m_drag = NoDrag; showAreaMenu(e->pos(), e->globalPosition().toPoint()); } break;
+    case Muting: setTool(m_tool); break;
     default: break;
     }
     m_drag = NoDrag; m_dragClip = 0; m_autoPoint = -1; invalidate();
 }
 void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
     Layout L = layout(); auto& proj = m_app.project();
+    if (e->button() == Qt::RightButton && L.area.contains(e->pos())) { // double right-click: mute mode while dragging
+        if (m_lastEraseWasClick && QDateTime::currentMSecsSinceEpoch() - m_lastEraseTime < 600) { m_app.model().undoStack().undo(); m_lastEraseWasClick = false; }
+        m_drag = Muting; m_touched.clear(); setCursor(theme::muteCursor()); Q_EMIT modeChanged(MuteTool); if (Clip* c = clipAt(e->pos())) { m_touched.insert(c->id); m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; }); } return;
+    }
     if (L.headers.contains(e->pos())) { int idx = trackAtY(e->pos().y()); if (idx < 0) { m_app.addPlaylistTrack(); return; } auto& t = proj.playlistTracks[idx]; bool ok; QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t.name, &ok); if (ok && !n.isEmpty()) m_app.editTrack(t.id, "Rename track", [n](PlaylistTrack& x) { x.name = n; }); return; }
     if (L.ruler.contains(e->pos())) { if (m_app.project().transport.loopEnabled) m_app.setLoop(false); else zoomToFit(); return; }   // double-click on the loop bar deselects it
     if (Clip* c = clipAt(e->pos())) {
@@ -232,6 +239,7 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
 }
 void PlaylistView::wheelEvent(QWheelEvent* e) {
     int dy = e->angleDelta().y(); Layout L = layout();
+    if (e->modifiers() & Qt::AltModifier) { int d = e->angleDelta().y() != 0 ? e->angleDelta().y() : e->angleDelta().x(); double old = m_vzoom; m_vzoom = clamp(m_vzoom * (d > 0 ? 1.15 : 1 / 1.15), 0.4, 3.0); int my = e->position().toPoint().y() - L.rulerH; m_scrollY = std::max(0, (int)((m_scrollY + my) * m_vzoom / old) - my); updateScrollbars(); invalidate(); e->accept(); return; }
     if (e->modifiers() & Qt::ControlModifier) { Tick anchor = xToTick(e->position().toPoint().x()); m_ppt = clamp(m_ppt * (dy > 0 ? 1.15 : 1 / 1.15), 0.002, 1.0); m_scrollTick = std::max<Tick>(0, anchor - (Tick)((e->position().toPoint().x() - L.headerW) / m_ppt)); }
     else if (e->modifiers() & Qt::ShiftModifier || e->angleDelta().x() != 0) { int d = e->angleDelta().x() != 0 ? e->angleDelta().x() : dy; m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(d / m_ppt * 0.5)); }
     else m_scrollY = clamp(m_scrollY - dy / 2, 0, m_vbar->maximum());
@@ -308,7 +316,8 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent) : QWidget(parent), m_app
     auto* addTrack = new QToolButton(this); addTrack->setText("+ Track"); top->addWidget(addTrack); auto* fit = new QToolButton(this); fit->setText("Fit"); fit->setToolTip("Zoom to fit the song"); top->addWidget(fit);
     auto* hint = new QLabel("Drag samples / patterns / automation from the Browser. Ctrl+drag the ruler to select the loop area, Ctrl+B duplicates it. Ctrl+Shift+drag duplicates clips.", this); hint->setStyleSheet("color:#6a717a;"); top->addWidget(hint); top->addStretch(1); lay->addLayout(top);
     m_view = new PlaylistView(app, this); lay->addWidget(m_view, 1); m_view->setSnapDivision(-1);
-    connect(m_view, &PlaylistView::toolChanged, this, [this](int t) { for (int k = 0; k < 5; ++k) m_tools[k]->setChecked(k == t); });
+    auto showMode = [this](int t) { for (int k = 0; k < 5; ++k) m_tools[k]->setChecked(k == t); };
+    connect(m_view, &PlaylistView::toolChanged, this, showMode); connect(m_view, &PlaylistView::modeChanged, this, showMode);
     connect(m_snap, &QComboBox::currentIndexChanged, this, [this](int i) { m_view->setSnapDivision(TransportBar::snapDivisionFromIndex(i)); m_view->refresh(); });
     connect(addTrack, &QToolButton::clicked, this, [this] { m_app.addPlaylistTrack(); }); connect(fit, &QToolButton::clicked, this, [this] { m_view->zoomToFit(); });
     connect(m_view, &PlaylistView::openPattern, this, &PlaylistPanel::openPattern); connect(m_view, &PlaylistView::openAudioClip, this, &PlaylistPanel::openAudioClip);

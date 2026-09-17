@@ -1,8 +1,14 @@
+# build output (qmake and cmake)
 build/
+build-*/
 bin/
 Makefile
 *.o
 .qmake.stash
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
 # project files / autosaves / recordings live outside version control
 *.mtp
 *.mtp.autosave

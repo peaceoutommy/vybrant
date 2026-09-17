@@ -14,9 +14,9 @@ namespace mt {
 class PianoRollView : public QWidget {
     Q_OBJECT
 public:
-    enum Tool { Draw, Select, Erase };
+    enum Tool { Draw, Select, Erase, MuteTool };
     explicit PianoRollView(App& app, QWidget* parent = nullptr);
-    void setTool(Tool t) { m_tool = t; setCursor(t == Erase ? Qt::ForbiddenCursor : (t == Select ? Qt::CrossCursor : Qt::ArrowCursor)); }
+    void setTool(Tool t);
     Tool tool() const { return m_tool; }
     void setChannel(Id id) { m_channel = id; m_selected.clear(); invalidate(); }
     Id channel() const { return m_channel; }
@@ -32,11 +32,11 @@ public:
     void zoomToFit();
     static QStringList scaleNames(); static QStringList chordNames();
 Q_SIGNALS:
-    void toolChanged(int tool); void channelRequested(Id channelId);
+    void toolChanged(int tool); void channelRequested(Id channelId); void modeChanged(int tool);   // tool currently shown in the toolbar (temporary modes included)
 protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; void resizeEvent(QResizeEvent*) override; void contextMenuEvent(QContextMenuEvent*) override; void leaveEvent(QEvent*) override;
 private:
-    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect };
+    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect, Muting };
     struct Layout { int keyW = 60, rulerH = 22, velH = 70; QRect grid, ruler, keys, vel; };
     Layout layout() const;
     Pattern* pattern() const; PatternChannelData* data() const;
@@ -52,7 +52,7 @@ private:
     double m_ppt = 0.08; int m_rowH = 12; Tick m_scrollTick = 0; int m_topPitch = 84; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
     std::set<Id> m_selected; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
     Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer; bool m_altHeld = false; bool m_erasedAny = false;
-    Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0;   // time selection (Ctrl+drag on the ruler)
+    Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
     std::vector<Note> m_clipboard; QPixmap m_cache; bool m_cacheValid = false; double m_playTick = -1; QPoint m_hoverPos;
 };
 
@@ -63,7 +63,7 @@ public:
     void refresh(uint32_t flags); void uiTick();
     void showChannel(Id id);
 private:
-    App& m_app; PianoRollView* m_view; QComboBox *m_channel, *m_snap, *m_scale, *m_root, *m_chord; QToolButton *m_draw, *m_select, *m_erase, *m_ghost, *m_repeat; bool m_updating = false;
+    App& m_app; PianoRollView* m_view; QComboBox *m_channel, *m_snap, *m_scale, *m_root, *m_chord; QToolButton *m_draw, *m_select, *m_erase, *m_mute, *m_ghost, *m_repeat; bool m_updating = false;
 };
 
 } // namespace mt
