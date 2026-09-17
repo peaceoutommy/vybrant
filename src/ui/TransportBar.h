@@ -31,7 +31,6 @@ public:
     explicit TransportBar(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags);
     void uiTick();
-    QComboBox* snapCombo() const { return m_snap; }
     static QComboBox* makeSnapCombo(QWidget* parent);
     static int snapDivisionFromIndex(int idx);
     static int indexFromSnapDivision(int div);
@@ -42,7 +41,7 @@ protected:
     bool eventFilter(QObject* o, QEvent* e) override;
 private:
     void rebuildPatternCombo();
-    App& m_app; QToolButton *m_play, *m_stop, *m_record, *m_loop, *m_metro, *m_countIn, *m_punch, *m_loopRec, *m_typing; ModeSwitch* m_mode; QLabel *m_hint, *m_timeSec; DragValue *m_bpm, *m_tsNum, *m_tsDen; QComboBox *m_snap, *m_pattern, *m_recMode; QLabel *m_position, *m_stats, *m_midiLed; Knob* m_masterVol; QToolButton* m_newPattern;
+    App& m_app; QToolButton *m_play, *m_stop, *m_record, *m_loop, *m_metro, *m_countIn, *m_punch, *m_loopRec, *m_typing; ModeSwitch* m_mode; QLabel *m_hint, *m_timeSec; DragValue *m_bpm, *m_tsNum, *m_tsDen; QComboBox *m_pattern, *m_recMode; QLabel *m_position, *m_stats, *m_midiLed; QToolButton* m_newPattern;
     int m_lastMidiActivity = 0; bool m_updating = false; QHBoxLayout* m_winLayout;
 };
 

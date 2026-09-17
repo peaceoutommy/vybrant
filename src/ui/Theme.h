@@ -7,7 +7,13 @@
 #include <QIcon>
 #include <QCursor>
 
+QT_BEGIN_NAMESPACE
+class QWidget;
+QT_END_NAMESPACE
+
 namespace mt::theme {
+inline constexpr int kBarH = 26;          // shared control height for the transport / playlist / piano roll toolbars
+QWidget* barSeparator(QWidget* parent);   // 1px vertical rule between toolbar groups
 inline QColor bg() { return QColor(0x15, 0x17, 0x1b); }
 inline QColor panel() { return QColor(0x1c, 0x1f, 0x24); }
 inline QColor panelLight() { return QColor(0x24, 0x28, 0x2e); }
@@ -32,8 +38,10 @@ inline QColor withAlpha(QColor c, int a) { c.setAlpha(a); return c; }
 QString noteName(int midi);
 QString tickToBBT(int64_t tick, int tsNum, int tsDen);
 // Painted glyph icons (play, stop, record, metronome, loop...) so the toolbar has no text-heavy buttons
-enum class Glyph { Play, Stop, Record, Metronome, Pause, Playlist, PianoRoll, ChannelRack, Mixer, Browser, Samples, Plugins, Settings, CountIn, Punch, Takes, Help, TypingKeys };
+enum class Glyph { Play, Stop, Record, Metronome, Pause, Playlist, PianoRoll, ChannelRack, Mixer, Browser, Samples, Plugins, Settings, CountIn, Punch, Takes, Help, TypingKeys,
+                   Pencil, Marquee, Eraser, Slice, MuteSpeaker, Ghost, Repeat };   // editor tool icons (playlist / piano roll)
 QIcon glyphIcon(Glyph g, const QColor& color, int size = 14);
+QCursor toolCursor(Glyph g, int hotX = 11, int hotY = 11);   // the active editor tool, drawn as the mouse cursor
 QCursor deleteCursor();   // eraser cursor shown while right-drag deleting
 QCursor muteCursor();     // cursor for the mute mode (double right-click + drag / mute tool)
 }

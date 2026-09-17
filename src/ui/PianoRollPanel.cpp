@@ -40,7 +40,9 @@ PianoRollView::PianoRollView(App& app, QWidget* parent) : QWidget(parent), m_app
         if (moved) { updateScrollbars(); invalidate(); QMouseEvent ev(QEvent::MouseMove, m_lastMouse, mapToGlobal(m_lastMouse), Qt::NoButton, Qt::LeftButton, QApplication::keyboardModifiers()); mouseMoveEvent(&ev); }
     });
 }
-void PianoRollView::setTool(Tool t) { m_tool = t; setCursor(t == Erase ? theme::deleteCursor() : t == MuteTool ? theme::muteCursor() : t == Select ? Qt::CrossCursor : Qt::ArrowCursor); Q_EMIT modeChanged(t); }
+void PianoRollView::setTool(Tool t) { m_tool = t; setCursor(toolCursorFor(t)); Q_EMIT modeChanged(t); }
+// The pointer carries the active tool's icon; the pencil points from its tip, the rest sit centred on the hotspot.
+QCursor PianoRollView::toolCursorFor(Tool t) { switch (t) { case Erase: return theme::toolCursor(theme::Glyph::Eraser); case MuteTool: return theme::toolCursor(theme::Glyph::MuteSpeaker); case Select: return theme::toolCursor(theme::Glyph::Marquee); default: return theme::toolCursor(theme::Glyph::Pencil, 4, 19); } }
 PianoRollView::Layout PianoRollView::layout() const { Layout l; l.velH = m_velH; int w = width() - 14, h = height() - 14; l.keys = QRect(0, l.rulerH, l.keyW, h - l.rulerH - l.velH); l.ruler = QRect(l.keyW, 0, w - l.keyW, l.rulerH); l.grid = QRect(l.keyW, l.rulerH, w - l.keyW, h - l.rulerH - l.velH); l.vel = QRect(l.keyW, h - l.velH, w - l.keyW, l.velH); return l; }
 void PianoRollView::resizeEvent(QResizeEvent*) { m_hbar->setGeometry(layout().keyW, height() - 14, width() - layout().keyW - 14, 14); m_vbar->setGeometry(width() - 14, layout().rulerH, 14, height() - layout().rulerH - 14); updateScrollbars(); invalidate(); }
 Pattern* PianoRollView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
@@ -82,7 +84,7 @@ void PianoRollView::renderCache() {
     // grid columns
     Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar(); Tick step = snapTicks(); if (step * m_ppt < 8) step = beat; if (beat * m_ppt < 8) step = bar; Tick barStep = bar; while (barStep * m_ppt < 10) barStep *= 2; if (bar * m_ppt < 10) step = barStep; Tick first = (m_scrollTick / step) * step; Tick last = xToTick(L.grid.right());
     for (Tick t = first; t <= last; t += step) { int x = tickToX(t); QColor c = (t % bar == 0) ? theme::gridStrong().lighter(130) : (t % beat == 0) ? theme::gridStrong() : theme::grid(); p.setPen(c); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
-    if (patLen > 0) { int x = tickToX(patLen); p.fillRect(QRect(x, L.grid.top(), L.grid.right() - x, L.grid.height()), QColor(0, 0, 0, 60)); p.setPen(theme::accent()); p.drawLine(x, L.grid.top(), x, L.grid.bottom()); }
+    if (patLen > 0) { int x = tickToX(patLen); p.fillRect(QRect(x, L.grid.top(), L.grid.right() - x, L.grid.height()), QColor(0, 0, 0, 60)); }   // shading alone marks the pattern end - no accent rule
     if (m_timeSel) { int x1 = tickToX(m_selStart), x2 = tickToX(m_selEnd); p.fillRect(QRect(x1, L.grid.top(), x2 - x1, L.grid.height()), theme::withAlpha(theme::accent(), 22)); p.setPen(QPen(theme::withAlpha(theme::accent(), 160), 1)); p.drawLine(x1, L.grid.top(), x1, L.grid.bottom()); p.drawLine(x2, L.grid.top(), x2, L.grid.bottom()); }
     // ghost notes
     if (m_ghost && pat) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; const Channel* ch = m_app.project().channel(oc.id); QColor c = ch ? ch->color : theme::textDim(); c.setAlpha(70); for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; p.fillRect(r.adjusted(0, 1, -1, -1), c); } }
@@ -190,7 +192,7 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
     PatternChannelData* d = data(); if (!d) return;
     bool edge = false; Note* n = noteAt(e->pos(), &edge);
     if (m_tool == MuteTool && e->button() == Qt::LeftButton) { beginEdit(); m_drag = Muting; m_touched.clear(); if (n) { n->muted = !n->muted; m_touched.insert(n->id); invalidate(); } return; }
-    if (e->button() == Qt::RightButton || m_tool == Erase) { beginEdit(); m_drag = Erasing; m_erasedAny = false; setCursor(theme::deleteCursor()); Q_EMIT modeChanged(Erase); if (n) { std::erase_if(d->notes, [id = n->id](const Note& x) { return x.id == id; }); m_selected.erase(n->id); m_erasedAny = true; invalidate(); } return; }
+    if (e->button() == Qt::RightButton || m_tool == Erase) { beginEdit(); m_drag = Erasing; m_erasedAny = false; setCursor(theme::toolCursor(theme::Glyph::Eraser)); Q_EMIT modeChanged(Erase); if (n) { std::erase_if(d->notes, [id = n->id](const Note& x) { return x.id == id; }); m_selected.erase(n->id); m_erasedAny = true; invalidate(); } return; }
     if (n) {
         if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) { if (m_selected.count(n->id)) m_selected.erase(n->id); else m_selected.insert(n->id); invalidate(); }
         else if (!m_selected.count(n->id)) { m_selected.clear(); m_selected.insert(n->id); }
@@ -211,7 +213,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     m_hoverPos = e->pos(); m_lastMouse = e->pos(); m_altHeld = e->modifiers() & Qt::AltModifier; Layout L = layout(); PatternChannelData* d = data();
     if ((m_drag == Moving || m_drag == Creating || m_drag == Resizing || m_drag == Rubber) && !L.grid.contains(e->pos()) && !m_autoScroll.isActive()) m_autoScroll.start(40);
     if (m_drag == NoDrag && std::abs(e->pos().y() - L.vel.top()) <= 4 && e->pos().x() >= L.vel.left()) { setCursor(Qt::SizeVerCursor); return; }
-    if (m_drag == NoDrag) { bool edge = false; Note* n = L.grid.contains(e->pos()) ? noteAt(e->pos(), &edge) : nullptr; if (m_tool == Draw || m_tool == Select) setCursor(n && edge ? Qt::SizeHorCursor : (n ? Qt::SizeAllCursor : (m_tool == Select ? Qt::CrossCursor : Qt::ArrowCursor))); if (m_tool == Draw) update(); return; }
+    if (m_drag == NoDrag) { bool edge = false; Note* n = L.grid.contains(e->pos()) ? noteAt(e->pos(), &edge) : nullptr; if (m_tool == Draw || m_tool == Select) setCursor(n && edge ? QCursor(Qt::SizeHorCursor) : (n ? QCursor(Qt::SizeAllCursor) : toolCursorFor(m_tool))); if (m_tool == Draw) update(); return; }
     if (m_drag == Pan) { int dx = e->pos().x() - m_lastPos.x(), dy = e->pos().y() - m_lastPos.y(); m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(dx / m_ppt)); m_topPitch = clamp(m_topPitch + dy / m_rowH, 10, 127); m_lastPos = e->pos(); updateScrollbars(); invalidate(); return; }
     if (m_drag == LaneResize) { int h = clamp(m_laneResizeStart - (e->pos().y() - m_pressPos.y()), 40, 400); if (h != m_velH) { m_velH = h; updateScrollbars(); invalidate(); } return; }
     if (m_drag == Seek) { Tick t = std::max<Tick>(0, snapNear(xToTick(e->pos().x()))); if (t != m_pressTick) { m_pressTick = t; seekToPatternTick(t); } return; }
@@ -351,33 +353,35 @@ void PianoRollView::setSelectedLength(Tick len) { PatternChannelData* d = data()
 // ---------------------------------------------------------------- panel
 PianoRollPanel::PianoRollPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2); auto* top = new QHBoxLayout(); top->setSpacing(4);
-    // One row, grouped: tools | what is being edited | grid | musical helpers | view options | actions. The labels that
-    // used to sit in front of every dropdown are gone - each control says what it is, and the rest lives in its tooltip.
-    const int kH = 26;
-    auto sep = [&] { auto* f = new QWidget(this); f->setFixedSize(1, 18); f->setAttribute(Qt::WA_StyledBackground, true); f->setStyleSheet(QString("background-color:%1;").arg(theme::border().lighter(150).name())); top->addSpacing(6); top->addWidget(f, 0, Qt::AlignVCenter); top->addSpacing(6); };
-    auto mkTool = [&](const QString& t, const QString& tip) { auto* b = new QToolButton(this); b->setText(t); b->setToolTip(tip); b->setCheckable(true); b->setFixedHeight(kH); b->setFocusPolicy(Qt::NoFocus); top->addWidget(b); return b; };
+    // FL-style header: a menu button at the far left, then tight icon-only groups with no labels, and the channel the
+    // roll is pointed at parked on the right. Related buttons sit flush against each other so they read as one control.
+    const int kH = theme::kBarH;
+    auto sep = [&] { top->addSpacing(4); top->addWidget(theme::barSeparator(this)); top->addSpacing(4); };
+    auto group = [&]() -> QHBoxLayout* { auto* g = new QHBoxLayout(); g->setSpacing(1); g->setContentsMargins(0, 0, 0, 0); top->addLayout(g); return g; };
+    // The icon is painted in one fixed light colour, so a checked button only changes its background - no orange glyphs.
+    auto mkTool = [&](QHBoxLayout* g, theme::Glyph icon, const QString& tip, int w = 0) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(icon, QColor(0xe8, 0xeb, 0xef), 20)); b->setIconSize(QSize(20, 20)); b->setToolTip(tip); b->setCheckable(true); b->setFixedSize(w ? w : kH, kH); b->setFocusPolicy(Qt::NoFocus); g->addWidget(b); return b; };
     auto mkCombo = [&](int w, const QString& tip) { auto* c = new QComboBox(this); c->setFixedHeight(kH); c->setFixedWidth(w); c->setToolTip(tip); c->setFocusPolicy(Qt::NoFocus); top->addWidget(c); return c; };
-    m_draw = mkTool("\u270E", "Draw tool (P): click to add notes, drag to move, drag right edge to resize, right-click to erase"); m_select = mkTool("\u2B1A", "Select tool (E): drag a rectangle to select notes"); m_erase = mkTool("\u2716", "Erase tool (D) - also active while you hold the right button"); m_mute = mkTool("M", "Mute tool (T): click or drag over notes to mute/unmute them - also active after a double right-click + drag");
-    for (auto* b : {m_draw, m_select, m_erase, m_mute}) b->setFixedWidth(kH);
-    m_draw->setChecked(true);
-    sep();
-    m_channel = new QComboBox(this); m_channel->setFixedHeight(kH); m_channel->setMinimumWidth(140); m_channel->setToolTip("Channel being edited"); m_channel->setFocusPolicy(Qt::NoFocus); top->addWidget(m_channel);
-    sep();
-    m_snap = TransportBar::makeSnapCombo(this); m_snap->setFixedHeight(kH); m_snap->setFixedWidth(96); m_snap->setToolTip("Snap: the grid notes are placed and resized to (hold Alt to bypass it)"); m_snap->setFocusPolicy(Qt::NoFocus); top->addWidget(m_snap);
-    sep();
-    m_root = mkCombo(52, "Scale root: notes outside the scale are dimmed in the grid"); for (int i = 0; i < 12; ++i) m_root->addItem(theme::noteName(i).left(theme::noteName(i).size() - 2));
-    m_scale = mkCombo(112, "Scale highlight: notes outside the scale are dimmed in the grid"); m_scale->addItems(PianoRollView::scaleNames());
-    m_chord = mkCombo(104, "Chord helper: drawing a note adds the chord intervals"); m_chord->addItems(PianoRollView::chordNames());
-    sep();
-    m_ghost = mkTool("Ghost", "Show notes of the other channels behind this one"); m_ghost->setChecked(true);
-    m_repeat = mkTool("Repeat", "Note repeat: holding a key on the keyboard retriggers at the snap rate");
-    m_labels = mkCombo(100, "Note names on the key column"); m_labels->addItems({"C only", "All notes", "No labels"});
-    sep();
-    auto* tools = new QToolButton(this); tools->setText("Tools ▾"); tools->setFixedHeight(kH); tools->setFocusPolicy(Qt::NoFocus); tools->setPopupMode(QToolButton::InstantPopup); auto* tm = new QMenu(tools);
+
+    auto* menuBtn = new QToolButton(this); menuBtn->setText("\u2261"); menuBtn->setToolTip("Piano roll tools and edit actions"); menuBtn->setFixedSize(30, kH); menuBtn->setFocusPolicy(Qt::NoFocus); menuBtn->setPopupMode(QToolButton::InstantPopup); top->addWidget(menuBtn);
+    auto* tm = new QMenu(menuBtn);
     tm->addAction("Quantize starts\tCtrl+Q", [this] { m_view->quantize(false); }); tm->addAction("Quantize starts + lengths", [this] { m_view->quantize(true); }); tm->addSeparator(); tm->addAction("Arpeggiate selection", [this] { m_view->arpeggiate(); }); tm->addAction("Strum selection", [this] { m_view->strum(); }); tm->addAction("Legato\tCtrl+L", [this] { m_view->legato(); }); tm->addAction("Randomize velocity/pan...", [this] { bool ok; int a = QInputDialog::getInt(this, "Randomize", "Amount (%):", 20, 0, 100, 1, &ok); if (ok) m_view->randomize(a / 100.f, a / 100.f); });
     tm->addSeparator(); tm->addAction("Transpose +1", [this] { m_view->transpose(1); }); tm->addAction("Transpose -1", [this] { m_view->transpose(-1); }); tm->addAction("Transpose +12", [this] { m_view->transpose(12); }); tm->addAction("Transpose -12", [this] { m_view->transpose(-12); }); tm->addSeparator();
     tm->addAction("Select all\tCtrl+A", [this] { m_view->selectAll(); }); tm->addAction("Duplicate\tCtrl+D", [this] { m_view->duplicateSelected(); }); tm->addAction("Copy\tCtrl+C", [this] { m_view->copySelected(); }); tm->addAction("Paste\tCtrl+V", [this] { m_view->paste(); }); tm->addAction("Delete\tDel", [this] { m_view->deleteSelected(); }); tm->addSeparator(); tm->addAction("Zoom to fit", [this] { m_view->zoomToFit(); });
-    tools->setMenu(tm); top->addWidget(tools); top->addStretch(1); lay->addLayout(top);
+    sep();
+    { auto* g = group(); m_draw = mkTool(g, theme::Glyph::Pencil, "Draw (P): click to add notes, drag to move, drag the right edge to resize, right-click to erase"); m_select = mkTool(g, theme::Glyph::Marquee, "Select (E): drag a rectangle to select notes"); m_erase = mkTool(g, theme::Glyph::Eraser, "Erase (D) - also active while you hold the right button"); m_mute = mkTool(g, theme::Glyph::MuteSpeaker, "Mute (T): click or drag over notes to mute them - also after a double right-click + drag"); }
+    m_draw->setChecked(true);
+    sep();
+    m_snap = TransportBar::makeSnapCombo(this); m_snap->setFixedHeight(kH); m_snap->setFixedWidth(96); m_snap->setToolTip("Snap: the grid notes are placed and resized to (hold Alt to bypass)"); m_snap->setFocusPolicy(Qt::NoFocus); top->addWidget(m_snap);
+    sep();
+    m_root = mkCombo(50, "Scale root: notes outside the scale are dimmed in the grid"); for (int i = 0; i < 12; ++i) m_root->addItem(theme::noteName(i).left(theme::noteName(i).size() - 2));
+    m_scale = mkCombo(108, "Scale highlight: notes outside the scale are dimmed in the grid"); m_scale->addItems(PianoRollView::scaleNames());
+    m_chord = mkCombo(100, "Chord helper: drawing a note adds the chord intervals"); m_chord->addItems(PianoRollView::chordNames());
+    sep();
+    { auto* g = group(); m_ghost = mkTool(g, theme::Glyph::Ghost, "Ghost notes: show the other channels behind this one", 30); m_ghost->setChecked(true); m_repeat = mkTool(g, theme::Glyph::Repeat, "Note repeat: holding a key on the keyboard retriggers at the snap rate", 30); }
+    m_labels = mkCombo(96, "Note names on the key column");  m_labels->addItems({"C only", "All notes", "No labels"});
+    top->addStretch(1);
+    m_channel = new QComboBox(this); m_channel->setFixedHeight(kH); m_channel->setMinimumWidth(150); m_channel->setToolTip("Channel this piano roll is editing"); m_channel->setFocusPolicy(Qt::NoFocus); top->addWidget(m_channel);
+    menuBtn->setMenu(tm); lay->addLayout(top);
     m_view = new PianoRollView(app, this); lay->addWidget(m_view, 1);
     connect(m_view, &PianoRollView::channelRequested, this, [this](Id id) { m_app.selectChannel(id); showChannel(id); });
     auto showMode = [this](int t) { m_draw->setChecked(t == 0); m_select->setChecked(t == 1); m_erase->setChecked(t == 2); m_mute->setChecked(t == 3); };

@@ -17,12 +17,12 @@ int TransportBar::snapDivisionFromIndex(int idx) { if (idx < 0 || idx >= (int)(s
 int TransportBar::indexFromSnapDivision(int div) { for (int i = 1; i < 9; ++i) if (kSnapItems[i].div == div) return i; return div == 0 ? 9 : 5; }
 
 TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
-    auto* rows = new QVBoxLayout(this); rows->setContentsMargins(6, 2, 6, 2); rows->setSpacing(2);
+    auto* rows = new QVBoxLayout(this); rows->setContentsMargins(6, 2, 0, 2); rows->setSpacing(2);
     auto* lay = new QHBoxLayout(); lay->setSpacing(3); rows->addLayout(lay);
     auto* row2 = new QHBoxLayout(); row2->setSpacing(3); rows->addLayout(row2);
-    auto sepIn = [&](QHBoxLayout* l) { auto* f = new QFrame(this); f->setFrameShape(QFrame::VLine); f->setStyleSheet("color:#2b3037;"); f->setFixedHeight(18); l->addSpacing(4); l->addWidget(f); l->addSpacing(4); };
+    auto sepIn = [&](QHBoxLayout* l) { l->addSpacing(4); l->addWidget(theme::barSeparator(this)); l->addSpacing(4); };
     auto sep = [&] { sepIn(lay); };
-    auto mkIconIn = [&](QHBoxLayout* l, theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xc8, 0xcc, 0xd3)) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, c, 18)); b->setIconSize(QSize(18, 18)); b->setToolTip(tip); b->setCheckable(checkable); b->setFocusPolicy(Qt::NoFocus); b->setFixedSize(30, 26); l->addWidget(b); return b; };
+    auto mkIconIn = [&](QHBoxLayout* l, theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xc8, 0xcc, 0xd3)) { auto* b = new QToolButton(this); b->setIcon(theme::glyphIcon(g, c, 20)); b->setIconSize(QSize(20, 20)); b->setToolTip(tip); b->setCheckable(checkable); b->setFocusPolicy(Qt::NoFocus); b->setFixedSize(32, theme::kBarH); l->addWidget(b); return b; };
     auto mkIcon = [&](theme::Glyph g, const QString& tip, bool checkable, const QColor& c = QColor(0xc8, 0xcc, 0xd3)) { return mkIconIn(lay, g, tip, checkable, c); };
     auto mkLabel = [&](const QString& t) { auto* l = new QLabel(t, this); l->setStyleSheet("color:#7e8691; font-size:8pt; padding-left:2px;"); lay->addWidget(l); return l; };
     // ---- row 1: mode + transport + tempo + time
@@ -41,13 +41,14 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true); m_countIn = mkIcon(theme::Glyph::CountIn, "Count-in: one bar of clicks before recording starts (Ctrl+P)", true); m_punch = mkIcon(theme::Glyph::Punch, "Punch in/out: only record between the loop points", true); m_loopRec = mkIcon(theme::Glyph::Takes, "Loop recording: every pass of the loop becomes a new take", true); m_loop = nullptr;
     sep(); m_typing = mkIcon(theme::Glyph::TypingKeys, "Typing keyboard to piano keyboard (Ctrl+T): on = letter keys play the selected channel, off = letter keys are shortcuts", true);
     sep();
-    mkLabel("Snap"); m_snap = makeSnapCombo(this); m_snap->setFixedHeight(26); m_snap->setToolTip("Global snap grid for the transport and editors"); lay->addWidget(m_snap);
-    mkLabel("Record"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(26); lay->addWidget(m_recMode);
-    lay->addStretch(1);
-    m_masterVol = new Knob(this, 26); m_masterVol->setShowLabel(false); m_masterVol->setDefault(0.8f / 1.25f); m_masterVol->setToolTip("Master volume"); m_masterVol->valueText = [](float v) { return QString("Master %1 dB").arg(gainToDb(v * 1.25f / 0.8f), 0, 'f', 1); }; lay->addWidget(m_masterVol);
+    mkLabel("Record"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(theme::kBarH); lay->addWidget(m_recMode);
+    sep();
+    // The hint fills the rest of row 1, flush with the right edge of the window.
+    m_hint = new QLabel(this); m_hint->setStyleSheet("QLabel { color:#8e97a3; font-size:8pt; padding:0 6px; background:#111316; border:1px solid #2b3037; border-radius:3px; }"); m_hint->setFixedHeight(theme::kBarH); m_hint->setMinimumWidth(240); m_hint->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    lay->addWidget(m_hint, 1);
     // ---- row 2: hint bar, window buttons, pattern selector, status
-    m_hint = new QLabel(this); m_hint->setStyleSheet("QLabel { color:#8e97a3; font-size:8pt; padding:0 6px; background:#111316; border:1px solid #2b3037; border-radius:3px; }"); m_hint->setFixedHeight(26); m_hint->setMinimumWidth(240); m_hint->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed); row2->addWidget(m_hint, 1);
-    sepIn(row2); m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); row2->addLayout(m_winLayout); sepIn(row2);
+    row2->addStretch(1);   // the window buttons / pattern / stats stay on the right, where they have always been
+    m_winLayout = new QHBoxLayout(); m_winLayout->setSpacing(2); row2->addLayout(m_winLayout); sepIn(row2);
     auto* plbl = new QLabel("Pattern", this); plbl->setStyleSheet("color:#7e8691; font-size:8pt; padding-left:2px;"); row2->addWidget(plbl);
     m_pattern = new QComboBox(this); m_pattern->setMinimumWidth(130); m_pattern->setFixedHeight(26); m_pattern->setToolTip("Selected pattern: edited in the Channel Rack and Piano Roll, played in pattern mode"); row2->addWidget(m_pattern);
     m_newPattern = new QToolButton(this); m_newPattern->setText("+"); m_newPattern->setToolTip("New pattern (F4)"); m_newPattern->setFixedSize(26, 26); m_newPattern->setFocusPolicy(Qt::NoFocus); row2->addWidget(m_newPattern);
@@ -68,12 +69,9 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     connect(m_countIn, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) m_app.setCountIn(on); });
     connect(m_punch, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) { auto& t = m_app.project().transport; m_app.setPunch(on, t.loopStart, t.loopEnd); } });
     connect(m_loopRec, &QToolButton::toggled, this, [this](bool on) { if (!m_updating) m_app.setLoopRecord(on); });
-    connect(m_snap, &QComboBox::currentIndexChanged, this, [this](int i) { if (!m_updating) m_app.setSnap(snapDivisionFromIndex(i)); });
     connect(m_recMode, &QComboBox::currentIndexChanged, this, [this](int i) { if (!m_updating) m_app.model().editTransport("Record mode", [i](TransportSettings& t) { t.recordMode = i; }); });
     connect(m_pattern, &QComboBox::currentIndexChanged, this, [this](int i) { if (!m_updating && i >= 0) m_app.selectPattern((Id)m_pattern->itemData(i).toULongLong()); });
     connect(m_newPattern, &QToolButton::clicked, this, [this] { m_app.addPattern(); });
-    connect(m_masterVol, &Knob::valueChanged, this, [this](float v) { m_app.setMixerVolume(m_app.project().masterId(), v * 1.25f, false); });
-    connect(m_masterVol, &Knob::dragFinished, this, [this] { m_app.setMixerVolume(m_app.project().masterId(), m_masterVol->value() * 1.25f, true); });
     m_position->installEventFilter(this);
     refresh(ChangeAll);
 }
@@ -85,9 +83,8 @@ void TransportBar::rebuildPatternCombo() {
 void TransportBar::refresh(uint32_t flags) {
     m_updating = true; const auto& t = m_app.project().transport;
     m_bpm->setValue(t.bpm); m_tsNum->setValue(t.timeSig.numerator); m_tsDen->setValue(t.timeSig.denominator); m_metro->setChecked(t.metronome); m_countIn->setChecked(t.countIn); m_punch->setChecked(t.punchEnabled); m_loopRec->setChecked(t.loopRecord);
-    m_mode->setSong(t.songMode); m_snap->setCurrentIndex(t.snap ? indexFromSnapDivision(t.snapDivision) : 9); m_recMode->setCurrentIndex(t.recordMode);
+    m_mode->setSong(t.songMode); m_recMode->setCurrentIndex(t.recordMode);
     if (flags & (ChangePatterns | ChangeStructure | ChangeMeta | ChangeAll)) rebuildPatternCombo();
-    if (auto* m = m_app.project().master()) m_masterVol->setValue(m->volume / 1.25f);
     m_updating = false;
 }
 void TransportBar::uiTick() {
@@ -98,7 +95,6 @@ void TransportBar::uiTick() {
     if (!e.deviceRunning()) { m_stats->setText("\u26a0 NO AUDIO DEVICE - Options > Audio settings"); m_stats->setStyleSheet("color:#e2665c; font-family: monospace; font-size:7.5pt; font-weight:bold;"); return; } else if (m_stats->styleSheet().contains("e2665c")) m_stats->setStyleSheet("color:#7e8691; font-family: monospace; font-size:7.5pt;");
     m_stats->setText(QString("%1% \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6").arg((int)(e.cpuLoad() * 100), 2).arg(e.xruns()).arg(e.sampleRate() / 1000.0, 0, 'g', 3).arg(m_app.devices().config().bufferSize).arg(lat, 0, 'f', 1).arg(e.totalLatencySamples()));
     int act = m_app.midi().activityCounter(); m_midiLed->setStyleSheet(act != m_lastMidiActivity ? "color:#5fc074; font-weight:bold; font-size:7.5pt;" : "color:#3a4048; font-weight:bold; font-size:7.5pt;"); m_lastMidiActivity = act;
-    if (auto* m = m_app.project().master()) { float v = m_app.engine().registry().track(m->id).volume.load(); m_masterVol->setValue(v / 1.25f); }
     m_updating = false;
 }
 

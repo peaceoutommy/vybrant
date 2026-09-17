@@ -20,6 +20,7 @@ public:
     enum KeyLabels { LabelsC = 0, LabelsAll = 1, LabelsNone = 2 };   // note names drawn on the key column
     explicit PianoRollView(App& app, QWidget* parent = nullptr);
     void setTool(Tool t);
+    static QCursor toolCursorFor(Tool t);
     Tool tool() const { return m_tool; }
     void setChannel(Id id) { m_channel = id; m_selected.clear(); invalidate(); }
     Id channel() const { return m_channel; }
