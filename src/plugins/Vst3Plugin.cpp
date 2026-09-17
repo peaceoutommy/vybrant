@@ -1,4 +1,5 @@
 #include "plugins/Vst3Plugin.h"
+#include "plugins/PluginHost.h"
 #include "plugins/PluginEmbedWidget.h"
 #include "core/Log.h"
 #include <dlfcn.h>
@@ -154,7 +155,7 @@ struct Vst3HostObjects {
     ~Vst3HostObjects() { if (view) { view->setFrame(nullptr); view->release(); } if (frame) frame->release(); handler->release(); app->release(); }
 };
 
-tresult ComponentHandler::performEdit(ParamID id, ParamValue v) { if (plugin) { plugin->m_params.set(id, (float)v); if (plugin->onParamEdited) plugin->onParamEdited(id, (float)v); } return kResultOk; }
+tresult ComponentHandler::performEdit(ParamID id, ParamValue v) { if (plugin) { plugin->m_params.set(id, (float)v); for (size_t i = 0; i < plugin->m_paramIds.size() && i < plugin->m_lastPushed.size(); ++i) if (plugin->m_paramIds[i] == id) plugin->m_lastPushed[i] = (float)v;   /* the GUI already has it */ if (plugin->onParamEdited) plugin->onParamEdited(id, (float)v); } return kResultOk; }
 tresult ComponentHandler::restartComponent(int32 flags) { if (!plugin) return kResultOk; if (flags & kLatencyChanged) plugin->m_latencyDirty.store(true); if (flags & kParamValuesChanged) plugin->refreshParamsFromController(); return kResultOk; }
 
 // ---------------------------------------------------------------- plugin
@@ -221,7 +222,7 @@ void Vst3Plugin::setupBuses() {
 }
 
 void Vst3Plugin::buildParameterMirror() {
-    m_paramIds.clear(); m_lastSent.clear();
+    m_paramIds.clear(); m_lastSent.clear(); m_lastPushed.clear();
     if (!m_controller) return;
     int32 n = m_controller->getParameterCount();
     for (int32 i = 0; i < n; ++i) {
@@ -231,11 +232,16 @@ void Vst3Plugin::buildParameterMirror() {
         if (pi.stepCount == 1) d.unit = ParamUnit::Toggle;
         if (pi.flags & kIsBypass) m_bypassParamIndex = (int)m_paramIds.size();
         m_params.add(d); m_paramIds.push_back(pi.id);
-        m_params.set(pi.id, (float)m_controller->getParamNormalized(pi.id)); m_lastSent.push_back(m_params.get(pi.id));
+        // m_lastPushed mirrors what the edit controller already holds, so the first syncControllerFromParams() tick
+        // has nothing to send back - without it that tick pushes every parameter over IPC for no reason
+        float v = (float)m_controller->getParamNormalized(pi.id); m_params.set(pi.id, v); m_lastSent.push_back(v); m_lastPushed.push_back(v);
     }
 }
-void Vst3Plugin::refreshParamsFromController() { if (!m_controller) return; for (size_t i = 0; i < m_paramIds.size(); ++i) { float v = (float)m_controller->getParamNormalized(m_paramIds[i]); m_params.set(m_paramIds[i], v); } }
-void Vst3Plugin::syncControllerFromParams() { if (!m_controller) return; for (size_t i = 0; i < m_paramIds.size(); ++i) { float v = m_params.get(m_paramIds[i]); if (std::fabs((float)m_controller->getParamNormalized(m_paramIds[i]) - v) > 1e-6f) m_controller->setParamNormalized(m_paramIds[i], v); } }
+void Vst3Plugin::refreshParamsFromController() { if (!m_controller) return; m_lastPushed.assign(m_paramIds.size(), 0.f); for (size_t i = 0; i < m_paramIds.size(); ++i) { float v = (float)m_controller->getParamNormalized(m_paramIds[i]); m_params.set(m_paramIds[i], v); m_lastPushed[i] = v; } }
+// Push host-side parameter changes (automation, generic knobs, MIDI) to the edit controller so a custom GUI follows them.
+// Only values that changed since the last push are sent: every controller call is an IPC round trip for bridged plugins.
+void Vst3Plugin::syncControllerFromParams() { if (!m_controller) return;
+    if (m_lastPushed.size() != m_paramIds.size()) { m_lastPushed.assign(m_paramIds.size(), -1.f); } for (size_t i = 0; i < m_paramIds.size(); ++i) { float v = m_params.get(m_paramIds[i]); if (std::fabs(m_lastPushed[i] - v) > 1e-6f) { m_lastPushed[i] = v; m_controller->setParamNormalized(m_paramIds[i], v); } } }
 QString Vst3Plugin::formatValue(uint32_t id) const { if (!m_controller) return IProcessor::formatValue(id); String128 s{}; if (m_controller->getParamStringByValue(id, const_cast<Vst3Plugin*>(this)->m_params.get(id), s) == kResultOk) return u16(s); return IProcessor::formatValue(id); }
 
 void Vst3Plugin::setActive(bool a) {
@@ -307,12 +313,17 @@ QJsonObject Vst3Plugin::saveState() const {
     return o;
 }
 void Vst3Plugin::restoreState(const QJsonObject& s) {
+    bool applied = false;
     QByteArray st = QByteArray::fromBase64(s["pluginState"].toString().toLatin1());
-    if (!st.isEmpty()) { MemoryStream* ms = new MemoryStream(); ms->data.assign(st.begin(), st.end()); ms->pos = 0; bool was = m_active; setActive(false); m_component->setState(ms); ms->pos = 0; if (m_controller && !m_controllerIsComponent) m_controller->setComponentState(ms); ms->release(); if (was) setActive(true); }
+    if (!st.isEmpty()) { MemoryStream* ms = new MemoryStream(); ms->data.assign(st.begin(), st.end()); ms->pos = 0; bool was = m_active; setActive(false); m_component->setState(ms); ms->pos = 0; if (m_controller && !m_controllerIsComponent) m_controller->setComponentState(ms); ms->release(); if (was) setActive(true); applied = true; }
     QByteArray cst = QByteArray::fromBase64(s["controllerState"].toString().toLatin1());
-    if (!cst.isEmpty() && m_controller) { MemoryStream* cs = new MemoryStream(); cs->data.assign(cst.begin(), cst.end()); cs->pos = 0; m_controller->setState(cs); cs->release(); }
-    refreshParamsFromController();
-    for (size_t i = 0; i < m_paramIds.size(); ++i) m_lastSent[i] = m_params.getAt((int)i) + 1.f;   // force resend on next block
+    if (!cst.isEmpty() && m_controller) { MemoryStream* cs = new MemoryStream(); cs->data.assign(cst.begin(), cst.end()); cs->pos = 0; m_controller->setState(cs); cs->release(); applied = true; }
+    // Nothing was written, so the mirror built at load time is still current: re-reading it would cost one blocking
+    // controller call per parameter (2000+ IPC round trips for a bridged plugin) to learn values we already have.
+    if (!applied) return;
+    // the processor already holds this state: only parameters the host changes from here on are sent as parameter changes
+    // (re-sending all 2000+ parameters of a big plugin in one block can trigger momentary/trigger parameters and reset voices)
+    refreshParamsFromController(); for (size_t i = 0; i < m_paramIds.size() && i < m_lastSent.size(); ++i) m_lastSent[i] = m_params.getAt((int)i);
 }
 
 QWidget* Vst3Plugin::createEditor(QWidget* parent) {
@@ -325,8 +336,12 @@ QWidget* Vst3Plugin::createEditor(QWidget* parent) {
         v->setFrame(m_host->frame);
         ViewRect r{}; if (v->getSize(&r) == kResultOk) { width = r.getWidth(); height = r.getHeight(); }
         if (v->attached((void*)xid, kPlatformTypeX11EmbedWindowID) != kResultOk) { v->setFrame(nullptr); v->release(); return false; }
-        IPlugViewContentScaleSupport* sc = nullptr; if (v->queryInterface(IPlugViewContentScaleSupport_iid.id, (void**)&sc) == kResultOk && sc) { sc->setContentScaleFactor((float)w->devicePixelRatioF()); sc->release(); }
-        m_host->view = v; return true;
+        // HiDPI: native plugins get the real scale factor. Bridged (yabridge / Wine) plugins don't: Wine has no fractional
+        // HiDPI support, so a factor like 1.25 makes the editor draw at two sizes at once and its hit-testing no longer
+        // matches what you see (the same thing yabridge's own editor_disable_host_scaling option works around).
+        if (!yabridge::isBridged(m_module ? m_module->path() : QString())) { IPlugViewContentScaleSupport* sc = nullptr; if (v->queryInterface(IPlugViewContentScaleSupport_iid.id, (void**)&sc) == kResultOk && sc) { sc->setContentScaleFactor((float)w->devicePixelRatioF()); sc->release(); } }
+        m_host->view = v; if (v->getSize(&r) == kResultOk && r.getWidth() > 0 && r.getHeight() > 0) { width = r.getWidth(); height = r.getHeight(); }   // the view may have picked its final size while attaching (scaling, bridged plugins)
+        return true;
     };
     w->onDetach = [this] { if (m_host->view) { m_host->view->removed(); m_host->view->setFrame(nullptr); m_host->view->release(); m_host->view = nullptr; } if (m_host->frame) m_host->frame->runLoop->clearAll(); };
     w->onResized = [this](int width, int height) { if (m_host->view && m_host->view->canResize() == kResultTrue) { ViewRect r{0, 0, width, height}; if (m_host->view->checkSizeConstraint(&r) == kResultOk) m_host->view->onSize(&r); else m_host->view->onSize(&r); } };

@@ -1,7 +1,7 @@
 # MusicThingy DAW - qmake project (Linux native)
 TEMPLATE = app
 TARGET = musicthingy
-QT += core gui widgets
+QT += core gui widgets network
 CONFIG += c++20 link_pkgconfig
 CONFIG -= debug_and_release
 QMAKE_CXXFLAGS += -O2 -Wall -Wno-unused-parameter -Wno-unused-function -fno-strict-aliasing

@@ -172,7 +172,7 @@ void MainWindow::syncWindowButtons() {
 }
 void MainWindow::startupChecks() { if (m_app.hasRecoveryFile()) { auto r = QMessageBox::question(this, "Recover project", "An autosaved recovery file from a previous session was found. Recover it?", QMessageBox::Yes | QMessageBox::No); if (r == QMessageBox::Yes) m_app.recoverAutosave(); else QFile::remove(m_app.autosavePath()); } }
 void MainWindow::closeEvent(QCloseEvent* e) { if (!m_forceClose && !maybeSave()) { e->ignore(); return; } QSettings s; s.setValue("ui/geometry", saveGeometry()); s.setValue("ui/state", saveState()); s.setValue("ui/workspace", m_workspace->saveState()); for (auto& [id, w] : m_editors) w->close(); e->accept(); }
-bool MainWindow::saveScreenshot(const QString& path) { QPixmap pm = grab(); bool ok = pm.save(path); for (auto* d : {m_dRack}) if (d->isFloating() && d->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), "_" + d->objectName()); d->grab().save(p); } return ok; }
+bool MainWindow::saveScreenshot(const QString& path) { QPixmap pm = grab(); bool ok = pm.save(path); if (QWidget* m = QApplication::activeModalWidget()) { QString p = path; p.insert(p.lastIndexOf('.'), "_dialog"); m->grab().save(p); } for (auto* d : {m_dRack}) if (d->isFloating() && d->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), "_" + d->objectName()); d->grab().save(p); } return ok; }
 
 int MainWindow::typingNote(int key) const {
     static const char lower[] = "zsxdcvgbhnjm,l.;/"; static const char upper[] = "q2w3er5t6y7ui9o0p";
@@ -192,8 +192,13 @@ void MainWindow::setTypingKeyboard(bool on) {
 // single-key shortcuts (P, B, E, D, R, L, 1..9 ...). Off, the same keys are plain keybinds. Text fields always win.
 bool MainWindow::typingKeyEvent(QObject* o, QEvent* e) {
     if (!m_typingKeyboard) return false; QEvent::Type t = e->type(); if (t != QEvent::KeyPress && t != QEvent::KeyRelease && t != QEvent::ShortcutOverride) return false;
-    auto* w = qobject_cast<QWidget*>(o); if (!w || w->window() != this) { QWidget* f = QApplication::focusWidget(); if (!f || f->window() != this) return false; }
-    QWidget* f = QApplication::focusWidget(); bool textual = qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QAbstractSpinBox*>(f) || qobject_cast<QComboBox*>(f); if (textual) return false;
+    // Plugin editors are separate Qt::Tool top-levels, so their focus widget's window() is the PluginWindow rather than
+    // this one. They still have to count as ours: every command is a Qt::ApplicationShortcut, so without this the letter
+    // keys skip typing mode and fire the shortcuts instead whenever a plugin editor holds focus.
+    QWidget* f = QApplication::focusWidget();
+    auto ours = [this](QWidget* x) { QWidget* win = x ? x->window() : nullptr; return win == this || qobject_cast<PluginWindow*>(win) != nullptr; };
+    if (!ours(qobject_cast<QWidget*>(o)) && !ours(f)) return false;
+    bool textual = qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QAbstractSpinBox*>(f) || qobject_cast<QComboBox*>(f); if (textual) return false;
     auto* ke = static_cast<QKeyEvent*>(e); if (ke->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier)) return false; int k = ke->key(); if (k < 0x20 || k >= 0x7f) return false; int note = typingNote(k); if (note < 0 || note > 127) return false;
     if (t == QEvent::ShortcutOverride) { ke->accept(); return true; }
     if (ke->isAutoRepeat()) return true;

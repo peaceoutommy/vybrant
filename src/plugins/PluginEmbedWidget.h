@@ -18,6 +18,7 @@ public:
     std::function<void()> onIdle;                   // periodic idle (VST2 editors)
     void requestResize(int w, int h);               // plugin -> host
     bool attached() const { return m_attached; }
+    QSize sizeHint() const override { return m_pluginSize.isValid() ? m_pluginSize : QSize(400, 300); }
 protected:
     void showEvent(QShowEvent*) override;
     void hideEvent(QHideEvent*) override;
@@ -25,7 +26,7 @@ protected:
     QPaintEngine* paintEngine() const override { return nullptr; }
 private:
     void doAttach(); void doDetach();
-    bool m_attached = false; bool m_inPluginResize = false; QTimer m_idle;
+    bool m_attached = false; bool m_inPluginResize = false; QTimer m_idle; QSize m_pluginSize;
 };
 
 } // namespace mt

@@ -18,6 +18,24 @@
 
 namespace mt {
 
+// ---------------------------------------------------------------- yabridge
+namespace yabridge {
+static QString findExe(const QString& name) { QString p = QStandardPaths::findExecutable(name); if (!p.isEmpty()) return p; for (auto& d : {QDir::homePath() + "/.local/share/yabridge", QDir::homePath() + "/.local/bin", QString("/usr/bin"), QString("/usr/local/bin")}) if (QFileInfo(d + "/" + name).isExecutable()) return d + "/" + name; return QString(); }
+Status status() {
+    Status st; st.yabridgectl = findExe("yabridgectl"); st.wine = findExe("wine"); if (st.wine.isEmpty()) st.wine = findExe("wine64");
+    if (!st.yabridgectl.isEmpty()) { QProcess p; p.start(st.yabridgectl, {"--version"}); if (p.waitForFinished(3000)) st.version = QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+        QProcess l; l.start(st.yabridgectl, {"list"}); if (l.waitForFinished(3000)) for (auto& line : QString::fromUtf8(l.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts)) if (line.startsWith('/')) st.winePluginDirs << line.trimmed(); }
+    return st;
+}
+QStringList wrapperDirs() { return {QDir::homePath() + "/.vst/yabridge", QDir::homePath() + "/.vst3/yabridge"}; }
+bool isBridged(const QString& path) {
+    for (auto& d : wrapperDirs()) if (path.startsWith(d)) return true;
+    // the wrappers are copies of yabridge's chainloader: cheap to recognise by the strings inside
+    QString so = path; if (QFileInfo(path).isDir()) { QDir bin(path + "/Contents/x86_64-linux"); auto l = bin.entryList({"*.so"}, QDir::Files); so = l.isEmpty() ? QString() : bin.filePath(l.first()); }
+    QFile f(so); if (so.isEmpty() || !f.open(QIODevice::ReadOnly) || f.size() > 4 * 1024 * 1024) return false; return f.read(4 * 1024 * 1024).contains("yabridge");
+}
+}
+
 // ---------------------------------------------------------------- database
 PluginDatabase::PluginDatabase(QObject* parent) : QObject(parent) { m_dirs = defaultDirectories(); }
 QString PluginDatabase::databasePath() { QString d = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation); QDir().mkpath(d); return d + "/plugins.json"; }
@@ -90,7 +108,7 @@ void PluginScanner::launchNext() {
         if (!m_cancel) launchNext(); else if (m_running.empty()) Q_EMIT finished();
     });
     proc->start(QCoreApplication::applicationFilePath(), {"--scan-plugin", path});
-    QTimer::singleShot(45000, proc, [proc] { if (proc->state() == QProcess::Running) proc->kill(); });
+    QTimer::singleShot(yabridge::isBridged(path) ? 180000 : 45000, proc, [proc] { if (proc->state() == QProcess::Running) proc->kill(); });   // bridged plugins boot Wine first
 }
 
 int PluginScanner::scanChildMain(const QString& path) {

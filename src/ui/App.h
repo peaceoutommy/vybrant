@@ -39,7 +39,7 @@ public:
     CommandRegistry& commands() { return m_commands; }
 
     // ---- project lifecycle
-    void newProject(bool demo = false); bool openProject(const QString& path); bool saveProject(); bool saveProjectAs(const QString& path); bool saveTemplate(const QString& name); bool newFromTemplate(const QString& path);
+    void newProject(bool demo = false); void retryAudioDevice(int attempt); bool openProject(const QString& path); bool saveProject(); bool saveProjectAs(const QString& path); bool saveTemplate(const QString& name); bool newFromTemplate(const QString& path);
     QStringList recentFiles() const; QStringList templates() const; QString templatesDir() const; QString autosavePath() const; bool hasRecoveryFile() const; bool recoverAutosave();
     void collectSamples(); std::vector<AudioSource*> missingSamples(); void relinkSample(Id sourceId, const QString& newPath); int searchMissingIn(const QString& dir);
     QString projectTitle() const;
