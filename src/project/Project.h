@@ -43,7 +43,7 @@ struct PatternChannelData {
 struct Pattern {
     Id id = 0;
     QString name;
-    QColor color = QColor(0x4e, 0x9a, 0xf1);
+    QColor color = QColor(0x8f, 0x97, 0xa1);   // neutral grey by default; App::addPattern cycles a palette after that
     Tick length = 0;          // 0 = automatic (derived from content / step count)
     int stepsPerBeat = 4;     // step resolution (4 = 16ths, 2 = 8ths, 8 = 32nds, 3 = triplets)
     int stepCount = 16;       // steps visible in the rack
