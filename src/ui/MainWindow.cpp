@@ -114,9 +114,12 @@ void MainWindow::buildMenus() {
     tr->addAction(reg.add("transport.loop", "Toggle loop", "Transport", QKeySequence("Ctrl+L"), [this] { m_app.setLoop(!m_app.project().transport.loopEnabled); }, this));
     tr->addAction(reg.add("transport.metronome", "Toggle metronome", "Transport", QKeySequence("Ctrl+M"), [this] { m_app.setMetronome(!m_app.project().transport.metronome); }, this));
     tr->addAction(reg.add("transport.countIn", "Toggle count-in", "Transport", QKeySequence("Ctrl+P"), [this] { m_app.setCountIn(!m_app.project().transport.countIn); }, this));
-    tr->addAction(reg.add("transport.typing", "Typing keyboard to piano keyboard", "Transport", QKeySequence("Ctrl+T"), [this] { m_typingKeyboard = !m_typingKeyboard; statusBar()->showMessage(m_typingKeyboard ? "Typing keyboard: on" : "Typing keyboard: off", 1500); }, this));
+    { auto* a = reg.add("transport.typing", "Typing keyboard to piano keyboard", "Transport", QKeySequence("Ctrl+T"), [this] { setTypingKeyboard(!m_typingKeyboard); }, this, true); tr->addAction(a); QToolButton* b = m_transport->typingButton(); connect(b, &QToolButton::clicked, this, [this](bool on) { setTypingKeyboard(on); }); m_typingKeyboard = QSettings().value("ui/typingKeyboard", false).toBool(); a->setChecked(m_typingKeyboard); b->setChecked(m_typingKeyboard); }
     tr->addAction(reg.add("transport.tempoUp", "Tempo +1", "Transport", QKeySequence("Ctrl+Up"), [this] { m_app.setBpm(m_app.project().transport.bpm + 1); }, this)); tr->addAction(reg.add("transport.tempoDown", "Tempo -1", "Transport", QKeySequence("Ctrl+Down"), [this] { m_app.setBpm(m_app.project().transport.bpm - 1); }, this));
-    tr->addSeparator(); tr->addAction(reg.add("transport.panic", "Panic (all notes off)", "Transport", QKeySequence("Ctrl+Shift+P"), [this] { m_app.panic(); }, this));
+    tr->addSeparator(); tr->addAction(reg.add("transport.panic", "Panic (all notes off)", "Transport", QKeySequence("Ctrl+H"), [this] { m_app.panic(); }, this, false, QKeySequence("Ctrl+Shift+P")));
+    tr->addAction(reg.add("transport.nextBar", "Next bar", "Transport", QKeySequence(Qt::KeypadModifier | Qt::Key_Asterisk), [this] { Tick bar = m_app.project().transport.timeSig.ticksPerBar(); m_app.seek(((Tick)m_app.engine().positionTicks() / bar + 1) * bar); }, this));
+    tr->addAction(reg.add("transport.prevBar", "Previous bar", "Transport", QKeySequence(Qt::KeypadModifier | Qt::Key_Slash), [this] { Tick bar = m_app.project().transport.timeSig.ticksPerBar(); Tick pos = (Tick)m_app.engine().positionTicks(); m_app.seek(std::max<Tick>(0, ((pos - 1) / bar) * bar)); }, this));
+    tr->addAction(reg.add("transport.snapToggle", "Toggle snap (line / none)", "Transport", QKeySequence(Qt::Key_Backspace), [this] { auto& t = m_app.project().transport; static int last = 4; if (t.snapDivision != 0) { last = t.snapDivision; m_app.setSnap(0); } else m_app.setSnap(last); }, this));
     tr->addAction(reg.add("transport.octaveUp", "Typing keyboard octave up", "Transport", QKeySequence("Ctrl+]"), [this] { m_octave = std::min(8, m_octave + 1); statusBar()->showMessage(QString("Typing keyboard octave: %1").arg(m_octave), 1500); }, this)); tr->addAction(reg.add("transport.octaveDown", "Typing keyboard octave down", "Transport", QKeySequence("Ctrl+["), [this] { m_octave = std::max(0, m_octave - 1); statusBar()->showMessage(QString("Typing keyboard octave: %1").arg(m_octave), 1500); }, this));
     auto* view = mb->addMenu("&View");
     auto addDockAction = [&](const QString& id, QDockWidget* d, const QKeySequence& k, bool inWorkspace) { auto* a = reg.add(id, d->windowTitle(), "View", k, [this, d, inWorkspace] { bool shown = d->isVisible() && !d->visibleRegion().isEmpty() && (!inWorkspace || m_pages->currentWidget() == m_workspace); if (shown) { if (inWorkspace && m_dPlaylist->isVisible() && m_dPiano->isVisible() && !d->isFloating()) { d->hide(); } else d->hide(); } else { if (inWorkspace) showWorkspaceDock(d); else { d->show(); d->raise(); d->widget()->setFocus(); } } syncWindowButtons(); }, this); view->addAction(a); };
@@ -176,15 +179,30 @@ int MainWindow::typingNote(int key) const {
     const char* u = strchr(upper, (char)tolower(key)); if (u && *u) return (m_octave + 1) * 12 + 12 + (int)(u - upper);
     return -1;
 }
-void MainWindow::keyPressEvent(QKeyEvent* e) {
-    QWidget* f = QApplication::focusWidget(); bool textual = qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QAbstractSpinBox*>(f);
-    if (m_typingKeyboard && !textual && e->modifiers() == Qt::NoModifier && !e->isAutoRepeat()) { int k = e->key(); if (k >= 0x20 && k < 0x7f) { int note = typingNote(k); if (note >= 0 && note <= 127) { if (!m_heldKeys.count(k)) { m_heldKeys.insert(k); m_app.noteOn(note); } e->accept(); return; } } }
-    QMainWindow::keyPressEvent(e);
+void MainWindow::keyPressEvent(QKeyEvent* e) { QMainWindow::keyPressEvent(e); }
+void MainWindow::keyReleaseEvent(QKeyEvent* e) { QMainWindow::keyReleaseEvent(e); }
+void MainWindow::setTypingKeyboard(bool on) {
+    if (m_typingKeyboard == on) return; m_typingKeyboard = on; QSettings().setValue("ui/typingKeyboard", on);
+    if (!on) { for (int k : m_heldKeys) { int n = typingNote(k); if (n >= 0) m_app.noteOff(n); } m_heldKeys.clear(); }
+    if (auto* a = m_app.commands().action("transport.typing")) a->setChecked(on); m_transport->typingButton()->setChecked(on);
+    statusBar()->showMessage(on ? "Typing keyboard: keys play the selected channel (Ctrl+T to return to shortcuts)" : "Typing keyboard off: keys are shortcuts", 2000);
 }
-void MainWindow::keyReleaseEvent(QKeyEvent* e) { if (e->isAutoRepeat()) { QMainWindow::keyReleaseEvent(e); return; } int k = e->key(); if (m_heldKeys.count(k)) { m_heldKeys.erase(k); int note = typingNote(k); if (note >= 0) m_app.noteOff(note); e->accept(); return; } QMainWindow::keyReleaseEvent(e); }
+// Typing keyboard mode: while on, unmodified letter/number keys play the selected channel and never reach the editors'
+// single-key shortcuts (P, B, E, D, R, L, 1..9 ...). Off, the same keys are plain keybinds. Text fields always win.
+bool MainWindow::typingKeyEvent(QObject* o, QEvent* e) {
+    if (!m_typingKeyboard) return false; QEvent::Type t = e->type(); if (t != QEvent::KeyPress && t != QEvent::KeyRelease && t != QEvent::ShortcutOverride) return false;
+    auto* w = qobject_cast<QWidget*>(o); if (!w || w->window() != this) { QWidget* f = QApplication::focusWidget(); if (!f || f->window() != this) return false; }
+    QWidget* f = QApplication::focusWidget(); bool textual = qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QAbstractSpinBox*>(f) || qobject_cast<QComboBox*>(f); if (textual) return false;
+    auto* ke = static_cast<QKeyEvent*>(e); if (ke->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier)) return false; int k = ke->key(); if (k < 0x20 || k >= 0x7f) return false; int note = typingNote(k); if (note < 0 || note > 127) return false;
+    if (t == QEvent::ShortcutOverride) { ke->accept(); return true; }
+    if (ke->isAutoRepeat()) return true;
+    if (t == QEvent::KeyPress) { if (!m_heldKeys.count(k)) { m_heldKeys.insert(k); m_app.noteOn(note); } } else if (m_heldKeys.count(k)) { m_heldKeys.erase(k); m_app.noteOff(note); }
+    return true;
+}
 
 // FL behaviour: clicking in the main workspace (playlist / piano roll / mixer) closes the floating Channel Rack; the Browser is exempt so you can browse sounds while the rack stays open.
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
+    if (typingKeyEvent(o, e)) return true;
     // Dock the floating rack by its *own* edges. On X11 floating docks have native window-manager decorations, so the
     // drag itself is done by the WM: Qt only sees non-client-area press/move/release events and the resulting
     // QEvent::Move. We track the drag through those, show an indicator while an edge is touched and dock on release.
@@ -240,13 +258,13 @@ void MainWindow::dockRackAtCandidate() {
 }
 void MainWindow::showHelp() {
     QMessageBox::information(this, "Quick help", R"(<b>Workflow</b><br>
-Channel Rack: click steps to program beats (right-click erases, wheel = velocity, Ctrl+wheel = pitch). Double-click a channel name to open its instrument. Drag samples/plugins from the Browser onto the rack.<br>
-Piano Roll: draw notes with the pencil (1), select (2), erase (3). Drag note edges to resize, Ctrl+Shift+drag duplicates, Ctrl+Q quantizes, Ctrl+L legato. Ctrl+drag the ruler selects a time area: Ctrl+B duplicates its notes to the right, Delete clears it. Ctrl+wheel zooms.<br>
-Playlist: click to place the selected pattern, drag to move, edges to resize, slice tool (4) splits, mute tool (5). Drag the ruler to set the loop region. Double-click audio clips for stretch/pitch/fades.<br>
+Channel Rack: click steps to program beats (right-click erases, wheel = velocity, Ctrl+wheel = pitch). Up/Down select channels, Alt+Up/Down move them, Alt+C clones, Alt+Del deletes, 1-0 mute / Ctrl+1-0 solo the first ten, Ctrl+Shift+Left/Right shift steps. Double-click a channel name to open its instrument. Drag samples/plugins from the Browser onto the rack.<br>
+Piano Roll: draw notes with the pencil (P), select (E), erase (D), mute (T). Drag note edges to resize, Ctrl+Shift+drag duplicates, Ctrl+Q quantizes, Ctrl+L legato, Ctrl+G glue, Ctrl+D deselect, Shift+I invert, Alt+M mute, Ctrl+Up/Down octave, PgUp/PgDn zoom, G/K previous/next channel. Ctrl+drag the ruler selects a time area: Ctrl+B duplicates its notes to the right, Delete clears it. Ctrl+wheel zooms.<br>
+Playlist: click to place the selected pattern (P), select (E), delete (D), slice (C), mute (T); Insert slices at the playhead, Ctrl+Del / Ctrl+Ins remove / insert the loop area, Shift+arrows move clips, Ctrl+C/X/V copy, cut and paste at the playhead. Drag the ruler to set the loop region. Double-click audio clips for stretch/pitch/fades.<br>
 Mixer: double-click an empty slot to add an effect, click to open, drag slots to reorder. Select a strip, then right-click another strip to route / send / sidechain to it.<br>
 Automation: right-click any knob or fader &gt; "Create automation clip". Edit points in the Playlist (double-click adds, right-click for curve types).<br>
 Recording: choose an input on a mixer strip, arm it (R), press Record. Live MIDI / typing keyboard plays the selected channel; with Record on, notes go into the current pattern.<br>
-Typing keyboard: Z-M lower octave, Q-P upper octave, Ctrl+[ / Ctrl+] change octave.<br><br>
+Typing keyboard (toolbar piano button / Ctrl+T): when on, Z-M play the lower octave and Q-P the upper one on the selected channel and letter keys are not shortcuts; Ctrl+[ / Ctrl+] change octave. Ctrl+H = panic.<br><br>
 <b>Transport</b>: Space play/stop, Ctrl+Space play/pause, Stop twice = back to start, R record, L song/pattern mode, Ctrl+M metronome, Ctrl+P count-in, Ctrl+T typing keyboard on/off, Num +/- next/previous pattern.<br>
 <b>Windows</b>: F5 Playlist, F6 Channel Rack, F7 Piano Roll, F8 Browser, F9 Mixer (full page), Alt+S project samples, F10 MIDI settings, F11 song info, F12 close all, Esc closes the focused window. Tools: P pencil, B brush, E select, D delete, C slice, T mute. Shortcuts are customisable under Options.)");
 }

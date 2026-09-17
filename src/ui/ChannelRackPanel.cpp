@@ -169,10 +169,18 @@ void RackView::deleteSelected() {
     if (QMessageBox::question(this, "Delete channels", QString("Delete %1 channel%2 and their notes/steps in every pattern?").arg(ids.size()).arg(ids.size() > 1 ? "s" : ""), QMessageBox::Yes | QMessageBox::No) != QMessageBox::Yes) return;
     for (Id id : ids) m_app.deleteChannel(id); m_multi.clear(); update();
 }
+// FL Studio default keybinds (typing keyboard mode intercepts unmodified letters/digits before this, see MainWindow)
 void RackView::keyPressEvent(QKeyEvent* e) {
-    if (e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) { deleteSelected(); return; }
-    if (e->key() == Qt::Key_A && (e->modifiers() & Qt::ControlModifier)) { for (auto& c : m_app.project().channels) m_multi.insert(c.id); update(); return; }
-    if (e->key() == Qt::Key_Escape) { m_multi.clear(); update(); return; }
+    auto& proj = m_app.project(); bool ctrl = e->modifiers() & Qt::ControlModifier, alt = e->modifiers() & Qt::AltModifier, shift = e->modifiers() & Qt::ShiftModifier; int k = e->key();
+    int selIdx = -1; for (size_t i = 0; i < proj.channels.size(); ++i) if (proj.channels[i].id == proj.selectedChannelId) selIdx = (int)i;
+    auto selectedIds = [&] { std::vector<Id> ids; for (auto& c : proj.channels) if (m_multi.count(c.id) || (m_multi.empty() && c.id == proj.selectedChannelId)) ids.push_back(c.id); return ids; };
+    if (k == Qt::Key_Delete) { if (alt) { for (Id id : selectedIds()) m_app.deleteChannel(id); m_multi.clear(); update(); } else deleteSelected(); return; }
+    if (k == Qt::Key_A && ctrl) { for (auto& c : proj.channels) m_multi.insert(c.id); update(); return; }
+    if (k == Qt::Key_Escape) { m_multi.clear(); update(); return; }
+    if (k == Qt::Key_C && alt) { std::vector<Id> ids = selectedIds(); for (Id id : ids) m_app.duplicateChannel(id); return; }
+    if ((k == Qt::Key_Up || k == Qt::Key_Down) && selIdx >= 0) { int dir = k == Qt::Key_Up ? -1 : 1; int j = selIdx + dir; if (j < 0 || j >= (int)proj.channels.size()) return; if (alt) m_app.moveChannel(proj.selectedChannelId, j); else { Id id = proj.channels[j].id; m_app.selectChannel(id); if (shift) m_multi.insert(id); else m_multi.clear(); update(); } return; }
+    if (k >= Qt::Key_0 && k <= Qt::Key_9 && !alt) { int idx = k == Qt::Key_0 ? 9 : k - Qt::Key_1; if (idx < (int)proj.channels.size()) { auto& c = proj.channels[idx]; if (ctrl) m_app.setChannelSolo(c.id, !c.solo); else m_app.setChannelMute(c.id, !c.mute); } return; }
+    if ((k == Qt::Key_Left || k == Qt::Key_Right) && ctrl && shift) { Pattern* pat = proj.pattern(proj.selectedPatternId); if (!pat) return; int dir = k == Qt::Key_Left ? -1 : 1; std::vector<Id> ids = selectedIds(); m_app.editPattern(pat->id, "Shift steps", [ids, dir](Pattern& pp) { for (Id id : ids) { auto* d = pp.channelData(id); if (!d || d->steps.empty()) continue; int n = (int)d->steps.size(); if (dir > 0) std::rotate(d->steps.rbegin(), d->steps.rbegin() + 1, d->steps.rend()); else std::rotate(d->steps.begin(), d->steps.begin() + 1, d->steps.end()); (void)n; } }); return; }
     QWidget::keyPressEvent(e);
 }
 void RackView::showChannelMenu(int row, const QPoint& global) {

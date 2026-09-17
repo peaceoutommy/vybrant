@@ -39,6 +39,7 @@ TransportBar::TransportBar(App& app, QWidget* parent) : QWidget(parent), m_app(a
     m_timeSec = new QLabel("0:00.0", this); m_timeSec->setStyleSheet("color:#7e8691; font-family: monospace; font-size:8pt;"); m_timeSec->setToolTip("Song position in minutes : seconds"); lay->addWidget(m_timeSec);
     sep();
     m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true); m_countIn = mkIcon(theme::Glyph::CountIn, "Count-in: one bar of clicks before recording starts (Ctrl+P)", true); m_punch = mkIcon(theme::Glyph::Punch, "Punch in/out: only record between the loop points", true); m_loopRec = mkIcon(theme::Glyph::Takes, "Loop recording: every pass of the loop becomes a new take", true); m_loop = nullptr;
+    sep(); m_typing = mkIcon(theme::Glyph::TypingKeys, "Typing keyboard to piano keyboard (Ctrl+T): on = letter keys play the selected channel, off = letter keys are shortcuts", true);
     sep();
     mkLabel("Snap"); m_snap = makeSnapCombo(this); m_snap->setFixedHeight(26); m_snap->setToolTip("Global snap grid for the transport and editors"); lay->addWidget(m_snap);
     mkLabel("Record"); m_recMode = new QComboBox(this); m_recMode->addItems({"Audio + Notes", "Notes only", "Audio only", "Automation"}); m_recMode->setToolTip("What recording captures"); m_recMode->setFixedHeight(26); lay->addWidget(m_recMode);

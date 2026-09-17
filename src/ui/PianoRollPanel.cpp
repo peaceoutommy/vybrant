@@ -271,32 +271,53 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
     e->accept();
 }
 void PianoRollView::leaveEvent(QEvent*) { update(); }
+// FL Studio default keybinds (typing keyboard mode intercepts unmodified letters before this, see MainWindow)
 void PianoRollView::keyPressEvent(QKeyEvent* e) {
-    PatternChannelData* d = data(); if (!d) { QWidget::keyPressEvent(e); return; } bool ctrl = e->modifiers() & Qt::ControlModifier;
+    PatternChannelData* d = data(); if (!d) { QWidget::keyPressEvent(e); return; } bool ctrl = e->modifiers() & Qt::ControlModifier, shift = e->modifiers() & Qt::ShiftModifier, alt = e->modifiers() & Qt::AltModifier;
+    auto tool = [this](Tool t) { setTool(t); Q_EMIT toolChanged(t); };
+    auto neighbourChannel = [this](int dir, bool withNotes) { auto& ch = m_app.project().channels; int i = -1; for (size_t k = 0; k < ch.size(); ++k) if (ch[k].id == m_channel) i = (int)k; if (i < 0) return; Pattern* pat = pattern(); for (int j = i + dir; j >= 0 && j < (int)ch.size(); j += dir) { if (withNotes) { auto* cd = pat ? pat->channelData(ch[j].id) : nullptr; if (!cd || cd->notes.empty()) continue; } Q_EMIT channelRequested(ch[j].id); return; } };
     switch (e->key()) {
-    case Qt::Key_Delete: case Qt::Key_Backspace: deleteSelected(); return;
-    case Qt::Key_C: if (ctrl) { copySelected(); return; } break;
+    case Qt::Key_Delete: if (ctrl) { deleteTimeSpace(); return; } deleteSelected(); return;
+    case Qt::Key_Insert: if (ctrl) { insertTimeSpace(); return; } break;
+    case Qt::Key_C: if (ctrl) { copySelected(); return; } if (shift) { selectByPitch(); return; } break;
     case Qt::Key_X: if (ctrl) { cutSelected(); return; } break;
     case Qt::Key_V: if (ctrl) { paste(); return; } break;
-    case Qt::Key_D: if (ctrl) { duplicateSelected(); return; } setTool(Erase); Q_EMIT toolChanged(Erase); return;
-    case Qt::Key_B: if (ctrl) { duplicateSelected(); return; } setTool(Draw); Q_EMIT toolChanged(Draw); return;
-    case Qt::Key_P: if (!ctrl) { setTool(Draw); Q_EMIT toolChanged(Draw); return; } break;
-    case Qt::Key_E: if (!ctrl) { setTool(Select); Q_EMIT toolChanged(Select); return; } break;
-    case Qt::Key_A: if (e->modifiers() & Qt::AltModifier) { arpeggiate(); return; } if (ctrl) { selectAll(); return; } break;
-    case Qt::Key_S: if (e->modifiers() & Qt::AltModifier) { strum(); return; } break;
-    case Qt::Key_R: if (e->modifiers() & Qt::AltModifier) { randomize(0.2f, 0.2f); return; } break;
-    case Qt::Key_Q: if (ctrl) { quantize(e->modifiers() & Qt::ShiftModifier); return; } break;
+    case Qt::Key_D: if (ctrl) { m_selected.clear(); invalidate(); return; } if (shift) { setSelectedLength(snapTicks()); return; } tool(Erase); return;
+    case Qt::Key_B: if (ctrl) { duplicateSelected(); return; } tool(Draw); return;
+    case Qt::Key_P: if (!ctrl && !alt) { tool(Draw); return; } break;
+    case Qt::Key_E: if (!ctrl && !alt) { tool(Select); return; } break;
+    case Qt::Key_T: if (!ctrl && !alt) { tool(MuteTool); return; } break;
+    case Qt::Key_I: if (shift) { invertSelection(); return; } break;
+    case Qt::Key_A: if (alt) { arpeggiate(); return; } if (ctrl) { selectAll(); return; } break;
+    case Qt::Key_S: if (alt) { strum(); return; } break;
+    case Qt::Key_R: if (alt) { randomize(0.2f, 0.2f); return; } break;
+    case Qt::Key_Q: if (ctrl || alt) { quantize(shift); return; } break;
     case Qt::Key_L: if (ctrl) { legato(); return; } break;
-    case Qt::Key_Up: transpose((ctrl || (e->modifiers() & Qt::ShiftModifier)) ? 12 : 1); return;
-    case Qt::Key_Down: transpose((ctrl || (e->modifiers() & Qt::ShiftModifier)) ? -12 : -1); return;
-    case Qt::Key_Left: case Qt::Key_Right: { if (m_selected.empty()) break; Tick dt = (e->key() == Qt::Key_Left ? -1 : 1) * (ctrl ? PPQ / 32 : snapTicks()); beginEdit(); Tick minS = LLONG_MAX; for (auto& n : d->notes) if (m_selected.count(n.id)) minS = std::min(minS, n.start); if (minS + dt < 0) dt = -minS; for (auto& n : d->notes) if (m_selected.count(n.id)) n.start += dt; commitEdit("Move notes"); return; }
+    case Qt::Key_G: if (ctrl) { glue(); return; } if (!alt) { neighbourChannel(-1, false); return; } break;
+    case Qt::Key_K: if (!ctrl && !alt) { neighbourChannel(1, false); return; } break;
+    case Qt::Key_H: if (!ctrl && !alt) { neighbourChannel(-1, true); return; } break;
+    case Qt::Key_J: if (!ctrl && !alt) { neighbourChannel(1, true); return; } break;
+    case Qt::Key_M: if (alt) { muteSelected(!shift); return; } break;
+    case Qt::Key_F: if (!ctrl && !alt) { setLane((m_lane + 1) % 4); return; } break;
+    case Qt::Key_Up: transpose(ctrl ? 12 : 1); return;     // Shift+Up/Down: move selection; Ctrl: one octave
+    case Qt::Key_Down: transpose(ctrl ? -12 : -1); return;
+    case Qt::Key_Left: case Qt::Key_Right: { if (m_selected.empty()) break; Tick dt = (e->key() == Qt::Key_Left ? -1 : 1) * ((ctrl || alt) ? PPQ / 32 : snapTicks()); beginEdit(); Tick minS = LLONG_MAX; for (auto& n : d->notes) if (m_selected.count(n.id)) minS = std::min(minS, n.start); if (minS + dt < 0) dt = -minS; for (auto& n : d->notes) if (m_selected.count(n.id)) n.start += dt; commitEdit(alt ? "Nudge notes" : "Move notes"); return; }
+    case Qt::Key_PageUp: case Qt::Key_PageDown: { Layout L = layout(); Tick anchor = xToTick(L.grid.center().x()); m_ppt = clamp(m_ppt * (e->key() == Qt::Key_PageUp ? 1.3 : 1 / 1.3), 0.002, 2.0); m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround(L.grid.width() / 2 / m_ppt)); updateScrollbars(); invalidate(); return; }
     case Qt::Key_Escape: m_selected.clear(); m_timeSel = false; invalidate(); return;
-    case Qt::Key_T: if (!ctrl) { setTool(MuteTool); return; } break;
-    case Qt::Key_1: setTool(Draw); Q_EMIT toolChanged(Draw); return; case Qt::Key_2: setTool(Select); Q_EMIT toolChanged(Select); return; case Qt::Key_3: setTool(Erase); Q_EMIT toolChanged(Erase); return;
+    case Qt::Key_1: tool(Draw); return; case Qt::Key_2: tool(Select); return; case Qt::Key_3: tool(Erase); return;
     default: break;
     }
     QWidget::keyPressEvent(e);
 }
+// selection helpers used by the keybinds above
+void PianoRollView::invertSelection() { PatternChannelData* d = data(); if (!d) return; std::set<Id> inv; for (auto& n : notesView()) if (!m_selected.count(n.id)) inv.insert(n.id); m_selected = inv; invalidate(); }
+void PianoRollView::selectByPitch() { PatternChannelData* d = data(); if (!d || m_selected.empty()) return; std::set<int> pitches; for (auto& n : notesView()) if (m_selected.count(n.id)) pitches.insert(n.pitch); for (auto& n : notesView()) if (pitches.count(n.pitch)) m_selected.insert(n.id); invalidate(); }
+void PianoRollView::muteSelected(bool mute) { PatternChannelData* d = data(); if (!d || m_selected.empty()) return; beginEdit(); for (auto& n : d->notes) if (m_selected.count(n.id)) n.muted = mute; commitEdit(mute ? "Mute notes" : "Unmute notes"); }
+// Glue: merge each selected note into the previous selected note of the same pitch that it touches or overlaps
+void PianoRollView::glue() { PatternChannelData* d = data(); if (!d || m_selected.size() < 2) return; beginEdit(); std::vector<Note*> sel; for (auto& n : d->notes) if (m_selected.count(n.id)) sel.push_back(&n); std::sort(sel.begin(), sel.end(), [](Note* a, Note* b) { return a->pitch != b->pitch ? a->pitch < b->pitch : a->start < b->start; }); std::set<Id> gone; for (size_t i = 1; i < sel.size(); ++i) { Note* a = sel[i - 1]; Note* b = sel[i]; if (a->pitch == b->pitch && b->start <= a->start + a->duration + snapTicks() / 4) { a->duration = std::max(a->duration, b->start + b->duration - a->start); gone.insert(b->id); sel[i] = a; } } std::erase_if(d->notes, [&](const Note& n) { return gone.count(n.id); }); for (Id id : gone) m_selected.erase(id); commitEdit("Glue notes"); }
+// Ctrl+Delete / Ctrl+Insert: remove or insert the time selection's span, shifting everything after it
+void PianoRollView::deleteTimeSpace() { PatternChannelData* d = data(); if (!d || !m_timeSel || m_selEnd <= m_selStart) return; Tick len = m_selEnd - m_selStart; beginEdit(); std::erase_if(d->notes, [&](const Note& n) { return n.start >= m_selStart && n.start < m_selEnd; }); for (auto& n : d->notes) if (n.start >= m_selEnd) n.start -= len; commitEdit("Delete space"); m_timeSel = false; invalidate(); }
+void PianoRollView::insertTimeSpace() { PatternChannelData* d = data(); if (!d || !m_timeSel || m_selEnd <= m_selStart) return; Tick len = m_selEnd - m_selStart; beginEdit(); for (auto& n : d->notes) if (n.start >= m_selStart) n.start += len; commitEdit("Insert space"); }
 void PianoRollView::keyReleaseEvent(QKeyEvent* e) { QWidget::keyReleaseEvent(e); }
 void PianoRollView::contextMenuEvent(QContextMenuEvent* e) { e->accept(); }   // menus open on right-button release (right-drag erases)
 void PianoRollView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {

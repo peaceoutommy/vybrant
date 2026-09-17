@@ -69,6 +69,9 @@ QIcon glyphIcon(Glyph g, const QColor& color, int size) {
     case Glyph::CountIn: { QFont f; f.setPointSizeF(s * 0.5); f.setBold(true); p.setFont(f); p.setPen(color); p.drawText(QRectF(0, 0, s, s), Qt::AlignCenter, "3·2"); break; }
     case Glyph::Punch: { p.setPen(QPen(color, 1.5)); p.drawLine(QPointF(s * 0.15, s * 0.5), QPointF(s * 0.85, s * 0.5)); p.setPen(Qt::NoPen); p.drawRect(QRectF(s * 0.3, s * 0.25, s * 0.08, s * 0.5)); p.drawRect(QRectF(s * 0.62, s * 0.25, s * 0.08, s * 0.5)); p.setBrush(QColor(0xe0, 0x5a, 0x5a)); p.drawEllipse(QRectF(s * 0.42, s * 0.42, s * 0.16, s * 0.16)); break; }
     case Glyph::Takes: { p.setPen(QPen(color, 1.5)); p.setBrush(Qt::NoBrush); p.drawArc(QRectF(s * 0.2, s * 0.2, s * 0.6, s * 0.6), 30 * 16, 300 * 16); QPainterPath a; a.moveTo(s * 0.72, s * 0.12); a.lineTo(s * 0.82, s * 0.36); a.lineTo(s * 0.58, s * 0.36); a.closeSubpath(); p.setPen(Qt::NoPen); p.setBrush(color); p.drawPath(a); break; }
+    case Glyph::TypingKeys: { // small piano: 4 white keys with 3 black keys
+        p.setPen(QPen(color, 1.2)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(QRectF(s * 0.1, s * 0.2, s * 0.8, s * 0.6), 1.5, 1.5); for (int i = 1; i < 4; ++i) p.drawLine(QPointF(s * (0.1 + 0.2 * i), s * 0.5), QPointF(s * (0.1 + 0.2 * i), s * 0.8));
+        p.setPen(Qt::NoPen); p.setBrush(color); for (int i = 0; i < 4; ++i) if (i != 2) p.drawRect(QRectF(s * (0.1 + 0.2 * i) + s * 0.13, s * 0.2, s * 0.14, s * 0.32)); break; }
     case Glyph::Help: { QFont f; f.setPointSizeF(s * 0.65); f.setBold(true); p.setFont(f); p.setPen(color); p.drawText(QRectF(0, 0, s, s), Qt::AlignCenter, "?"); break; }
     case Glyph::Metronome: { QPainterPath path; path.moveTo(s * 0.35, s * 0.15); path.lineTo(s * 0.65, s * 0.15); path.lineTo(s * 0.85, s * 0.85); path.lineTo(s * 0.15, s * 0.85); path.closeSubpath(); p.setBrush(Qt::NoBrush); p.setPen(QPen(color, 1.5)); p.drawPath(path); p.drawLine(QPointF(s * 0.5, s * 0.8), QPointF(s * 0.7, s * 0.3)); break; }
     }

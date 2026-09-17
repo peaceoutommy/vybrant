@@ -31,7 +31,7 @@ public:
     float laneValue(const Note& n) const; void setLaneValue(Note& n, float v) const; bool laneBipolar() const; QString laneName() const; int laneBarWidth() const { return std::max(6, std::min(48, (int)(snapTicks() * m_ppt * 0.6))); }
     void refresh(); void uiTick();
     // tools
-    void quantize(bool lengths); void arpeggiate(); void strum(); void legato(); void randomize(float velAmt, float panAmt); void transpose(int semis); void selectAll(); void deleteSelected(); void copySelected(); void cutSelected(); void paste(); void duplicateSelected(); void setSelectedLength(Tick len);
+    void quantize(bool lengths); void arpeggiate(); void strum(); void legato(); void randomize(float velAmt, float panAmt); void transpose(int semis); void selectAll(); void deleteSelected(); void copySelected(); void cutSelected(); void paste(); void duplicateSelected(); void setSelectedLength(Tick len); void invertSelection(); void selectByPitch(); void muteSelected(bool mute); void glue(); void deleteTimeSpace(); void insertTimeSpace();
     QScrollBar* hbar() const { return m_hbar; } QScrollBar* vbar() const { return m_vbar; }
     void zoomToFit();
     static QStringList scaleNames(); static QStringList chordNames();

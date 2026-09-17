@@ -260,11 +260,42 @@ void PlaylistView::wheelEvent(QWheelEvent* e) {
     else m_scrollY = clamp(m_scrollY - dy / 2, 0, m_vbar->maximum());
     updateScrollbars(); invalidate(); e->accept();
 }
+// FL Studio default keybinds (typing keyboard mode intercepts unmodified letters before this, see MainWindow)
 void PlaylistView::keyPressEvent(QKeyEvent* e) {
-    bool ctrl = e->modifiers() & Qt::ControlModifier;
-    switch (e->key()) { case Qt::Key_Delete: case Qt::Key_Backspace: deleteSelected(); return; case Qt::Key_A: if (ctrl) { selectAll(); return; } break; case Qt::Key_M: if (!m_selected.empty()) { bool any = false; for (auto& c : m_app.project().clips) if (m_selected.count(c.id) && !c.muted) any = true; muteSelected(any); return; } break; case Qt::Key_Escape: m_selected.clear(); invalidate(); return; case Qt::Key_1: case Qt::Key_P: case Qt::Key_B: if (ctrl && e->key() == Qt::Key_B) { duplicateSelected(); return; } if (!ctrl) { setTool(Draw); Q_EMIT toolChanged(Draw); return; } break; case Qt::Key_2: case Qt::Key_E: if (!ctrl) { setTool(Select); Q_EMIT toolChanged(Select); return; } break; case Qt::Key_3: case Qt::Key_D: if (ctrl) { duplicateSelected(); return; } setTool(Erase); Q_EMIT toolChanged(Erase); return; case Qt::Key_4: case Qt::Key_C: if (!ctrl) { setTool(Slice); Q_EMIT toolChanged(Slice); return; } break; case Qt::Key_5: case Qt::Key_T: if (!ctrl) { setTool(MuteTool); Q_EMIT toolChanged(MuteTool); return; } break; default: break; }
+    bool ctrl = e->modifiers() & Qt::ControlModifier, shift = e->modifiers() & Qt::ShiftModifier, alt = e->modifiers() & Qt::AltModifier; auto& proj = m_app.project();
+    auto tool = [this](Tool t) { setTool(t); Q_EMIT toolChanged(t); };
+    switch (e->key()) {
+    case Qt::Key_Delete: if (ctrl) { deleteLoopSpace(); return; } deleteSelected(); return;
+    case Qt::Key_Insert: if (ctrl) { insertLoopSpace(); return; } sliceAtPlayhead(); return;
+    case Qt::Key_A: if (ctrl) { selectAll(); return; } break;
+    case Qt::Key_C: if (ctrl) { copySelected(); return; } if (shift) { selectBySource(); return; } if (!alt) { tool(Slice); return; } break;
+    case Qt::Key_X: if (ctrl) { cutSelected(); return; } break;
+    case Qt::Key_V: if (ctrl) { paste(); return; } break;
+    case Qt::Key_D: if (ctrl) { m_selected.clear(); invalidate(); return; } if (!alt) { tool(Erase); return; } break;
+    case Qt::Key_B: if (ctrl) { duplicateSelected(); return; } if (!alt) { tool(Draw); return; } break;
+    case Qt::Key_P: if (!ctrl && !alt) { tool(Draw); return; } break;
+    case Qt::Key_E: if (!ctrl && !alt) { tool(Select); return; } break;
+    case Qt::Key_T: if (!ctrl && !alt) { tool(MuteTool); return; } break;
+    case Qt::Key_I: if (shift) { std::set<Id> inv; for (auto& c : proj.clips) if (!m_selected.count(c.id)) inv.insert(c.id); m_selected = inv; invalidate(); return; } break;
+    case Qt::Key_M: if (alt) { muteSelected(!shift); return; } if (!ctrl && !m_selected.empty()) { bool any = false; for (auto& c : proj.clips) if (m_selected.count(c.id) && !c.muted) any = true; muteSelected(any); return; } break;
+    case Qt::Key_Left: case Qt::Key_Right: { if (m_selected.empty()) break; Tick dt = (e->key() == Qt::Key_Left ? -1 : 1) * ((ctrl || alt) ? PPQ / 32 : snapTicks()); beginEdit(); Tick minS = LLONG_MAX; for (auto& c : proj.clips) if (m_selected.count(c.id)) minS = std::min(minS, c.start); if (minS + dt < 0) dt = -minS; for (auto& c : proj.clips) if (m_selected.count(c.id)) c.start += dt; commitEdit(alt ? "Nudge clips" : "Move clips"); return; }
+    case Qt::Key_Up: case Qt::Key_Down: { if (m_selected.empty()) break; int dir = e->key() == Qt::Key_Up ? -1 : 1; auto& tr = proj.playlistTracks; auto idx = [&](Id id) { for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == id) return (int)i; return -1; }; for (auto& c : proj.clips) if (m_selected.count(c.id)) { int i = idx(c.trackId); if (i + dir < 0 || i + dir >= (int)tr.size()) return; } beginEdit(); for (auto& c : proj.clips) if (m_selected.count(c.id)) c.trackId = tr[idx(c.trackId) + dir].id; commitEdit("Move clips"); return; }
+    case Qt::Key_PageUp: case Qt::Key_PageDown: { Layout L = layout(); Tick anchor = xToTick(L.area.center().x()); double minPpt = (double)L.area.width() / (double)maxExtent(); m_ppt = clamp(m_ppt * (e->key() == Qt::Key_PageUp ? 1.3 : 1 / 1.3), minPpt, 1.0); m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround(L.area.width() / 2 / m_ppt)); updateScrollbars(); invalidate(); return; }
+    case Qt::Key_Escape: m_selected.clear(); invalidate(); return;
+    case Qt::Key_1: tool(Draw); return; case Qt::Key_2: tool(Select); return; case Qt::Key_3: tool(Erase); return; case Qt::Key_4: tool(Slice); return; case Qt::Key_5: tool(MuteTool); return;
+    default: break;
+    }
     QWidget::keyPressEvent(e);
 }
+// clipboard: clips are copied relative to the earliest one and pasted at the playhead on their original tracks
+void PlaylistView::copySelected() { m_clipboard.clear(); Tick minS = LLONG_MAX; for (auto& c : m_app.project().clips) if (m_selected.count(c.id)) { m_clipboard.push_back(c); minS = std::min(minS, c.start); } for (auto& c : m_clipboard) c.start -= minS; }
+void PlaylistView::cutSelected() { copySelected(); deleteSelected(); }
+void PlaylistView::paste() { if (m_clipboard.empty()) return; Tick at = snap((Tick)m_app.engine().positionTicks()); m_selected.clear(); for (auto& c : m_clipboard) { if (!m_app.project().track(c.trackId)) continue; Id id = m_app.duplicateClip(c.id, at + c.start, c.trackId); if (id) m_selected.insert(id); } invalidate(); }
+void PlaylistView::selectBySource() { auto& proj = m_app.project(); if (m_selected.empty()) return; std::set<Id> src; for (auto& c : proj.clips) if (m_selected.count(c.id)) src.insert(c.sourceId); for (auto& c : proj.clips) if (src.count(c.sourceId)) m_selected.insert(c.id); invalidate(); }
+void PlaylistView::sliceAtPlayhead() { Tick at = (Tick)m_app.engine().positionTicks(); std::vector<Id> ids; for (auto& c : m_app.project().clips) if ((m_selected.empty() || m_selected.count(c.id)) && at > c.start && at < c.start + m_app.project().clipLength(c)) ids.push_back(c.id); if (ids.empty()) return; for (Id id : ids) m_app.splitClip(id, at); }
+// Ctrl+Delete / Ctrl+Insert: remove or insert the loop area's span, shifting everything after it
+void PlaylistView::deleteLoopSpace() { auto& t = m_app.project().transport; if (t.loopEnd <= t.loopStart) return; Tick len = t.loopEnd - t.loopStart; std::vector<Id> del; std::set<Id> keep = m_selected; m_selected.clear(); for (auto& c : m_app.project().clips) { if (c.start >= t.loopStart && c.start < t.loopEnd) del.push_back(c.id); else if (c.start >= t.loopEnd) m_selected.insert(c.id); } m_app.deleteClips(del); if (!m_selected.empty()) { beginEdit(); for (auto& c : m_app.project().clips) if (m_selected.count(c.id)) c.start -= len; commitEdit("Delete space"); } m_selected = keep; for (Id id : del) m_selected.erase(id); invalidate(); }
+void PlaylistView::insertLoopSpace() { auto& t = m_app.project().transport; if (t.loopEnd <= t.loopStart) return; Tick len = t.loopEnd - t.loopStart; std::set<Id> keep = m_selected; m_selected.clear(); for (auto& c : m_app.project().clips) if (c.start >= t.loopStart) m_selected.insert(c.id); if (!m_selected.empty()) { beginEdit(); for (auto& c : m_app.project().clips) if (m_selected.count(c.id)) c.start += len; commitEdit("Insert space"); } m_selected = keep; invalidate(); }
 void PlaylistView::contextMenuEvent(QContextMenuEvent* e) { e->accept(); }   // area menus open on right-button release (see mouseReleaseEvent) so right-drag can erase
 void PlaylistView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) { QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, globalPos); QContextMenuEvent* e = &ev; Layout L = layout(); if (!L.area.contains(e->pos())) return; QMenu m(this); m.addAction("Select all", [this] { selectAll(); }); m.addAction("Add track", [this] { m_app.addPlaylistTrack(); }); m.addAction("Zoom to fit", [this] { zoomToFit(); }); int tr = trackAtY(e->pos().y()); Tick at = snap(xToTick(e->pos().x())); if (tr >= 0) { Id tid = m_app.project().playlistTracks[tr].id; auto* pm = m.addMenu("Insert pattern"); for (auto& p : m_app.project().patterns) pm->addAction(p.name, [this, tid, pid = p.id, at] { m_app.addPatternClip(tid, pid, at); }); auto* am = m.addMenu("Insert automation clip"); for (auto& l : m_app.project().automationLanes) am->addAction(l.name, [this, tid, lid = l.id, at] { m_app.addAutomationClip(tid, lid, at, 0); }); } m.exec(e->globalPos()); }
 void PlaylistView::showTrackMenu(int idx, const QPoint& global) {
