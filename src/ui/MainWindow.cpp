@@ -54,7 +54,9 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
     connect(&m_rackReleasePoll, &QTimer::timeout, this, [this] { if (!m_dRack->isFloating() || !m_dRack->isVisible()) { m_rackReleasePoll.stop(); hideDockIndicator(); return; } QRect g = m_dRack->frameGeometry(); if (g == m_lastRackGeom) { bool buttonsUp = !(QApplication::mouseButtons() & Qt::LeftButton); if (++m_rackStillTicks > (m_rackDragging ? 25 : 8) && buttonsUp) { m_rackReleasePoll.stop(); m_rackDragging = false; if (m_rackCandidate != Qt::NoDockWidgetArea) dockRackAtCandidate(); else hideDockIndicator(); } } else { m_rackStillTicks = 0; m_lastRackGeom = g; } });
     m_status = new QLabel(this); statusBar()->addWidget(m_status, 1); m_undoLabel = new QLabel(this); m_undoLabel->setStyleSheet("color:#8a919a;"); statusBar()->addPermanentWidget(m_undoLabel);
     connect(&m_app, &App::statusMessage, this, [this](const QString& m, int t) { if (t == 0) m_status->setText(m); else statusBar()->showMessage(m, t); });
-    connect(&m_app, &App::requestOpenEditor, this, [this](Id id, const QString& t) { openEditor(id, t); });
+    // A freshly added plugin has no processor yet - the engine builds it on its next poll, and a bridged plugin can take
+    // seconds to boot Wine. Queue the request and let uiTick open the editor once the processor actually exists.
+    connect(&m_app, &App::requestOpenEditor, this, [this](Id id, const QString& t) { if (!m_editors.count(id)) m_pendingEditors[id] = {t, 900}; });
     connect(&m_app, &App::projectLoaded, this, [this] { for (auto& [id, w] : m_editors) w->close(); m_editors.clear(); updateTitle(); m_pianoRoll->refresh(ChangeAll); MissingFilesDialog::checkAndPrompt(m_app, this); });
     connect(&m_app.model(), &ProjectModel::changed, this, &MainWindow::onChanged); connect(&m_app.model(), &ProjectModel::dirtyChanged, this, [this](bool) { updateTitle(); });
     connect(&m_app.model().undoStack(), &UndoStack::changed, this, [this] { auto& u = m_app.model().undoStack(); m_undoLabel->setText(u.canUndo() ? "Undo: " + u.undoText() : ""); m_app.commands().action("edit.undo")->setEnabled(u.canUndo()); m_app.commands().action("edit.redo")->setEnabled(u.canRedo()); });
@@ -62,6 +64,7 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
     connect(&m_timer, &QTimer::timeout, this, &MainWindow::uiTick); m_timer.start(33);
     m_defaultState = saveState(); m_defaultWorkspaceState = m_workspace->saveState();
     QSettings s; if (s.contains("ui/geometry")) restoreGeometry(s.value("ui/geometry").toByteArray()); if (s.contains("ui/state")) restoreState(s.value("ui/state").toByteArray()); if (s.contains("ui/workspace")) m_workspace->restoreState(s.value("ui/workspace").toByteArray());
+    enforceSingleEditor();
     updateTitle();
     QTimer::singleShot(0, this, [this] { if (!QSettings().contains("ui/state")) applyDefaultLayout(); if (qEnvironmentVariableIsSet("MT_DEBUG_LAYOUT")) { qDebug() << "win" << size() << "workspace" << m_workspace->geometry() << "hint" << m_workspace->sizeHint() << m_workspace->minimumSizeHint() << "rackdock" << m_dRack->geometry() << m_dRack->sizeHint() << m_dRack->minimumSizeHint() << "rack" << m_rack->sizeHint() << m_rack->minimumSizeHint() << "mixer" << m_mixer->sizeHint() << m_mixer->minimumSizeHint() << "playlistdock" << m_dPlaylist->geometry() << m_playlist->sizeHint() << m_playlist->minimumSizeHint(); } });
 }
@@ -74,7 +77,7 @@ void MainWindow::buildDocks() {
     m_rack = new ChannelRackPanel(m_app, this); m_dRack = mkDock(this, "Channel Rack", "dockRack", m_rack, Qt::BottomDockWidgetArea);
     m_mixer = new MixerPanel(m_app, this); m_pages->addWidget(m_mixer); m_dMixer = nullptr;
     m_samples = new ProjectSamplesPanel(m_app, this); m_dSamples = mkDock(this, "Project Samples", "dockSamples", m_samples, Qt::RightDockWidgetArea); m_dSamples->setFloating(true); m_dSamples->hide();
-    m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); m_dPlaylist->raise();
+    m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); m_dPiano->hide(); m_dPlaylist->show(); m_dPlaylist->raise();
     m_rack->setMinimumHeight(180); m_dRack->setMinimumHeight(200); resizeDocks({m_dBrowser}, {260}, Qt::Horizontal); resizeDocks({m_dRack}, {330}, Qt::Vertical);
     connect(m_browser, &BrowserPanel::openEditor, this, [this](Id id) { openEditor(id); });
     connect(m_rack, &ChannelRackPanel::openEditor, this, [this](Id id) { openEditor(id); });
@@ -123,7 +126,7 @@ void MainWindow::buildMenus() {
     tr->addAction(reg.add("transport.snapToggle", "Toggle snap (line / none)", "Transport", QKeySequence(Qt::Key_Backspace), [this] { auto& t = m_app.project().transport; static int last = 4; if (t.snapDivision != 0) { last = t.snapDivision; m_app.setSnap(0); } else m_app.setSnap(last); }, this));
     tr->addAction(reg.add("transport.octaveUp", "Typing keyboard octave up", "Transport", QKeySequence("Ctrl+]"), [this] { m_octave = std::min(8, m_octave + 1); statusBar()->showMessage(QString("Typing keyboard octave: %1").arg(m_octave), 1500); }, this)); tr->addAction(reg.add("transport.octaveDown", "Typing keyboard octave down", "Transport", QKeySequence("Ctrl+["), [this] { m_octave = std::max(0, m_octave - 1); statusBar()->showMessage(QString("Typing keyboard octave: %1").arg(m_octave), 1500); }, this));
     auto* view = mb->addMenu("&View");
-    auto addDockAction = [&](const QString& id, QDockWidget* d, const QKeySequence& k, bool inWorkspace) { auto* a = reg.add(id, d->windowTitle(), "View", k, [this, d, inWorkspace] { bool shown = d->isVisible() && !d->visibleRegion().isEmpty() && (!inWorkspace || m_pages->currentWidget() == m_workspace); if (shown) { if (inWorkspace && m_dPlaylist->isVisible() && m_dPiano->isVisible() && !d->isFloating()) { d->hide(); } else d->hide(); } else { if (inWorkspace) showWorkspaceDock(d); else { d->show(); d->raise(); d->widget()->setFocus(); } } syncWindowButtons(); }, this); view->addAction(a); };
+    auto addDockAction = [&](const QString& id, QDockWidget* d, const QKeySequence& k, bool inWorkspace) { auto* a = reg.add(id, d->windowTitle(), "View", k, [this, d, inWorkspace] { bool shown = d->isVisible() && !d->visibleRegion().isEmpty() && (!inWorkspace || m_pages->currentWidget() == m_workspace); if (inWorkspace) showWorkspaceDock(d); /* switch, never toggle off: the workspace always shows one of the two editors */ else if (shown) d->hide(); else { d->show(); d->raise(); d->widget()->setFocus(); } syncWindowButtons(); }, this); view->addAction(a); };
     addDockAction("view.playlist", m_dPlaylist, QKeySequence("F5"), true); addDockAction("view.rack", m_dRack, QKeySequence("F6"), false); addDockAction("view.pianoRoll", m_dPiano, QKeySequence("F7"), true); addDockAction("view.browser", m_dBrowser, QKeySequence("F8"), false);
     view->addAction(reg.add("view.mixer", "Mixer", "View", QKeySequence("F9"), [this] { showMixerPage(m_pages->currentWidget() != m_mixer); }, this));
     view->addAction(reg.add("view.samples", "Project samples", "View", QKeySequence("Alt+S"), [this] { if (m_dSamples->isVisible()) m_dSamples->hide(); else { if (m_dSamples->isFloating() && m_dSamples->width() < 200) m_dSamples->resize(600, 320); m_dSamples->show(); m_dSamples->raise(); } }, this));
@@ -140,7 +143,14 @@ void MainWindow::onChanged(uint32_t flags) {
     m_transport->refresh(flags); m_rack->refresh(flags); m_pianoRoll->refresh(flags); m_playlist->refresh(flags); m_mixer->refresh(flags); m_browser->refresh(flags); m_samples->refresh(flags);
     for (auto it = m_editors.begin(); it != m_editors.end();) { Id id = it->first; bool exists = m_app.project().channel(id) != nullptr; for (auto& t : m_app.project().mixerTracks) for (auto& e : t.effects) if (e.id == id) exists = true; if (!exists) { it->second->close(); it = m_editors.erase(it); } else ++it; }
 }
-void MainWindow::uiTick() { m_transport->uiTick(); m_rack->uiTick(); m_pianoRoll->uiTick(); m_playlist->uiTick(); m_mixer->uiTick(); m_browser->uiTick(); syncWindowButtons(); }
+void MainWindow::uiTick() {
+    m_transport->uiTick(); m_rack->uiTick(); m_pianoRoll->uiTick(); m_playlist->uiTick(); m_mixer->uiTick(); m_browser->uiTick(); syncWindowButtons(); enforceSingleEditor();
+    for (auto it = m_pendingEditors.begin(); it != m_pendingEditors.end(); ) {
+        if (m_app.processor(it->first)) { Id id = it->first; QString title = it->second.first; it = m_pendingEditors.erase(it); openEditor(id, title); }
+        else if (--it->second.second <= 0) it = m_pendingEditors.erase(it);   // gave up: the plugin failed to load
+        else ++it;
+    }
+}
 void MainWindow::updateTitle() { setWindowTitle(QString("%1%2 - MusicThingy").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : "")); }
 
 void MainWindow::openEditor(Id id, const QString& titleIn) {
@@ -164,7 +174,21 @@ void MainWindow::applyDefaultLayout() {
     showMixerPage(false);
 }
 void MainWindow::showMixerPage(bool on) { m_pages->setCurrentWidget(on ? static_cast<QWidget*>(m_mixer) : static_cast<QWidget*>(m_workspace)); if (on && m_dRack->isFloating()) m_dRack->hide(); syncWindowButtons(); }
-void MainWindow::showWorkspaceDock(QDockWidget* d) { showMixerPage(false); d->show(); d->raise(); d->widget()->setFocus(); }
+// Playlist and Piano Roll share one tabified slot, but the toolbar buttons are the only intended way to switch between
+// them. Hiding the sibling leaves a single tab, which Qt drops the tab bar for on its own - hiding the tab bar directly
+// would stop QDockWidget::raise() from switching tabs at all.
+void MainWindow::showWorkspaceDock(QDockWidget* d) {
+    showMixerPage(false);
+    if (d == m_dPlaylist) m_dPiano->hide(); else if (d == m_dPiano) m_dPlaylist->hide();
+    d->show(); d->raise(); d->widget()->setFocus();
+}
+// Only one of the two editors is ever docked in the workspace, which is what keeps Qt from drawing a dock tab bar for
+// them. Restoring a saved layout (or a drag) can bring both back, so the invariant is re-checked rather than set once.
+void MainWindow::enforceSingleEditor() {
+    if (!m_dPlaylist->isVisible() || !m_dPiano->isVisible()) return;
+    if (m_dPlaylist->isFloating() || m_dPiano->isFloating()) return;   // torn off on purpose: leave it alone
+    (m_dPiano->visibleRegion().isEmpty() ? m_dPiano : m_dPlaylist)->hide();   // keep whichever is actually on top
+}
 void MainWindow::closeAllWindows() { for (auto& [id, w] : m_editors) w->close(); if (m_dRack->isFloating()) m_dRack->hide(); if (m_dSamples->isFloating()) m_dSamples->hide(); showMixerPage(false); }
 void MainWindow::syncWindowButtons() {
     auto set = [this](const QString& k, bool on) { auto it = m_winButtons.find(k); if (it != m_winButtons.end() && it->second->isChecked() != on) it->second->setChecked(on); };

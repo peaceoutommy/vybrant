@@ -17,6 +17,7 @@ class PianoRollView : public QWidget {
     Q_OBJECT
 public:
     enum Tool { Draw, Select, Erase, MuteTool };
+    enum KeyLabels { LabelsC = 0, LabelsAll = 1, LabelsNone = 2 };   // note names drawn on the key column
     explicit PianoRollView(App& app, QWidget* parent = nullptr);
     void setTool(Tool t);
     Tool tool() const { return m_tool; }
@@ -27,6 +28,8 @@ public:
     void setChord(int chordIdx) { m_chord = chordIdx; }
     void setNoteRepeat(bool r) { m_noteRepeat = r; }
     void setSnapDivision(int div) { m_snapDiv = div; }
+    void setKeyLabels(int m) { m_keyLabels = m; invalidate(); }
+    int keyLabels() const { return m_keyLabels; }
     void setLane(int lane) { m_lane = lane; invalidate(); }   // 0 velocity, 1 pan, 2 release velocity, 3 fine pitch
     float laneValue(const Note& n) const; void setLaneValue(Note& n, float v) const; bool laneBipolar() const; QString laneName() const; int laneBarWidth() const { return std::max(6, std::min(48, (int)(snapTicks() * m_ppt * 0.6))); }
     void refresh(); void uiTick();
@@ -53,7 +56,7 @@ private:
     void previewNote(int pitch, bool on); bool previewAllowed() const; std::map<Id, Note> m_created; void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
     bool inScale(int pitch) const;
     App& m_app; Tool m_tool = Draw; Id m_channel = 0; bool m_ghost = true; int m_scaleRoot = 0, m_scale = 0, m_chord = 0; bool m_noteRepeat = false; int m_snapDiv = 4;
-    double m_ppt = 0.08; int m_rowH = 12; Tick m_scrollTick = 0; int m_topPitch = 84; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
+    double m_ppt = 0.08; int m_rowH = 17; Tick m_scrollTick = 0; int m_topPitch = 84; int m_keyLabels = LabelsC; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
     std::set<Id> m_selected; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
     Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer, m_autoScroll; QPoint m_lastMouse; bool m_altHeld = false; bool m_erasedAny = false;
     int m_lane = 0; int m_velH = 80; int m_laneResizeStart = 0; QRect m_laneLabelRect; Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
@@ -68,7 +71,7 @@ public:
     void refresh(uint32_t flags); void uiTick();
     void showChannel(Id id);
 private:
-    App& m_app; PianoRollView* m_view; QComboBox *m_channel, *m_snap, *m_scale, *m_root, *m_chord; QToolButton *m_draw, *m_select, *m_erase, *m_mute, *m_ghost, *m_repeat; bool m_updating = false;
+    App& m_app; PianoRollView* m_view; QComboBox *m_channel, *m_snap, *m_scale, *m_root, *m_chord, *m_labels; QToolButton *m_draw, *m_select, *m_erase, *m_mute, *m_ghost, *m_repeat; bool m_updating = false;
 };
 
 } // namespace mt
