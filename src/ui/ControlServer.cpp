@@ -55,6 +55,8 @@ QString ControlServer::handle(const QString& line) {
     if (c == "droptest" && a.size() >= 2) { // simulate a browser drop of a file on the rack (view or panel)
         auto* md = new QMimeData(); md->setUrls({QUrl::fromLocalFile(a[1])}); md->setData("application/x-musicthingy-item", ("audio|" + a[1]).toUtf8()); QWidget* target = a.size() > 2 && a[2] == "panel" ? (QWidget*)m_win.rackPanel() : (QWidget*)m_win.rackPanel()->view(); QPointF pos(target->width() / 2.0, target->height() - 5.0);
         QDragEnterEvent en(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &en); QDragMoveEvent mv(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &mv); QDropEvent dr(pos, Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &dr); delete md; return QString("enter=%1 move=%2 drop=%3 channels=%4").arg(en.isAccepted()).arg(mv.isAccepted()).arg(dr.isAccepted()).arg(m_app.project().channels.size()); }
+    if (c == "leftsplit" && a.size() >= 2) { m_win.debugLeftDock(a[1].toInt()); return "ok"; }
+    if (c == "leftsizes") return m_win.debugLeftSizes();
     if (c == "quit") { QTimer::singleShot(0, qApp, [] { qApp->quit(); }); return "ok"; }
     return "err unknown command (ping play stop note select channels stats screenshot editor action theme quit)";
 }
