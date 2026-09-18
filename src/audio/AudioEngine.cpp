@@ -224,7 +224,7 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
 
 // Stable sort by sample offset; at the same offset note-offs go first so a note ending exactly where the next one (same pitch) starts
 // doesn't cut the new note (back-to-back 808s, legato step sequences)
-static inline int midiRank(const MidiEvent& e) { return e.type == MidiEvent::NoteOff ? 0 : 1; }
+static inline int midiRank(const MidiEvent& e) { return (e.type == MidiEvent::NoteOff || e.type == MidiEvent::AllNotesOff) ? 0 : 1; }
 static inline bool midiBefore(const MidiEvent& a, const MidiEvent& b) { return a.sampleOffset < b.sampleOffset || (a.sampleOffset == b.sampleOffset && midiRank(a) < midiRank(b)); }
 static inline void sortMidi(MidiEventList& l) { for (int i = 1; i < l.count; ++i) { MidiEvent k = l.events[i]; int j = i - 1; while (j >= 0 && midiBefore(k, l.events[j])) { l.events[j + 1] = l.events[j]; --j; } l.events[j + 1] = k; } }
 
@@ -319,7 +319,7 @@ void AudioEngine::routeLiveMidi(Snapshot& s, Tick t0) {
         // controller mappings
         if (ev.type == MidiEvent::CC) { for (auto& m : s.midiMappings) if (!m.isNote && m.cc == ev.data1 && (m.midiChannel < 0 || m.midiChannel == ev.channel)) m.target.setNormalized(ev.data2 / 127.f); }
         if (s.liveChannelIdx >= 0 && s.liveChannelIdx < (int)s.channels.size()) {
-            auto& c = s.channels[s.liveChannelIdx]; c.midi.add(ev);
+            auto& c = s.channels[s.liveChannelIdx]; if (ev.type == MidiEvent::NoteOn && c.cutItself) { MidiEvent cut; cut.type = MidiEvent::AllNotesOff; cut.data1 = 1; cut.sampleOffset = 0; c.midi.add(cut); } c.midi.add(ev);
             if (ev.type == MidiEvent::NoteOn && c.instrument && c.instrument->kind() == ProcessorKind::Instrument) {}
         }
         if (rec && (ev.type == MidiEvent::NoteOn || ev.type == MidiEvent::NoteOff)) { EngineMessage m; m.type = EngineMessage::RecordedMidi; m.midi = ev; m.tick = m_posTicks.load(); m_messages.push(m); }
@@ -377,6 +377,7 @@ void AudioEngine::scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart
             Tick global = nt.start + tickOffset; int off = (int)std::floor((global - pos) * spt); off = clamp(off, 0, n - 1);
             int durSamples = std::max(1, (int)((nt.end - nt.start) * spt));
             MidiEvent e; e.type = MidiEvent::NoteOn; e.data1 = (uint8_t)clamp(nt.pitch, 0, 127); e.data2 = (uint8_t)(nt.velocity * 127); e.velocity = nt.velocity; e.pan = nt.pan; e.finePitch = nt.finePitch; e.sampleOffset = off; e.channel = (uint8_t)nt.midiChannel; e.noteId = (int)(global & 0x7fffffff);
+            if (ch.cutItself) { MidiEvent cut; cut.type = MidiEvent::AllNotesOff; cut.data1 = 1; /* choke: fast fade */ cut.sampleOffset = off; ch.midi.add(cut); }   // 'Cut itself': the new note replaces whatever the channel is still playing
             ch.midi.add(e); ch.noteOffs.add(off + durSamples, e.data1, e.channel, e.noteId);
         }
     }

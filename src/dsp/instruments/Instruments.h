@@ -40,7 +40,7 @@ protected:
 // ---------------- Sampler ----------------
 class Sampler : public InstrumentBase {
 public:
-    enum P : uint32_t { pRoot = 1, pAttack, pDecay, pSustain, pRelease, pStart, pLoopMode, pTune, pFine, pCutoff, pReso, pFilterType, pReverse, pLevel, pPan, pVelSens, pPitchBendRange, pLoopStart, pLoopEnd, pGlide };
+    enum P : uint32_t { pRoot = 1, pAttack, pDecay, pSustain, pRelease, pStart, pLoopMode, pTune, pFine, pCutoff, pReso, pFilterType, pReverse, pLevel, pPan, pVelSens, pPitchBendRange, pLoopStart, pLoopEnd, pGlide, pEnvOn };
     Sampler();
     QString key() const override { return "native.sampler"; }
     QString displayName() const override { return "Sampler"; }

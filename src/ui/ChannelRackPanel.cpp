@@ -1,4 +1,5 @@
 #include "ui/ChannelRackPanel.h"
+#include <QCoreApplication>
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
 #include <QPainter>
@@ -207,6 +208,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
         m.exec(global); return;
     }
     m.addAction("Piano roll", [this, id] { Q_EMIT openPianoRoll(id); });
+    { const Channel* ch = m_app.project().channel(id); auto* cut = m.addAction("Cut itself"); cut->setCheckable(true); cut->setChecked(ch && ch->cutItself); cut->setToolTip("A new note on this channel cuts the notes it is still playing (808s, hi-hats)"); QObject::connect(cut, &QAction::toggled, this, [this, id](bool on) { m_app.setChannelCutItself(id, on); }); }
     m.addAction("Open editor", [this, id] { Q_EMIT openEditor(id); });
     m.addAction("Rename...", [this, id, c] { bool ok; QString n = QInputDialog::getText(this, "Rename channel", "Name:", QLineEdit::Normal, c.name, &ok); if (ok && !n.isEmpty()) m_app.renameChannel(id, n); });
     m.addAction("Color...", [this, id, c] { QColor col = QColorDialog::getColor(c.color, this, "Channel color"); if (col.isValid()) m_app.setChannelColor(id, col); });
@@ -221,8 +223,8 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     m.addAction("Clear (steps and notes)", [this, id] { Pattern* p = pattern(); if (!p) return; m_app.editPattern(p->id, "Clear channel in pattern", [id](Pattern& pp) { auto& d = pp.ensureChannel(id); for (auto& s : d.steps) s.enabled = false; d.notes.clear(); }); });
     m.exec(global);
 }
-void RackView::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) e->acceptProposedAction(); }
-void RackView::dragMoveEvent(QDragMoveEvent* e) { e->acceptProposedAction(); }
+void RackView::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) { e->setDropAction(Qt::CopyAction); e->accept(); } }
+void RackView::dragMoveEvent(QDragMoveEvent* e) { e->setDropAction(Qt::CopyAction); e->accept(); }
 void RackView::dropEvent(QDropEvent* e) {
     HitInfo h = hitTest(e->position().toPoint()); auto& proj = m_app.project(); Id target = (h.row >= 0 && h.row < (int)proj.channels.size()) ? proj.channels[h.row].id : 0;
     QString payload = QString::fromUtf8(e->mimeData()->data("application/x-musicthingy-item")); QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
@@ -234,7 +236,7 @@ void RackView::dropEvent(QDropEvent* e) {
 }
 
 // ---------------------------------------------------------------- panel
-ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
+ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) { setAcceptDrops(true);
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
     auto* top = new QHBoxLayout(); top->setSpacing(5); top->setContentsMargins(2, 0, 2, 0);
     m_patName = new QLabel(this); theme::styled(m_patName, "font-weight:bold; color:@accent@; padding-left:4px;"); m_patName->setToolTip("Current pattern - right-click for rename, colour and step resolution"); m_patName->setContextMenuPolicy(Qt::CustomContextMenu); top->addWidget(m_patName);
@@ -262,6 +264,10 @@ void ChannelRackPanel::fitStepsToWidth() {
     int n = std::max(4, m_view->stepsThatFit(m_scroll->viewport()->width()));   // stepsThatFit already rounds down to groups of 4 steps
     m_view->setFitSteps(n);   // view only: the pattern length is never changed by the window size
 }
+// Anything dropped on the rack window outside the channel rows (header, empty space) becomes a new channel
+void ChannelRackPanel::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) { e->setDropAction(Qt::CopyAction); e->accept(); } }
+void ChannelRackPanel::dragMoveEvent(QDragMoveEvent* e) { e->setDropAction(Qt::CopyAction); e->accept(); }
+void ChannelRackPanel::dropEvent(QDropEvent* e) { QDropEvent fwd(QPointF(0, 1e6), e->possibleActions(), e->mimeData(), e->buttons(), e->modifiers()); QCoreApplication::sendEvent(m_view, &fwd); e->setDropAction(Qt::CopyAction); e->accept(); }
 int ChannelRackPanel::heightForContent() const { int rows = std::max(3, (int)m_app.project().channels.size() + 1); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }
 void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }
 void ChannelRackPanel::uiTick() { m_view->uiTick(); }

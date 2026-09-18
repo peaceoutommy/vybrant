@@ -66,6 +66,15 @@ private:
     App& m_app; double m_lastPos = -1; bool m_lastPlaying = false;
 };
 
+// Tree with a custom drag: a name badge under the cursor and an explicit 'copy' cursor for every accepted action (the theme's
+// dnd cursors are not consulted, some show a no-drop glyph for copy)
+class BrowserTree : public QTreeView {
+public:
+    using QTreeView::QTreeView;
+protected:
+    void startDrag(Qt::DropActions supportedActions) override;
+};
+
 class BrowserPanel : public QWidget {
     Q_OBJECT
 public:
@@ -78,7 +87,7 @@ private:
     void onClicked(const QModelIndex& idx); void onDoubleClicked(const QModelIndex& idx); void onContext(const QPoint& pos); void onExpanded(const QModelIndex& idx); void onCurrentChanged(const QModelIndex& idx);
     void rebuildKeepingExpanded(); void applySearch(); void addFolderDialog();
     bool eventFilter(QObject* o, QEvent* e) override;
-    App& m_app; QTreeView* m_tree; BrowserModel* m_model; QLineEdit* m_search; QTimer m_searchTimer; PreviewBar* m_previewBar; QString m_highlighted; qint64 m_lastAutoPreview = 0; QStringList m_savedExpanded; bool m_restoring = false;
+    App& m_app; BrowserTree* m_tree; BrowserModel* m_model; QLineEdit* m_search; QTimer m_searchTimer; PreviewBar* m_previewBar; QString m_highlighted; qint64 m_lastAutoPreview = 0; QStringList m_savedExpanded; bool m_restoring = false;
     void highlightPlaying(const QString& path);
 };
 

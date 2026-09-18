@@ -17,6 +17,7 @@
 #include <QTimer>
 #include <QPainter>
 #include <QMouseEvent>
+#include <QDrag>
 #include <QDirIterator>
 #include <QKeyEvent>
 #include <QElapsedTimer>
@@ -148,11 +149,23 @@ void PreviewBar::mousePressEvent(QMouseEvent* e) {
     m_app.engine().previewSeek(frac * b->frames);
 }
 
+// ---------------------------------------------------------------- tree drag
+void BrowserTree::startDrag(Qt::DropActions supportedActions) {
+    QModelIndexList idx = selectedIndexes(); if (idx.isEmpty()) idx << currentIndex(); if (idx.isEmpty() || !idx.first().isValid()) return;
+    QMimeData* md = model()->mimeData(idx); if (!md) return;
+    auto* drag = new QDrag(this); drag->setMimeData(md);
+    QString text = idx.first().data().toString(); QFont f = theme::uiFont(); QFontMetrics fm(f); QSize sz(fm.horizontalAdvance(text) + 18, fm.height() + 8); QPixmap pm(sz * devicePixelRatioF()); pm.setDevicePixelRatio(devicePixelRatioF()); pm.fill(Qt::transparent);
+    { QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(QPen(theme::accent(), 1)); p.setBrush(theme::withAlpha(theme::raised(), 235)); p.drawRoundedRect(QRectF(0.5, 0.5, sz.width() - 1, sz.height() - 1), 4, 4); p.setPen(theme::text()); p.setFont(f); p.drawText(QRect(9, 4, sz.width() - 18, fm.height()), Qt::AlignVCenter | Qt::AlignLeft, text); }
+    drag->setPixmap(pm); drag->setHotSpot(QPoint(-8, sz.height() + 6));
+    QPixmap cur(1, 1); cur.fill(Qt::transparent); for (auto a : {Qt::CopyAction, Qt::MoveAction, Qt::LinkAction}) drag->setDragCursor(cur, a);   // the badge is the feedback; no theme cursor on top
+    drag->exec(supportedActions, Qt::CopyAction);
+}
+
 // ---------------------------------------------------------------- panel
 BrowserPanel::BrowserPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
     m_search = new QLineEdit(this); m_search->setPlaceholderText("Search samples, plugins, presets, tags..."); m_search->setClearButtonEnabled(true); m_search->setToolTip("Type to search the whole library (results appear as you type). Right-click the browser to add folders."); lay->addWidget(m_search);
-    m_tree = new QTreeView(this); m_model = new BrowserModel(app, this); m_tree->setModel(m_model);
+    m_tree = new BrowserTree(this); m_model = new BrowserModel(app, this); m_tree->setModel(m_model);
     m_tree->setHeaderHidden(true); m_tree->setDragEnabled(true); m_tree->setAcceptDrops(true); m_tree->setDragDropMode(QAbstractItemView::DragDrop); m_tree->setDefaultDropAction(Qt::CopyAction); m_tree->setDropIndicatorShown(true); m_tree->setContextMenuPolicy(Qt::CustomContextMenu); m_tree->setUniformRowHeights(true); m_tree->setIndentation(14); m_tree->setAlternatingRowColors(true); m_tree->setExpandsOnDoubleClick(false); m_tree->installEventFilter(this);
     lay->addWidget(m_tree);
     m_previewBar = new PreviewBar(app, this); lay->addWidget(m_previewBar);

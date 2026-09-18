@@ -198,6 +198,7 @@ void App::setChannelPan(Id id, float v, bool commit) { if (auto* c = m_engine->r
 void App::setChannelMute(Id id, bool m) { m_model.edit<Channel>(id, m ? "Mute channel" : "Unmute channel", [m](Channel& c) { c.mute = m; }); }
 void App::setChannelSolo(Id id, bool s) { m_model.edit<Channel>(id, "Solo channel", [s](Channel& c) { c.solo = s; }); }
 void App::setChannelEnabled(Id id, bool e) { m_model.edit<Channel>(id, "Enable channel", [e](Channel& c) { c.enabled = e; }); }
+void App::setChannelCutItself(Id id, bool on) { m_model.edit<Channel>(id, on ? "Cut itself on" : "Cut itself off", [on](Channel& c) { c.cutItself = on; }); }
 void App::setChannelMixerTrack(Id id, Id trackId) {
     const Channel* ch = project().channel(id); const MixerTrack* t = project().mixerTrack(trackId); if (!ch || !t) return;
     std::vector<std::unique_ptr<Command>> cmds; cmds.push_back(std::make_unique<EditObjectCommand<Channel>>(m_model, id, "", [trackId](Channel& c) { c.mixerTrackId = trackId; }, 0));

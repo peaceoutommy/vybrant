@@ -63,6 +63,12 @@ Pattern* PianoRollView::pattern() const { return m_app.project().pattern(m_app.p
 PatternChannelData* PianoRollView::data() const { Pattern* p = pattern(); if (!p || !m_channel) return nullptr; return &p->ensureChannel(m_channel); }
 // Channels that only have step-sequencer steps are shown as "virtual" notes (one per step); they only become real
 // notes (and the steps are cleared) when the user actually modifies something in the piano roll.
+// Notes of another channel as ghosts: its piano-roll notes, or its step-sequencer steps converted the same way the view converts its own
+std::vector<Note> PianoRollView::ghostNotesOf(const PatternChannelData& oc) const {
+    if (!oc.notes.empty()) return oc.notes; std::vector<Note> v; Pattern* p = pattern(); const Channel* ch = m_app.project().channel(oc.id); if (!p || !ch) return v; Tick st = p->stepTicks();
+    for (size_t i = 0; i < oc.steps.size(); ++i) { const Step& sp = oc.steps[i]; if (!sp.enabled) continue; Note n; n.pitch = clamp((int)std::lround(ch->rootNote + sp.pitch), 0, 127); n.start = (Tick)i * st + (Tick)(sp.offset * st); n.duration = st; n.velocity = sp.velocity; v.push_back(n); }
+    return v;
+}
 std::vector<Note> PianoRollView::stepsAsNotes() const {
     std::vector<Note> v; Pattern* p = pattern(); PatternChannelData* d = data(); const Channel* ch = m_app.project().channel(m_channel); if (!p || !d || !ch) return v; Tick st = p->stepTicks();
     for (size_t i = 0; i < d->steps.size(); ++i) { const Step& sp = d->steps[i]; if (!sp.enabled) continue; Note n; n.id = kVirtualBase + (Id)i; n.pitch = clamp((int)std::lround(ch->rootNote + sp.pitch), 0, 127); n.start = (Tick)i * st + (Tick)(sp.offset * st); n.duration = st; n.velocity = sp.velocity; n.pan = sp.pan; v.push_back(n); }
@@ -103,7 +109,7 @@ void PianoRollView::renderCache() {
     if (patLen > 0) { int x = tickToX(patLen); p.fillRect(QRect(x, L.grid.top(), L.grid.right() - x, L.grid.height()), QColor(0, 0, 0, 60)); }   // shading alone marks the pattern end - no accent rule
     if (m_timeSel) { int x1 = tickToX(m_selStart), x2 = tickToX(m_selEnd); p.fillRect(QRect(x1, L.grid.top(), x2 - x1, L.grid.height()), theme::withAlpha(theme::accent(), 22)); p.setPen(QPen(theme::withAlpha(theme::accent(), 160), 1)); p.drawLine(x1, L.grid.top(), x1, L.grid.bottom()); p.drawLine(x2, L.grid.top(), x2, L.grid.bottom()); }
     // ghost notes
-    if (m_ghost && pat) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; const Channel* ch = m_app.project().channel(oc.id); QColor c = ch ? ch->color : theme::textDim(); c.setAlpha(70); for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; p.fillRect(r.adjusted(0, 1, -1, -1), c); } }
+    if (m_ghost && pat) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; const Channel* ch = m_app.project().channel(oc.id); QColor c = ch ? ch->color : theme::textDim(); c.setAlpha(70); for (auto& n : ghostNotesOf(oc)) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.right() < L.grid.left() || r.left() > L.grid.right()) continue; p.fillRect(r.adjusted(0, 1, -1, -1), c); } }
     // notes
     const Channel* ch = m_app.project().channel(m_channel); QColor base = ch ? ch->color : theme::accent();
     bool virt = stepMode();
@@ -280,7 +286,7 @@ void PianoRollView::mouseDoubleClickEvent(QMouseEvent* e) { Layout L = layout();
     }
     if (L.grid.contains(e->pos())) {
         if (!noteAt(e->pos()) && m_ghost) { // double-click on a ghost note: jump to that channel's piano roll
-            if (Pattern* pat = pattern()) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; for (auto& n : oc.notes) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.contains(e->pos())) { Q_EMIT channelRequested(oc.id); return; } } } }
+            if (Pattern* pat = pattern()) for (auto& oc : pat->channels) { if (oc.id == m_channel) continue; for (auto& n : ghostNotesOf(oc)) { QRect r(tickToX(n.start), pitchToY(n.pitch), std::max(2, (int)(n.duration * m_ppt)), m_rowH); if (r.contains(e->pos())) { Q_EMIT channelRequested(oc.id); return; } } } }
         if (Note* n = noteAt(e->pos())) { bool ok; int v = QInputDialog::getInt(this, "Note", "Velocity (0-127):", (int)(n->velocity * 127), 1, 127, 1, &ok); if (ok) { beginEdit(); n->velocity = v / 127.f; commitEdit("Note velocity"); } } } else if (L.ruler.contains(e->pos())) zoomToFit(); }
 void PianoRollView::wheelEvent(QWheelEvent* e) {
     int dy = e->angleDelta().y(); Layout L = layout();

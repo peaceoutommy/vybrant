@@ -54,6 +54,9 @@ public:
     explicit ChannelRackPanel(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags); void uiTick();
     QSize sizeHint() const override { return {widthForSteps(16), 320}; }
+protected:
+    void dragEnterEvent(QDragEnterEvent* e) override; void dragMoveEvent(QDragMoveEvent* e) override; void dropEvent(QDropEvent* e) override;
+public:
     int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; }
     int heightForContent() const;   // toolbar + all channel rows (+ graph editor when open)
 protected:

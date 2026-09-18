@@ -14,7 +14,7 @@ Sampler::Sampler() {
     p.addChoice(pLoopMode, "Loop", {"Off", "Forward", "Ping-Pong"}); p.add(pTune, "Tune", -24, 24, 0, ParamUnit::Semitones); p.add(pFine, "Fine", -100, 100, 0, ParamUnit::Cents);
     p.add(pCutoff, "Cutoff", 20, 20000, 20000, ParamUnit::Hertz, true); p.add(pReso, "Resonance", 0, 1, 0); p.addChoice(pFilterType, "Filter", {"Low-pass", "High-pass", "Band-pass"});
     p.addToggle(pReverse, "Reverse"); p.add(pLevel, "Level", 0, 2, 1); p.add(pPan, "Pan", -1, 1, 0); p.add(pVelSens, "Vel. Sensitivity", 0, 1, 1); p.add(pPitchBendRange, "Bend Range", 0, 24, 2, ParamUnit::Semitones);
-    p.add(pLoopStart, "Loop Start", 0, 1, 0, ParamUnit::Percent); p.add(pLoopEnd, "Loop End", 0, 1, 1, ParamUnit::Percent); p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds);
+    p.add(pLoopStart, "Loop Start", 0, 1, 0, ParamUnit::Percent); p.add(pLoopEnd, "Loop End", 0, 1, 1, ParamUnit::Percent); p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds); p.addToggle(pEnvOn, "Envelope", false);
     m_holders.push_back(&m_sample);
 }
 void Sampler::onPrepare() { reset(); }
@@ -26,7 +26,8 @@ void Sampler::noteOn(const MidiEvent& e) {
     if (!v) { v = &m_voices[0]; float best = 2; for (auto& vv : m_voices) if (vv.env.value < best) { best = vv.env.value; v = &vv; } }
     auto& p = m_params;
     v->active = true; v->note = e.data1; v->noteId = e.noteId; v->vel = 1.f - p.get(pVelSens) * (1.f - e.velocity); v->pan = e.pan;
-    v->env.set(m_sr, p.get(pAttack), p.get(pDecay), p.get(pSustain), p.get(pRelease)); v->env.noteOn();
+    if (p.getBool(pEnvOn)) v->env.set(m_sr, p.get(pAttack), p.get(pDecay), p.get(pSustain), p.get(pRelease)); else v->env.set(m_sr, 0.f, 0.f, 1.f, 0.f);   // envelope off: the sound plays as it is
+    v->env.noteOn();
     bool rev = p.getBool(pReverse); v->dir = rev ? -1 : 1;
     v->pos = rev ? (double)(a->frames - 2) * (1.0 - p.get(pStart)) : (double)a->frames * p.get(pStart);
     float glide = p.get(pGlide);
@@ -35,7 +36,7 @@ void Sampler::noteOn(const MidiEvent& e) {
     m_lastNote = e.data1;
 }
 // A sequenced note-off carries the id of the note that started the voice: only that voice is released (live MIDI has no id and releases by pitch)
-void Sampler::noteOff(const MidiEvent& e) { for (auto& v : m_voices) if (v.active && v.note == e.data1 && v.env.stage != ADSR::Release && (e.noteId < 0 || v.noteId < 0 || v.noteId == e.noteId)) v.env.noteOff(); }
+void Sampler::noteOff(const MidiEvent& e) { if (!m_params.getBool(pEnvOn) && m_params.getInt(pLoopMode) == 0) return;   /* envelope off: one-shot, the sample plays to its end (looping samples still stop on note-off) */ for (auto& v : m_voices) if (v.active && v.note == e.data1 && v.env.stage != ADSR::Release && (e.noteId < 0 || v.noteId < 0 || v.noteId == e.noteId)) v.env.noteOff(); }
 
 void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
     m_sample.rtTick();
@@ -49,7 +50,7 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
         while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
             const auto& e = midi.events[mi++];
             if (e.type == MidiEvent::NoteOn) noteOn(e); else if (e.type == MidiEvent::NoteOff) noteOff(e);
-            else if (e.type == MidiEvent::AllNotesOff) { for (auto& v : m_voices) v.env.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) { for (auto& v : m_voices) { if (e.data1 == 1) v.env.r = 0.004f; /* choke ('Cut itself'): a 4 ms fade instead of the release time */ v.env.noteOff(); } }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
             else if (e.type == MidiEvent::CC && e.data1 == 1) m_modWheel = e.data2 / 127.f;
         }
@@ -75,7 +76,9 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
     }
 }
 QJsonObject Sampler::saveState() const { auto o = IProcessor::saveState(); o["sample"] = m_path; return o; }
-void Sampler::restoreState(const QJsonObject& s) { IProcessor::restoreState(s); pendingPath = s["sample"].toString(); }
+void Sampler::restoreState(const QJsonObject& s) { IProcessor::restoreState(s); pendingPath = s["sample"].toString();
+    // projects saved before the envelope switch existed: keep their sound by enabling it when the envelope was clearly in use
+    auto p = s["params"].toObject(); if (!p.contains(QString::number(pEnvOn))) { auto& ps = m_params; bool used = false; for (uint32_t id : {(uint32_t)pAttack, (uint32_t)pDecay, (uint32_t)pSustain, (uint32_t)pRelease}) if (std::fabs(ps.get(id) - ps.desc(ps.indexOf(id)).def) > 1e-5f) used = true; if (used) ps.set(pEnvOn, 1.f); } }
 
 // ============================================================ DrumSampler
 DrumSampler::DrumSampler() {
@@ -142,7 +145,7 @@ void DrumSampler::process(float* L, float* R, int n, const MidiEventList& midi, 
         while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
             const auto& e = midi.events[mi++];
             if (e.type == MidiEvent::NoteOn) trigger(e);
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) v.env.noteOff();
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.env.r = 0.004f; v.env.noteOff(); }
         }
         float sl = 0, sr = 0;
         for (auto& v : m_voices) {
@@ -209,7 +212,7 @@ void Synth::process(float* L, float* R, int n, const MidiEventList& midi, const 
         while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
             const auto& e = midi.events[mi++];
             if (e.type == MidiEvent::NoteOn) noteOn(e); else if (e.type == MidiEvent::NoteOff) noteOff(e);
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { v.amp.noteOff(); v.fenv.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.004f; v.amp.noteOff(); v.fenv.noteOff(); }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
             else if (e.type == MidiEvent::CC && e.data1 == 1) m_modWheel = e.data2 / 127.f;
         }
@@ -298,7 +301,7 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
                 v->amp.set(m_sr, p.get(pAA), p.get(pAD), p.get(pAS), p.get(pAR)); v->amp.noteOn(); v->fenv.set(m_sr, p.get(pFA), p.get(pFD), p.get(pFS), p.get(pFR)); v->fenv.noteOn();
                 Rng r; r.s = 77 + e.data1 + (uint32_t)m_counter; for (int u = 0; u < 8; ++u) v->phase[u] = r.uniform(); m_lastNote = e.data1;
             } else if (e.type == MidiEvent::NoteOff) { for (auto& v : m_voices) if (v.active && v.note == e.data1) { v.amp.noteOff(); v.fenv.noteOff(); } }
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { v.amp.noteOff(); v.fenv.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.004f; v.amp.noteOff(); v.fenv.noteOff(); }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * 2.f;
         }
         float lfo = m_lfo.next(lfoRate, m_sr, lfoShape); float sl = 0, sr = 0;
@@ -349,7 +352,7 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
                 for (int o = 0; o < 4; ++o) { v->ph[o] = 0; v->env[o].set(m_sr, p.get(opParam(o, 3)), p.get(opParam(o, 4)), p.get(opParam(o, 5)), p.get(opParam(o, 6))); v->env[o].noteOn(); }
                 v->amp.set(m_sr, p.get(pAA), p.get(pAD), p.get(pAS), p.get(pAR)); v->amp.noteOn();
             } else if (e.type == MidiEvent::NoteOff) { for (auto& v : m_voices) if (v.active && v.note == e.data1) { v.amp.noteOff(); for (auto& en : v.env) en.noteOff(); } }
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { v.amp.noteOff(); for (auto& en : v.env) en.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.004f; v.amp.noteOff(); for (auto& en : v.env) en.noteOff(); }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
         }
         float lfo = m_lfo.next(lfoRate, m_sr, 0); float s = 0;

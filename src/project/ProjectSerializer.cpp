@@ -39,7 +39,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
     root["patterns"] = pats;
     QJsonArray chans;
     for (auto& c : p.channels) chans.append(QJsonObject{{"id", (double)c.id}, {"name", c.name}, {"color", colorJ(c.color)}, {"type", (int)c.type}, {"instrument", c.instrumentKey}, {"plugin", (double)c.pluginInstanceId}, {"sample", relPath(c.samplePath, dir)},
-                                                         {"volume", c.volume}, {"pan", c.pan}, {"mute", c.mute}, {"solo", c.solo}, {"enabled", c.enabled}, {"mixerTrack", (double)c.mixerTrackId}, {"rootNote", c.rootNote}, {"midiOutPort", c.midiOutPort}, {"midiOutChannel", c.midiOutChannel}, {"state", c.instrumentState}});
+                                                         {"volume", c.volume}, {"pan", c.pan}, {"mute", c.mute}, {"solo", c.solo}, {"enabled", c.enabled}, {"cutItself", c.cutItself}, {"mixerTrack", (double)c.mixerTrackId}, {"rootNote", c.rootNote}, {"midiOutPort", c.midiOutPort}, {"midiOutChannel", c.midiOutChannel}, {"state", c.instrumentState}});
     root["channels"] = chans;
     QJsonArray tracks, clips;
     for (auto& t : p.playlistTracks) tracks.append(QJsonObject{{"id", (double)t.id}, {"name", t.name}, {"color", colorJ(t.color)}, {"height", t.height}, {"mute", t.mute}, {"solo", t.solo}, {"locked", t.locked}, {"armed", t.armed}, {"recordInput", t.recordInput}, {"mixerTrack", (double)t.mixerTrackId}});
@@ -118,7 +118,7 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
     }
     for (auto cv : root["channels"].toArray()) {
         auto o = cv.toObject(); Channel c; c.id = (Id)o["id"].toDouble(); c.name = o["name"].toString(); c.color = colorF(o["color"], c.color); c.type = (ChannelType)o["type"].toInt(); c.instrumentKey = o["instrument"].toString(); c.pluginInstanceId = (Id)o["plugin"].toDouble(); c.samplePath = absPath(o["sample"].toString(), dir);
-        c.volume = (float)o["volume"].toDouble(0.8); c.pan = (float)o["pan"].toDouble(); c.mute = o["mute"].toBool(); c.solo = o["solo"].toBool(); c.enabled = o["enabled"].toBool(true); c.mixerTrackId = (Id)o["mixerTrack"].toDouble(); c.rootNote = o["rootNote"].toInt(60); c.midiOutPort = o["midiOutPort"].toInt(-1); c.midiOutChannel = o["midiOutChannel"].toInt(); c.instrumentState = o["state"].toObject();
+        c.volume = (float)o["volume"].toDouble(0.8); c.pan = (float)o["pan"].toDouble(); c.mute = o["mute"].toBool(); c.solo = o["solo"].toBool(); c.enabled = o["enabled"].toBool(true); c.cutItself = o["cutItself"].toBool(false); c.mixerTrackId = (Id)o["mixerTrack"].toDouble(); c.rootNote = o["rootNote"].toInt(60); c.midiOutPort = o["midiOutPort"].toInt(-1); c.midiOutChannel = o["midiOutChannel"].toInt(); c.instrumentState = o["state"].toObject();
         p.channels.push_back(c);
     }
     auto pl = root["playlist"].toObject();

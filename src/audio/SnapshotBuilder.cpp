@@ -134,7 +134,7 @@ void AudioEngine::rebuild(const Project& p) {
     std::map<Id, int> chanIdx; bool anyChanSolo = false; for (auto& c : p.channels) if (c.solo) anyChanSolo = true;
     for (auto& c : p.channels) {
         RtChannel rc; rc.id = c.id; rc.instrument = m_registry.ensureInstrument(c, p, m_sr, m_maxBlock, m_pluginFactory, s.generation); rc.ctl = &m_registry.channel(c.id); rc.ctl->volume.store(c.volume); rc.ctl->pan.store(c.pan);
-        rc.mixerTrackIdx = trackIdx.count(c.mixerTrackId) ? trackIdx[c.mixerTrackId] : 0; rc.enabled = c.enabled; rc.audible = !c.mute && (!anyChanSolo || c.solo); rc.rootNote = c.rootNote; rc.isMidiOut = c.type == ChannelType::MidiOut; rc.midiOutPort = c.midiOutPort;
+        rc.mixerTrackIdx = trackIdx.count(c.mixerTrackId) ? trackIdx[c.mixerTrackId] : 0; rc.enabled = c.enabled; rc.cutItself = c.cutItself; rc.audible = !c.mute && (!anyChanSolo || c.solo); rc.rootNote = c.rootNote; rc.isMidiOut = c.type == ChannelType::MidiOut; rc.midiOutPort = c.midiOutPort;
         rc.bufL.assign(m_maxBlock, 0.f); rc.bufR.assign(m_maxBlock, 0.f);
         chanIdx[c.id] = (int)s.channels.size(); s.channels.push_back(std::move(rc));
         // pending sample loads

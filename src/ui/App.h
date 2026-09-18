@@ -58,7 +58,7 @@ public:
     Id addChannel(ChannelType type, const QString& instrumentKey, const QString& name = QString(), const QString& samplePath = QString(), Id pluginInstanceId = 0);
     Id addPluginChannel(const PluginInfo& info);
     void deleteChannel(Id id); Id duplicateChannel(Id id); void renameChannel(Id id, const QString& name); void setChannelColor(Id id, const QColor& c); void moveChannel(Id id, int newIndex);
-    void setChannelVolume(Id id, float v, bool commit); void setChannelPan(Id id, float v, bool commit); void setChannelMute(Id id, bool m); void setChannelSolo(Id id, bool s); void setChannelEnabled(Id id, bool e); void setChannelMixerTrack(Id id, Id trackId);
+    void setChannelVolume(Id id, float v, bool commit); void setChannelPan(Id id, float v, bool commit); void setChannelMute(Id id, bool m); void setChannelSolo(Id id, bool s); void setChannelEnabled(Id id, bool e); void setChannelCutItself(Id id, bool on); void setChannelMixerTrack(Id id, Id trackId);
     void setChannelSample(Id id, const QString& path); void changeChannelInstrument(Id id, const QString& key, Id pluginId = 0);
 
     // ---- patterns

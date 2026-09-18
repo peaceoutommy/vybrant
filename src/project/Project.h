@@ -72,6 +72,7 @@ struct Channel {
     float   volume = 0.8f;      // 0..1 (linear)
     float   pan = 0.f;
     bool    mute = false, solo = false, enabled = true;
+    bool    cutItself = false;  // FL 'Cut itself': a new note on this channel cuts the notes it is still playing
     Id      mixerTrackId = 0;   // 0 = master
     int     rootNote = 60;
     int     midiOutPort = -1, midiOutChannel = 0;

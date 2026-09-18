@@ -49,7 +49,7 @@ private:
     struct Layout { int keyW = 60, rulerH = 22, velH = 70; QRect grid, ruler, keys, vel; };
     Layout layout() const;
     Pattern* pattern() const; PatternChannelData* data() const;
-    static constexpr Id kVirtualBase = (Id)1 << 60; std::vector<Note> stepsAsNotes() const; bool stepMode() const; const std::vector<Note>& notesView() const; mutable std::vector<Note> m_virtual; std::set<Id> m_selBase;
+    static constexpr Id kVirtualBase = (Id)1 << 60; std::vector<Note> stepsAsNotes() const; std::vector<Note> ghostNotesOf(const PatternChannelData& oc) const; bool stepMode() const; const std::vector<Note>& notesView() const; mutable std::vector<Note> m_virtual; std::set<Id> m_selBase;
     Tick xToTick(int x) const; int tickToX(Tick t) const; int yToPitch(int y) const; int pitchToY(int pitch) const; Tick snap(Tick t, bool force = false) const; Tick snapNear(Tick t) const; Tick snapTicks() const;
     Note* noteAt(const QPoint& p, bool* nearEdge = nullptr) const;
     void beginEdit(); void commitEdit(const QString& desc); void cancelEdit(); void seekToPatternTick(Tick t);

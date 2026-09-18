@@ -2,6 +2,8 @@
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
 #include <array>
+#include <QGraphicsOpacityEffect>
+#include <QSignalBlocker>
 #include <QToolButton>
 #include <QSettings>
 #include <QInputDialog>
@@ -93,12 +95,14 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
     QObject::connect(load, &QPushButton::clicked, w, [&app, owner, name, w] { QString p = QFileDialog::getOpenFileName(w, "Load sample", QString(), "Audio (*.wav *.aif *.aiff *.flac *.ogg *.mp3)"); if (!p.isEmpty()) { app.setChannelSample(owner, p); name->setText(QFileInfo(p).fileName()); } });
     lay->addWidget(wave);
     // knobs grouped by what they do: sample / envelope / filter / output
-    struct Group { const char* title; std::vector<uint32_t> ids; int cols; };
+    struct Group { const char* title; std::vector<uint32_t> ids; int cols; }; QToolButton* envBtn = nullptr;
     static const std::vector<Group> groups = { {"Envelope", {Sampler::pAttack, Sampler::pDecay, Sampler::pSustain, Sampler::pRelease}, 4}, {"Sample", {Sampler::pStart, Sampler::pReverse, Sampler::pLoopMode, Sampler::pLoopStart, Sampler::pLoopEnd}, 5}, {"Pitch", {Sampler::pRoot, Sampler::pTune, Sampler::pFine}, 3}, {"Filter", {Sampler::pFilterType, Sampler::pCutoff, Sampler::pReso}, 3}, {"Output", {Sampler::pLevel, Sampler::pPan, Sampler::pVelSens, Sampler::pPitchBendRange, Sampler::pGlide}, 5} };
     // three rows of groups so the window stays compact: Sample + Pitch / Envelope + Filter / Output
     static const int rowOf[] = {0, 0, 1, 1, 2}; /* Envelope + Sample / Pitch + Filter / Output */ auto* grid = new QGridLayout(); grid->setHorizontalSpacing(14); grid->setVerticalSpacing(4); std::vector<GenericParamPanel*> panels; int col[3] = {0, 0, 0};
     for (size_t i = 0; i < groups.size(); ++i) { auto& g = groups[i]; auto* box = new QVBoxLayout(); box->setSpacing(2); auto* title = new QLabel(g.title, w); theme::styled(title, "color:@textDim@; font-weight:bold; font-size:8pt;"); auto* th = new QHBoxLayout(); th->setSpacing(6); th->addWidget(title);
-        if (i == 0) { // envelope presets: built-ins (808, pluck, pad...) plus your own, stored in the settings
+        if (i == 0) { // envelope on/off: off by default so a new sound plays as it is; the knobs grey out until it is switched on (or touched)
+            auto* onBtn = new QToolButton(w); onBtn->setText("Off"); onBtn->setCheckable(true); onBtn->setToolTip("Envelope on/off. Off: the sample plays through as it is. Moving an envelope knob or loading a preset switches it on."); onBtn->setStyleSheet("QToolButton { padding: 0 8px; font-size: 8pt; font-weight: bold; } QToolButton:checked { color: #f2a93b; }"); th->addWidget(onBtn); envBtn = onBtn;
+            QObject::connect(onBtn, &QToolButton::toggled, w, [&app, owner, onBtn](bool on) { onBtn->setText(on ? "On" : "Off"); if (App::instance()->processor(owner)) app.setProcessorParam(owner, Sampler::pEnvOn, on ? 1.f : 0.f, true); });
             auto* pb = new QToolButton(w); pb->setText("Presets \u25BE"); pb->setPopupMode(QToolButton::InstantPopup); pb->setToolTip("Envelope presets: apply a built-in shape or save the current A/D/S/R as your own"); pb->setStyleSheet("QToolButton { padding: 0 6px; font-size: 8pt; }"); th->addWidget(pb);
             auto* pm = new QMenu(pb); pb->setMenu(pm);
             struct EnvPreset { QString name; float a, d, s, r; }; auto applyEnv = [&app, owner, s](const EnvPreset& e) { auto& ps = s->params(); auto set = [&](uint32_t id, float v) { app.setProcessorParam(owner, id, ps.desc(ps.indexOf(id)).toNormalized(v), true); }; set(Sampler::pAttack, e.a); set(Sampler::pDecay, e.d); set(Sampler::pSustain, e.s); set(Sampler::pRelease, e.r); };
@@ -113,11 +117,13 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
         }
         th->addStretch(1); box->addLayout(th); auto ids = g.ids; auto* gp = new GenericParamPanel(app, owner, s, [ids](const ParamDesc& d) { return std::find(ids.begin(), ids.end(), d.id) != ids.end(); }, g.cols, w); box->addWidget(gp); int r = rowOf[i]; grid->addLayout(box, r, col[r]++, Qt::AlignLeft | Qt::AlignTop); panels.push_back(gp); }
     for (int r = 0; r < 3; ++r) grid->setColumnStretch(col[r], 1); lay->addLayout(grid);
+    auto* envFade = new QGraphicsOpacityEffect(panels[0]); envFade->setOpacity(1.0); panels[0]->setGraphicsEffect(envFade);
     // the envelope overlay appears once the envelope has been touched (now, or earlier in this project)
-    auto* envTouched = new bool(false); auto* lastEnv = new std::array<float, 4>{}; { auto& ps = s->params(); *lastEnv = {ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; for (int i = 0; i < ps.count(); ++i) { auto& d = ps.desc(i); if ((d.id == Sampler::pAttack || d.id == Sampler::pDecay || d.id == Sampler::pSustain || d.id == Sampler::pRelease) && std::fabs(ps.get(d.id) - d.def) > 1e-5f) *envTouched = true; } }
-    QObject::connect(w, &QObject::destroyed, [envTouched, lastEnv] { delete envTouched; delete lastEnv; });
-    wave->showEnvelope = [envTouched] { return *envTouched; };
-    auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [wave, panels, s, envTouched, lastEnv] { auto& ps = s->params(); std::array<float, 4> cur = {ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; if (cur != *lastEnv) { *lastEnv = cur; *envTouched = true; } wave->update(); for (auto* gp : panels) gp->sync(); }); t->start(100);
+    auto* lastEnv = new std::array<float, 4>{}; { auto& ps = s->params(); *lastEnv = {ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; }
+    QObject::connect(w, &QObject::destroyed, [lastEnv] { delete lastEnv; });
+    wave->showEnvelope = [s] { return s->params().getBool(Sampler::pEnvOn); };
+    auto syncEnvUi = [envBtn, envFade, s] { bool on = s->params().getBool(Sampler::pEnvOn); if (envBtn->isChecked() != on) { QSignalBlocker b(envBtn); envBtn->setChecked(on); envBtn->setText(on ? "On" : "Off"); } envFade->setOpacity(on ? 1.0 : 0.38); }; syncEnvUi();
+    auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [&app, owner, wave, panels, s, lastEnv, syncEnvUi] { auto& ps = s->params(); std::array<float, 4> cur = {ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; if (cur != *lastEnv) { *lastEnv = cur; if (!ps.getBool(Sampler::pEnvOn)) app.setProcessorParam(owner, Sampler::pEnvOn, 1.f, true); } syncEnvUi(); wave->update(); for (auto* gp : panels) gp->sync(); }); t->start(100);
     return w;
 }
 

@@ -53,7 +53,7 @@ struct NoteOffScheduler {
 };
 
 struct RtChannel {
-    Id id; IProcessor* instrument = nullptr; int mixerTrackIdx = 0; ChannelControls* ctl = nullptr; bool enabled = true; bool audible = true; int rootNote = 60; bool isMidiOut = false; int midiOutPort = -1;
+    Id id; IProcessor* instrument = nullptr; int mixerTrackIdx = 0; ChannelControls* ctl = nullptr; bool enabled = true; bool audible = true; bool cutItself = false; int rootNote = 60; bool isMidiOut = false; int midiOutPort = -1;
     MidiEventList midi; NoteOffScheduler noteOffs; std::vector<float> bufL, bufR; std::vector<int> patternLanes; dsp::PdcDelay* pdc = nullptr;
 };
 struct RtEffect { IProcessor* proc = nullptr; bool bypass = false; float mix = 1.f; Id slotId = 0; std::atomic<bool>* crashed = nullptr; };
