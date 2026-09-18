@@ -245,15 +245,18 @@ QIcon glyphIcon(Glyph g, const QColor& color, int size) {
         p.setPen(QPen(color, 1.2)); p.setBrush(Qt::NoBrush); p.drawRoundedRect(QRectF(s * 0.1, s * 0.2, s * 0.8, s * 0.6), 1.5, 1.5); for (int i = 1; i < 4; ++i) p.drawLine(QPointF(s * (0.1 + 0.2 * i), s * 0.5), QPointF(s * (0.1 + 0.2 * i), s * 0.8));
         p.setPen(Qt::NoPen); p.setBrush(color); for (int i = 0; i < 4; ++i) if (i != 2) p.drawRect(QRectF(s * (0.1 + 0.2 * i) + s * 0.13, s * 0.2, s * 0.14, s * 0.32)); break; }
     case Glyph::Help: { QFont f; f.setPointSizeF(s * 0.65); f.setBold(true); p.setFont(f); p.setPen(color); p.drawText(QRectF(0, 0, s, s), Qt::AlignCenter, "?"); break; }
-    case Glyph::Pencil: { QPainterPath tip; tip.moveTo(s * 0.14, s * 0.86); tip.lineTo(s * 0.33, s * 0.79); tip.lineTo(s * 0.21, s * 0.67); tip.closeSubpath(); p.drawPath(tip);
-        QPainterPath body; body.moveTo(s * 0.26, s * 0.62); body.lineTo(s * 0.68, s * 0.20); body.lineTo(s * 0.82, s * 0.34); body.lineTo(s * 0.40, s * 0.76); body.closeSubpath(); p.drawPath(body); break; }
+    case Glyph::Pencil: { // the draw tool: a plain arrow cursor (the 'pencil' name is historical)
+        QPainterPath a; a.moveTo(s * 0.26, s * 0.12); a.lineTo(s * 0.26, s * 0.80); a.lineTo(s * 0.43, s * 0.64); a.lineTo(s * 0.55, s * 0.90); a.lineTo(s * 0.66, s * 0.85); a.lineTo(s * 0.54, s * 0.60); a.lineTo(s * 0.76, s * 0.58); a.closeSubpath();
+        p.setPen(QPen(QColor(0x15, 0x17, 0x1b), 1.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin)); p.setBrush(color); p.drawPath(a); p.setPen(Qt::NoPen); break; }
     case Glyph::Marquee: { QPen pen(color, 1.3); pen.setStyle(Qt::CustomDashLine); pen.setDashPattern({2, 2}); p.setPen(pen); p.setBrush(Qt::NoBrush); p.drawRect(QRectF(s * 0.17, s * 0.20, s * 0.66, s * 0.60)); break; }
     case Glyph::Eraser: { QPainterPath e; e.moveTo(s * 0.20, s * 0.62); e.lineTo(s * 0.52, s * 0.22); e.lineTo(s * 0.82, s * 0.44); e.lineTo(s * 0.50, s * 0.84); e.closeSubpath(); p.drawPath(e);
         p.setPen(QPen(withAlpha(QColor(0x15, 0x17, 0x1b), 200), 1.2)); p.drawLine(QPointF(s * 0.35, s * 0.73), QPointF(s * 0.66, s * 0.33)); p.setPen(Qt::NoPen);
         p.setBrush(color); p.drawRect(QRectF(s * 0.12, s * 0.86, s * 0.76, s * 0.07)); break; }
-    case Glyph::Slice: { QPen pen(color, 1.1); pen.setStyle(Qt::CustomDashLine); pen.setDashPattern({2, 2}); p.setPen(pen); p.drawLine(QPointF(s * 0.5, s * 0.06), QPointF(s * 0.5, s * 0.94)); p.setPen(Qt::NoPen);
-        QPainterPath blade; blade.moveTo(s * 0.12, s * 0.34); blade.lineTo(s * 0.64, s * 0.62); blade.lineTo(s * 0.56, s * 0.74); blade.lineTo(s * 0.08, s * 0.46); blade.closeSubpath(); p.drawPath(blade);
-        p.setPen(QPen(color, 2.0, Qt::SolidLine, Qt::RoundCap)); p.drawLine(QPointF(s * 0.68, s * 0.68), QPointF(s * 0.88, s * 0.80)); p.setPen(Qt::NoPen); break; }
+    case Glyph::Slice: { // scissors
+        QPen pen(color, 1.7, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin); p.setPen(pen); p.setBrush(Qt::NoBrush);
+        p.drawLine(QPointF(s * 0.30, s * 0.16), QPointF(s * 0.72, s * 0.72)); p.drawLine(QPointF(s * 0.70, s * 0.16), QPointF(s * 0.28, s * 0.72));   // blades
+        p.drawEllipse(QRectF(s * 0.12, s * 0.66, s * 0.26, s * 0.26)); p.drawEllipse(QRectF(s * 0.62, s * 0.66, s * 0.26, s * 0.26));                     // handles
+        p.setPen(Qt::NoPen); break; }
     case Glyph::MuteSpeaker: { p.drawRect(QRectF(s * 0.12, s * 0.38, s * 0.16, s * 0.24));
         QPainterPath cone; cone.moveTo(s * 0.28, s * 0.38); cone.lineTo(s * 0.52, s * 0.16); cone.lineTo(s * 0.52, s * 0.84); cone.lineTo(s * 0.28, s * 0.62); cone.closeSubpath(); p.drawPath(cone);
         p.setPen(QPen(color, 1.6, Qt::SolidLine, Qt::RoundCap)); p.drawLine(QPointF(s * 0.62, s * 0.34), QPointF(s * 0.90, s * 0.66)); p.drawLine(QPointF(s * 0.90, s * 0.34), QPointF(s * 0.62, s * 0.66)); p.setPen(Qt::NoPen); break; }

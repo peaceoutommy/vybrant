@@ -56,7 +56,7 @@ PianoRollView::PianoRollView(App& app, QWidget* parent) : QWidget(parent), m_app
 }
 void PianoRollView::setTool(Tool t) { m_tool = t; setCursor(toolCursorFor(t)); Q_EMIT modeChanged(t); }
 // The pointer carries the active tool's icon; the pencil points from its tip, the rest sit centred on the hotspot.
-QCursor PianoRollView::toolCursorFor(Tool t) { switch (t) { case Erase: return theme::toolCursor(theme::Glyph::Eraser); case MuteTool: return theme::toolCursor(theme::Glyph::MuteSpeaker); case Select: return theme::toolCursor(theme::Glyph::Marquee); default: return theme::toolCursor(theme::Glyph::Pencil, 4, 19); } }
+QCursor PianoRollView::toolCursorFor(Tool t) { switch (t) { case Erase: return theme::toolCursor(theme::Glyph::Eraser); case MuteTool: return theme::toolCursor(theme::Glyph::MuteSpeaker); case Select: return theme::toolCursor(theme::Glyph::Marquee); default: return QCursor(Qt::ArrowCursor); } }   // draw tool: the regular pointer
 PianoRollView::Layout PianoRollView::layout() const { Layout l; l.velH = m_velH; int w = width() - 14, h = height() - 14; l.keys = QRect(0, l.rulerH, l.keyW, h - l.rulerH - l.velH); l.ruler = QRect(l.keyW, 0, w - l.keyW, l.rulerH); l.grid = QRect(l.keyW, l.rulerH, w - l.keyW, h - l.rulerH - l.velH); l.vel = QRect(l.keyW, h - l.velH, w - l.keyW, l.velH); return l; }
 void PianoRollView::resizeEvent(QResizeEvent*) { m_hbar->setGeometry(layout().keyW, height() - 14, width() - layout().keyW - 14, 14); m_vbar->setGeometry(width() - 14, layout().rulerH, 14, height() - layout().rulerH - 14); updateScrollbars(); invalidate(); }
 Pattern* PianoRollView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
@@ -219,8 +219,8 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::RightButton || m_tool == Erase) { beginEdit(); m_drag = Erasing; m_erasedAny = false; setCursor(theme::toolCursor(theme::Glyph::Eraser)); Q_EMIT modeChanged(Erase); if (n) { std::erase_if(d->notes, [id = n->id](const Note& x) { return x.id == id; }); m_selected.erase(n->id); m_erasedAny = true; invalidate(); } return; }
     if (n) {
         if (n->id < kVirtualBase && e->button() == Qt::LeftButton) m_lastLength = n->duration;   // FL: clicking a note makes its length the length of the notes you draw next
-        if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) { if (m_selected.count(n->id)) m_selected.erase(n->id); else m_selected.insert(n->id); invalidate(); }
-        else if (!m_selected.count(n->id)) { m_selected.clear(); m_selected.insert(n->id); }
+        if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) { m_toggleOnRelease = n->id; m_selBase = m_selected; m_drag = Rubber; m_rubber = QRect(e->pos(), QSize(0, 0)); invalidate(); return; }   // Ctrl: drag = rubber-band selection from here, click = toggle this note
+        if (!m_selected.count(n->id)) { m_selected.clear(); m_selected.insert(n->id); }
         beginEdit(); m_dragNote = n->id; m_pressTick = xToTick(e->pos().x()); m_pressPitch = yToPitch(e->pos().y()); m_duplicated = false;
         if (e->modifiers() & Qt::ShiftModifier && e->modifiers() & Qt::ControlModifier) { // ctrl+shift drag = duplicate
             std::vector<Note> copies; for (auto& x : d->notes) if (m_selected.count(x.id)) { Note c = x; c.id = m_app.project().newId(); copies.push_back(c); } m_selected.clear(); for (auto& c : copies) { m_selected.insert(c.id); d->notes.push_back(c); } m_duplicated = true; }
@@ -248,7 +248,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == Velocity) { float v = clamp((float)(L.vel.bottom() - e->pos().y()) / (L.vel.height() - 6), 0.f, 1.f); int hw = laneBarWidth(); bool any = !m_selected.empty(); for (auto& n : d->notes) { int x = tickToX(n.start); if (any ? m_selected.count(n.id) : (e->pos().x() >= x - 1 && e->pos().x() <= x + hw + 1)) setLaneValue(n, v); } if (m_lane == 0) m_lastVelocity = v; invalidate(); return; }
     if (m_drag == Erasing) { if (Note* n = noteAt(e->pos())) { std::erase_if(d->notes, [id = n->id](const Note& x) { return x.id == id; }); m_erasedAny = true; invalidate(); } return; }
     if (m_drag == Muting) { if (Note* n = noteAt(e->pos())) { if (!m_touched.count(n->id)) { n->muted = !n->muted; m_touched.insert(n->id); invalidate(); } } return; }
-    if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); m_selected = m_selBase; for (auto& n : notesView()) { QRect nr(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.intersects(nr)) m_selected.insert(n.id); } invalidate(); return; }
+    if (m_drag == Rubber) { m_rubber = QRect(m_pressPos, e->pos()); QRect r = m_rubber.normalized(); if (m_toggleOnRelease && (r.width() >= 3 || r.height() >= 3)) { m_toggleOnRelease = 0; if (!(e->modifiers() & Qt::ShiftModifier)) m_selBase.clear(); } m_selected = m_selBase; for (auto& n : notesView()) { QRect nr(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH); if (r.intersects(nr)) m_selected.insert(n.id); } invalidate(); return; }
     if (m_drag == Moving || m_drag == Creating) {
         Tick dt = xToTick(e->pos().x()) - m_pressTick; int dp = clamp(yToPitch(e->pos().y()), 0, 127) - m_pressPitch;
         // snap the dragged note's new start, apply the same delta to all selected
@@ -272,10 +272,8 @@ void PianoRollView::mouseReleaseEvent(QMouseEvent* e) {
     if (m_drag == KeyPreview || m_drag == Moving || m_drag == Creating) { if (m_previewPitch >= 0) previewNote(m_previewPitch, false); m_previewPitch = -1; m_repeatTimer.stop(); }
     if (m_drag == Erasing) { m_lastEraseWasClick = m_erasedAny && (e->pos() - m_pressPos).manhattanLength() < 4; m_lastEraseTime = QDateTime::currentMSecsSinceEpoch(); }
     if (m_drag == Erasing || m_drag == Muting) setTool(m_tool);   // restore the tool cursor and toolbar state
-    bool showMenu = m_drag == Erasing && !m_erasedAny && e->button() == Qt::RightButton && (e->pos() - m_pressPos).manhattanLength() < 4;
     switch (m_drag) { case Moving: commitEdit(m_duplicated ? "Duplicate notes" : "Move notes"); break; case Creating: commitEdit("Draw note"); break; case Resizing: commitEdit("Resize notes"); break; case Velocity: commitEdit("Edit velocity"); break; case Erasing: commitEdit("Erase notes"); break; case Muting: commitEdit("Mute notes"); break; default: break; }
-    if (showMenu) { m_drag = NoDrag; showAreaMenu(e->pos(), e->globalPosition().toPoint()); return; }
-    if (m_drag == Rubber) { if (m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3 && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); }
+    if (m_drag == Rubber) { bool tiny = m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3; if (tiny && m_toggleOnRelease) { m_selected = m_selBase; if (m_selected.count(m_toggleOnRelease)) m_selected.erase(m_toggleOnRelease); else m_selected.insert(m_toggleOnRelease); } else if (tiny && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); m_toggleOnRelease = 0; }
     m_drag = NoDrag; m_dragNote = 0; invalidate();
 }
 void PianoRollView::mouseDoubleClickEvent(QMouseEvent* e) { Layout L = layout();
@@ -386,7 +384,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent) : QWidget(parent), m_a
     auto sep = [&] { top->addSpacing(4); top->addWidget(theme::barSeparator(this)); top->addSpacing(4); };
     auto group = [&]() -> QHBoxLayout* { auto* g = new QHBoxLayout(); g->setSpacing(1); g->setContentsMargins(0, 0, 0, 0); top->addLayout(g); return g; };
     // The icon is painted in one fixed light colour, so a checked button only changes its background - no orange glyphs.
-    auto mkTool = [&](QHBoxLayout* g, theme::Glyph icon, const QString& tip, int w = 0) { auto* b = new QToolButton(this); theme::setGlyph(b, icon, 20); b->setToolTip(tip); b->setCheckable(true); b->setFixedSize(w ? w : kH, kH); b->setFocusPolicy(Qt::NoFocus); g->addWidget(b); return b; };
+    auto mkTool = [&](QHBoxLayout* g, theme::Glyph icon, const QString& tip, int w = 0) { auto* b = new QToolButton(this); theme::setGlyph(b, icon, 24); b->setToolTip(tip); b->setCheckable(true); b->setFixedSize(w ? w : kH + 4, kH); b->setFocusPolicy(Qt::NoFocus); g->addWidget(b); return b; };
     auto mkCombo = [&](int w, const QString& tip) { auto* c = new QComboBox(this); c->setFixedHeight(kH); c->setFixedWidth(w); c->setToolTip(tip); c->setFocusPolicy(Qt::NoFocus); top->addWidget(c); return c; };
 
     auto* menuBtn = new QToolButton(this); menuBtn->setText("\u2261"); menuBtn->setToolTip("Piano roll tools and edit actions"); menuBtn->setFixedSize(30, kH); menuBtn->setFocusPolicy(Qt::NoFocus); menuBtn->setPopupMode(QToolButton::InstantPopup); top->addWidget(menuBtn);

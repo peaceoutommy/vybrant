@@ -59,7 +59,7 @@ private:
     bool inScale(int pitch) const;
     App& m_app; Tool m_tool = Draw; Id m_channel = 0; bool m_ghost = true; int m_scaleRoot = 0, m_scale = 0, m_chord = 0; bool m_noteRepeat = false; int m_snapDiv = 4;
     double m_ppt = 0.08; int m_rowH = 17; Tick m_scrollTick = 0; int m_topPitch = 84; int m_keyLabels = LabelsC; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
-    std::set<Id> m_selected; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
+    std::set<Id> m_selected; Id m_toggleOnRelease = 0; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
     Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer, m_autoScroll; QPoint m_lastMouse; bool m_altHeld = false; bool m_erasedAny = false;
     int m_lane = 0; int m_velH = 80; int m_laneResizeStart = 0; QRect m_laneLabelRect; Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
     anim::RectTracker<Id> m_noteAnim; anim::Ticker* m_ticker = nullptr;
