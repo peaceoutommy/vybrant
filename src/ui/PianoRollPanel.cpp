@@ -96,7 +96,7 @@ void PianoRollView::uiTick() {
 
 // ---------------------------------------------------------------- painting
 void PianoRollView::renderCache() {
-    Layout L = layout(); m_cache = QPixmap(size()); m_cache.fill(theme::bg()); QPainter p(&m_cache);
+    Layout L = layout(); m_cache = QPixmap(size() * devicePixelRatioF()); m_cache.setDevicePixelRatio(devicePixelRatioF()); m_cache.fill(theme::bg()); QPainter p(&m_cache); p.setRenderHint(QPainter::TextAntialiasing);   /* the cache is rendered at the screen's real resolution: text stays crisp at 125 % / 150 % scaling */
     Pattern* pat = pattern(); PatternChannelData* d = data(); const auto& ts = m_app.project().transport.timeSig; Tick patLen = pat ? pat->effectiveLength(ts) : 0;
     // grid rows
     p.setClipRect(L.grid);

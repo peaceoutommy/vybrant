@@ -144,7 +144,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
     p.restore();
 }
 void PlaylistView::renderCache() {
-    Layout L = layout(); m_cache = QPixmap(size()); m_cache.fill(theme::bg()); QPainter p(&m_cache); auto& proj = m_app.project(); const auto& ts = proj.transport.timeSig; Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar();
+    Layout L = layout(); m_cache = QPixmap(size() * devicePixelRatioF()); m_cache.setDevicePixelRatio(devicePixelRatioF()); m_cache.fill(theme::bg()); QPainter p(&m_cache); p.setRenderHint(QPainter::TextAntialiasing);   /* the cache is rendered at the screen's real resolution: text stays crisp at 125 % / 150 % scaling */ auto& proj = m_app.project(); const auto& ts = proj.transport.timeSig; Tick beat = ts.ticksPerBeat(), bar = ts.ticksPerBar();
     // tracks background
     p.setClipRect(L.area); int y = L.rulerH - m_scrollY;
     for (size_t i = 0; i < proj.playlistTracks.size(); ++i) { auto& t = proj.playlistTracks[i]; int th = trackH((int)i); QRect tr(L.area.left(), y, L.area.width(), th); p.fillRect(tr, i % 2 ? theme::altRow() : theme::panel()); if (t.mute) p.fillRect(tr, QColor(0, 0, 0, 80)); p.setPen(theme::grid()); p.drawLine(tr.left(), tr.bottom(), tr.right(), tr.bottom()); y += th; }
