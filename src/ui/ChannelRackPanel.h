@@ -11,12 +11,14 @@
 #include "ui/widgets/Controls.h"
 #include "ui/Anim.h"
 
+class QMimeData;
 namespace mt {
 
 class RackView : public QWidget {
     Q_OBJECT
 public:
     explicit RackView(App& app, QWidget* parent = nullptr);
+    void handleDrop(const QMimeData* mime, const QPoint& at);   // drop logic shared with the panel
     void refresh(); void uiTick();
     void setGraphMode(int mode) { m_graphMode = mode; update(); }   // -1 off, 0 vel, 1 pan, 2 pitch, 3 prob, 4 offset
     int graphMode() const { return m_graphMode; }
@@ -57,7 +59,7 @@ public:
 protected:
     void dragEnterEvent(QDragEnterEvent* e) override; void dragMoveEvent(QDragMoveEvent* e) override; void dropEvent(QDropEvent* e) override;
 public:
-    int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; }
+    int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; } RackView* view() const { return m_view; }
     int heightForContent() const;   // toolbar + all channel rows (+ graph editor when open)
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;

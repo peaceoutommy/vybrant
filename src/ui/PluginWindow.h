@@ -18,6 +18,8 @@ class GenericParamPanel : public QWidget {
 public:
     GenericParamPanel(App& app, Id ownerId, IProcessor* proc, std::function<bool(const ParamDesc&)> filter = nullptr, int columns = 6, QWidget* parent = nullptr);
     void sync();   // pull values from the processor (automation / plugin changes)
+Q_SIGNALS:
+    void edited();   // the user changed a value here (knob drag, combo, checkbox)
 private:
     struct Row { uint32_t id; Knob* knob = nullptr; QLabel* value = nullptr; QComboBox* combo = nullptr; QCheckBox* check = nullptr; };
     App& m_app; Id m_owner; IProcessor* m_proc; std::vector<Row> m_rows; bool m_updating = false;

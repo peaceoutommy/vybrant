@@ -218,6 +218,7 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
     if (m_tool == MuteTool && e->button() == Qt::LeftButton) { beginEdit(); m_drag = Muting; m_touched.clear(); if (n) { n->muted = !n->muted; m_touched.insert(n->id); invalidate(); } return; }
     if (e->button() == Qt::RightButton || m_tool == Erase) { beginEdit(); m_drag = Erasing; m_erasedAny = false; setCursor(theme::toolCursor(theme::Glyph::Eraser)); Q_EMIT modeChanged(Erase); if (n) { std::erase_if(d->notes, [id = n->id](const Note& x) { return x.id == id; }); m_selected.erase(n->id); m_erasedAny = true; invalidate(); } return; }
     if (n) {
+        if (n->id < kVirtualBase && e->button() == Qt::LeftButton) m_lastLength = n->duration;   // FL: clicking a note makes its length the length of the notes you draw next
         if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) { if (m_selected.count(n->id)) m_selected.erase(n->id); else m_selected.insert(n->id); invalidate(); }
         else if (!m_selected.count(n->id)) { m_selected.clear(); m_selected.insert(n->id); }
         beginEdit(); m_dragNote = n->id; m_pressTick = xToTick(e->pos().x()); m_pressPitch = yToPitch(e->pos().y()); m_duplicated = false;

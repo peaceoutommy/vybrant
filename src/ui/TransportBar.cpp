@@ -107,7 +107,7 @@ void ModeSwitch::paintEvent(QPaintEvent*) {
     auto half = [&](QRectF hr, const QString& t, bool on) { if (on) { QColor a = theme::accent(); QColor bgc = theme::bg(); p.setPen(Qt::NoPen); p.setBrush(QColor((bgc.red() + a.red() * 0.30) / 1.30, (bgc.green() + a.green() * 0.30) / 1.30, (bgc.blue() + a.blue() * 0.30) / 1.30)); p.drawRoundedRect(hr.adjusted(1, 1, -1, -1), 2, 2); } p.setPen(on ? theme::accent() : theme::textDim()); QFont f = theme::smallFont(); f.setBold(on); p.setFont(f); p.drawText(hr, Qt::AlignCenter, t); };
     half(QRectF(0, 0, width(), height() / 2.0), "PAT", !m_song); half(QRectF(0, height() / 2.0, width(), height() / 2.0), "SONG", m_song);
 }
-void ModeSwitch::mousePressEvent(QMouseEvent* e) { bool song = e->pos().y() >= height() / 2; if (song != m_song) { m_song = song; update(); Q_EMIT modeChanged(song); } }
+void ModeSwitch::mousePressEvent(QMouseEvent* e) { if (e->button() != Qt::LeftButton) return; m_song = !m_song; update(); Q_EMIT modeChanged(m_song); }   // any click flips PAT <-> SONG
 void TransportBar::setHint(const QString& text) { m_hint->setText(text.isEmpty() ? "Hover over any control for a description - F1 for the quick guide" : text); }
 // Hint bar: shows the tooltip of whatever control the mouse is over (like FL's hint panel)
 bool TransportBar::eventFilter(QObject* o, QEvent* e) {

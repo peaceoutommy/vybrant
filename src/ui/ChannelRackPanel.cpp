@@ -225,14 +225,15 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
 }
 void RackView::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) { e->setDropAction(Qt::CopyAction); e->accept(); } }
 void RackView::dragMoveEvent(QDragMoveEvent* e) { e->setDropAction(Qt::CopyAction); e->accept(); }
-void RackView::dropEvent(QDropEvent* e) {
-    HitInfo h = hitTest(e->position().toPoint()); auto& proj = m_app.project(); Id target = (h.row >= 0 && h.row < (int)proj.channels.size()) ? proj.channels[h.row].id : 0;
-    QString payload = QString::fromUtf8(e->mimeData()->data("application/x-musicthingy-item")); QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
-    if (e->mimeData()->hasUrls()) { for (auto& u : e->mimeData()->urls()) { QString p = u.toLocalFile(); if (!AudioFile::isAudioFile(p)) continue; if (target) { m_app.setChannelSample(target, p); target = 0; } else m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), p); } e->acceptProposedAction(); return; }
+void RackView::dropEvent(QDropEvent* e) { handleDrop(e->mimeData(), e->position().toPoint()); e->setDropAction(Qt::CopyAction); e->accept(); }
+// Drop logic shared with the panel (a drop outside the rows lands here with a point below the last row = new channel)
+void RackView::handleDrop(const QMimeData* mime, const QPoint& at) {
+    HitInfo h = hitTest(at); auto& proj = m_app.project(); Id target = (h.row >= 0 && h.row < (int)proj.channels.size()) ? proj.channels[h.row].id : 0;
+    QString payload = QString::fromUtf8(mime->data("application/x-musicthingy-item")); QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
+    if (mime->hasUrls()) { for (auto& u : mime->urls()) { QString p = u.toLocalFile(); if (!AudioFile::isAudioFile(p)) continue; if (target) { m_app.setChannelSample(target, p); target = 0; } else m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), p); } return; }
     if (kind == "native") { auto* info = NativeRegistry::instance().info(val); if (info && info->kind == ProcessorKind::Instrument) { if (target) m_app.changeChannelInstrument(target, val); else m_app.addChannel(val == "native.drumsampler" ? ChannelType::DrumSampler : val == "native.sampler" ? ChannelType::Sampler : val == "native.midiout" ? ChannelType::MidiOut : val == "native.tonegen" ? ChannelType::AudioGenerator : ChannelType::Synth, val); } else if (info) { Id tr = target ? proj.channel(target)->mixerTrackId : proj.masterId(); m_app.addEffect(tr, val); } }
     else if (kind == "plugin") { for (auto& p : m_app.pluginDb().plugins()) if (p.key() == val) { if (p.category == "Instrument") { if (target) { PluginInstanceData d = PluginHost::makeInstanceData(p, proj.newId()); m_app.model().insert<PluginInstanceData>(d, "Add plugin"); m_app.changeChannelInstrument(target, "plugin", d.id); } else m_app.addPluginChannel(p); } else { Id tr = target ? proj.channel(target)->mixerTrackId : proj.masterId(); m_app.addPluginEffect(tr, p); } } }
     else if (kind == "preset" && target) m_app.loadPreset(target, val);
-    e->acceptProposedAction();
 }
 
 // ---------------------------------------------------------------- panel
@@ -267,7 +268,7 @@ void ChannelRackPanel::fitStepsToWidth() {
 // Anything dropped on the rack window outside the channel rows (header, empty space) becomes a new channel
 void ChannelRackPanel::dragEnterEvent(QDragEnterEvent* e) { if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) { e->setDropAction(Qt::CopyAction); e->accept(); } }
 void ChannelRackPanel::dragMoveEvent(QDragMoveEvent* e) { e->setDropAction(Qt::CopyAction); e->accept(); }
-void ChannelRackPanel::dropEvent(QDropEvent* e) { QDropEvent fwd(QPointF(0, 1e6), e->possibleActions(), e->mimeData(), e->buttons(), e->modifiers()); QCoreApplication::sendEvent(m_view, &fwd); e->setDropAction(Qt::CopyAction); e->accept(); }
+void ChannelRackPanel::dropEvent(QDropEvent* e) { m_view->handleDrop(e->mimeData(), QPoint(0, 1000000)); e->setDropAction(Qt::CopyAction); e->accept(); }   // never re-send the event: Qt routes a Drop back to the current drag target (this panel) -> infinite recursion
 int ChannelRackPanel::heightForContent() const { int rows = std::max(3, (int)m_app.project().channels.size() + 1); return 38 + rows * 28 + (m_view->graphMode() >= 0 ? 100 : 0) + 22; }
 void ChannelRackPanel::refresh(uint32_t) { m_updating = true; if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) { m_patName->setText(p->name); m_steps->setValue(p->stepCount); static const int spb[] = {1, 2, 3, 4, 8}; for (int i = 0; i < 5; ++i) if (spb[i] == p->stepsPerBeat) m_resolution->setCurrentIndex(i); m_swing->setValue(p->swing); } else m_patName->setText("(no pattern)"); m_updating = false; m_view->refresh(); }
 void ChannelRackPanel::uiTick() { m_view->uiTick(); }

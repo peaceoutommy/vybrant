@@ -4,12 +4,17 @@
 #include "ui/MainWindow.h"
 #include "ui/MixerPanel.h"
 #include "ui/PianoRollPanel.h"
+#include "ui/ChannelRackPanel.h"
 #include "audio/RenderEngine.h"
 #include <QLocalSocket>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QDir>
 #include <QApplication>
+#include <QDropEvent>
+#include <QDragEnterEvent>
+#include <QUrl>
+#include <QMimeData>
 
 namespace mt {
 
@@ -44,6 +49,12 @@ QString ControlServer::handle(const QString& line) {
     if (c == "scale" && a.size() >= 3) { m_win.pianoRoll()->view()->setScale(a[1].toInt(), a[2].toInt()); return "ok"; }
     if (c == "notes" && a.size() >= 5) { auto& ch = m_app.project().channels; int idx = a[1].toInt(); if (idx < 0 || idx >= (int)ch.size()) return "err index"; Id cid = ch[idx].id; int pitch = a[2].toInt(), count = a[3].toInt(); Tick len = a[4].toLongLong(); Id pid = m_app.project().selectedPatternId; m_app.editPattern(pid, "test notes", [cid, pitch, count, len](Pattern& pat) { pat.ensureChannel(cid); auto* d = pat.channelData(cid); for (int i = 0; i < count; ++i) { Note n; n.id = 80000 + i; n.pitch = pitch; n.start = (Tick)i * len; n.duration = len; n.velocity = 0.9f; d->notes.push_back(n); } }); if (!m_app.project().playlistTracks.empty()) m_app.addPatternClip(m_app.project().playlistTracks.front().id, pid, 0); return "ok"; }
     if (c == "render" && a.size() >= 2) { RenderOptions o; o.path = a[1]; o.format = "wav"; o.songMode = true; o.tailSeconds = 0.5; QString err; bool ok = m_app.exportAudio(o, nullptr, &err); return ok ? "ok" : "err " + err; }
+    if (c == "preview" && a.size() >= 2) { m_app.previewFile(a[1]); return "ok"; }
+    if (c == "previewstate") { auto b = m_app.previewBuffer(); if (!b) return "none"; return QString("failed=%1 done=%2 available=%3 frames=%4 playing=%5 firstAudio=%6ms").arg(b->failed.load()).arg(b->done.load()).arg(b->available.load()).arg(b->frames).arg(m_app.engine().previewPlaying()).arg(b->firstAudioUs.load() < 0 ? -1.0 : (b->firstAudioUs.load() - b->createdUs) / 1000.0, 0, 'f', 1); }
+    if (c == "stoppreview") { m_app.stopPreview(); return "ok"; }
+    if (c == "droptest" && a.size() >= 2) { // simulate a browser drop of a file on the rack (view or panel)
+        auto* md = new QMimeData(); md->setUrls({QUrl::fromLocalFile(a[1])}); md->setData("application/x-musicthingy-item", ("audio|" + a[1]).toUtf8()); QWidget* target = a.size() > 2 && a[2] == "panel" ? (QWidget*)m_win.rackPanel() : (QWidget*)m_win.rackPanel()->view(); QPointF pos(target->width() / 2.0, target->height() - 5.0);
+        QDragEnterEvent en(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &en); QDragMoveEvent mv(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &mv); QDropEvent dr(pos, Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &dr); delete md; return QString("enter=%1 move=%2 drop=%3 channels=%4").arg(en.isAccepted()).arg(mv.isAccepted()).arg(dr.isAccepted()).arg(m_app.project().channels.size()); }
     if (c == "quit") { QTimer::singleShot(0, qApp, [] { qApp->quit(); }); return "ok"; }
     return "err unknown command (ping play stop note select channels stats screenshot editor action theme quit)";
 }

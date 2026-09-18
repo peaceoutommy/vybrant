@@ -22,7 +22,7 @@ public:
     void startupChecks();
     bool saveScreenshot(const QString& path);
     void setForceClose(bool f) { m_forceClose = f; }
-    MixerPanel* mixer() const { return m_mixer; } PianoRollPanel* pianoRoll() const { return m_pianoRoll; }
+    MixerPanel* mixer() const { return m_mixer; } PianoRollPanel* pianoRoll() const { return m_pianoRoll; } ChannelRackPanel* rackPanel() const { return m_rack; }
     void debugSearch(const QString& t); void debugDock(Qt::DockWidgetArea a) { m_rackCandidate = a; dockRackAtCandidate(); }
 protected:
     void closeEvent(QCloseEvent*) override; void keyPressEvent(QKeyEvent*) override; void keyReleaseEvent(QKeyEvent*) override; bool eventFilter(QObject* o, QEvent* e) override;

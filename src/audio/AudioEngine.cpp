@@ -255,7 +255,7 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
         if (c.mixerTrackIdx >= 0 && c.mixerTrackIdx < (int)s.tracks.size()) { auto& t = s.tracks[c.mixerTrackIdx]; for (int i = 0; i < n; ++i) { t.genL[i] += c.bufL[i]; t.genR[i] += c.bufR[i]; } }
     }
     // Audio clips
-    if (ctx.playing) renderAudioClips(s, t0, t1, n);
+    if (ctx.playing && m_songMode.load()) renderAudioClips(s, t0, t1, n);   // playlist clips belong to song mode; pattern mode plays the pattern only
     // Hardware inputs -> tracks (monitoring + recording)
     if (in && inCh > 0) {
         bool rec = ctx.recording && ctx.playing; bool monitor = m_monitorInputs.load();
@@ -431,7 +431,9 @@ void AudioEngine::renderPreview(float* L, float* R, int n) {
     m_preview.rtTick();
     if (!m_previewPlaying.load()) return;
     const PreviewBuffer* b = m_preview.get(); if (!b || b->failed.load()) { m_previewPlaying.store(false); return; }
-    float g = m_previewGain.load(); double rate = b->fileRate / m_sr; int64_t avail = b->available.load(std::memory_order_acquire); int64_t total = b->frames;
+    int64_t avail = b->available.load(std::memory_order_acquire); if (avail <= 0) { if (b->done.load()) m_previewPlaying.store(false); return; }   // still opening / decoding the first chunk
+    if (b->firstAudioUs.load() < 0) const_cast<PreviewBuffer*>(b)->firstAudioUs.store(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()).count());
+    float g = m_previewGain.load(); double rate = b->fileRate / m_sr; int64_t total = b->frames;
     for (int i = 0; i < n; ++i) {
         if (m_previewPosRt >= total - 1) { m_previewPlaying.store(false); break; }
         if (m_previewPosRt + 1 >= avail) { if (b->done.load()) { m_previewPlaying.store(false); } break; }   // data not decoded yet: wait (silence)

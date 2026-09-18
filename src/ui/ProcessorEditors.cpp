@@ -115,7 +115,7 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
                 pm->addSeparator(); pm->addAction("Save current as...", [s, userPresets, saveUser, w] { bool ok; QString n = QInputDialog::getText(w, "Save envelope preset", "Name:", QLineEdit::Normal, "My 808", &ok); if (!ok || n.trimmed().isEmpty()) return; auto v = userPresets(); auto& ps = s->params(); EnvPreset e{n.trimmed(), ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)}; bool replaced = false; for (auto& x : v) if (x.name == e.name) { x = e; replaced = true; } if (!replaced) v.push_back(e); saveUser(v); });
                 if (!user.empty()) { auto* del = pm->addMenu("Delete preset"); for (auto& e : user) del->addAction(e.name, [userPresets, saveUser, name = e.name] { auto v = userPresets(); std::erase_if(v, [&](const EnvPreset& x) { return x.name == name; }); saveUser(v); }); } });
         }
-        th->addStretch(1); box->addLayout(th); auto ids = g.ids; auto* gp = new GenericParamPanel(app, owner, s, [ids](const ParamDesc& d) { return std::find(ids.begin(), ids.end(), d.id) != ids.end(); }, g.cols, w); box->addWidget(gp); int r = rowOf[i]; grid->addLayout(box, r, col[r]++, Qt::AlignLeft | Qt::AlignTop); panels.push_back(gp); }
+        th->addStretch(1); box->addLayout(th); auto ids = g.ids; auto* gp = new GenericParamPanel(app, owner, s, [ids](const ParamDesc& d) { return std::find(ids.begin(), ids.end(), d.id) != ids.end(); }, g.cols, w); box->addWidget(gp); int r = rowOf[i]; grid->addLayout(box, r, col[r]++, Qt::AlignLeft | Qt::AlignTop); panels.push_back(gp); QObject::connect(gp, &GenericParamPanel::edited, wave, [wave] { wave->update(); }); }   // the waveform redraws with every knob movement, not on the next timer tick
     for (int r = 0; r < 3; ++r) grid->setColumnStretch(col[r], 1); lay->addLayout(grid);
     auto* envFade = new QGraphicsOpacityEffect(panels[0]); envFade->setOpacity(1.0); panels[0]->setGraphicsEffect(envFade);
     // the envelope overlay appears once the envelope has been touched (now, or earlier in this project)
@@ -161,7 +161,7 @@ static QWidget* makeDrumEditor(DrumSampler* ds, QWidget* parent) {
     auto rebuildPad = [&app, owner, ds, padHost, padLay, padPanel, padLabel](int pad) { if (*padPanel) delete *padPanel; padLabel->setText(QString("Pad %1 (%2)").arg(pad + 1).arg(theme::noteName(36 + pad))); *padPanel = new GenericParamPanel(app, owner, ds, [pad](const ParamDesc& d) { return d.id >= DrumSampler::padParam(pad, 0) && d.id < DrumSampler::padParam(pad, 8); }, 4, padHost); padLay->addWidget(*padPanel); };
     rebuildPad(0); grid->onSelect = rebuildPad;
     auto* global = new QLabel("Global", w); global->setStyleSheet("font-weight:bold; color:#f2a93b;"); right->addWidget(global);
-    auto* gp = new GenericParamPanel(app, owner, ds, [](const ParamDesc& d) { return d.id < DrumSampler::pPadBase; }, 5, w); right->addWidget(gp); right->addStretch(1); lay->addLayout(right, 1);
+    auto* gp = new GenericParamPanel(app, owner, ds, [](const ParamDesc& d) { return d.id < DrumSampler::pPadBase; }, 5, w); right->addWidget(gp); QObject::connect(gp, &GenericParamPanel::edited, padWave, [padWave] { padWave->update(); }); right->addStretch(1); lay->addLayout(right, 1);
     auto* t = new QTimer(w); QObject::connect(t, &QTimer::timeout, w, [gp, padPanel, padWave] { gp->sync(); if (*padPanel) (*padPanel)->sync(); padWave->update(); }); t->start(100);
     QObject::connect(w, &QObject::destroyed, [padPanel] { delete padPanel; });
     return w;
