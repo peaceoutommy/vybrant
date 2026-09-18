@@ -13,7 +13,14 @@
 namespace mt {
 class AudioEngine;
 
-struct MidiPortInfo { int client = 0; int port = 0; QString name; bool input = false; bool output = false; QString id() const { return QString("%1:%2").arg(client).arg(port); } };
+struct MidiPortInfo {
+    int client = 0;
+    int port = 0;
+    QString name;
+    bool input = false;
+    bool output = false;
+    QString id() const { return QString("%1:%2").arg(client).arg(port); }
+};
 
 class MidiEngine : public QObject {
     Q_OBJECT
@@ -31,20 +38,30 @@ public:
     void setLearning(bool on) { m_learning.store(on); }
     bool learning() const { return m_learning.load(); }
     int activityCounter() const { return m_activity.load(); }
-    void sendNow(const MidiEvent& e, int port = -1);       // direct output (UI thread)
-    void loadSettings(); void saveSettings() const;
+    void sendNow(const MidiEvent& e, int port = -1);   // direct output (UI thread)
+    void loadSettings();
+    void saveSettings() const;
 Q_SIGNALS:
     void ccReceived(int cc, int channel, int value);
     void noteReceived(int note, int channel, bool on);
     void portsChanged();
+
 private:
     void threadLoop();
     void handleAlsaEvent(void* ev);
     void flushOutput();
     void connectInput(const MidiPortInfo& p, bool connect);
     void connectOutput(const MidiPortInfo& p, bool connect);
-    AudioEngine& m_engine; void* m_seq = nullptr; int m_inPort = -1, m_outPort = -1; std::thread m_thread; std::atomic<bool> m_running{false}, m_learning{false}; std::atomic<int> m_activity{0};
-    QStringList m_enabledInputs, m_enabledOutputs; std::vector<std::pair<int, int>> m_outputTargets; mutable std::mutex m_mutex; int64_t m_lastLearnEmit = 0;
+    AudioEngine& m_engine;
+    void* m_seq = nullptr;
+    int m_inPort = -1, m_outPort = -1;
+    std::thread m_thread;
+    std::atomic<bool> m_running{false}, m_learning{false};
+    std::atomic<int> m_activity{0};
+    QStringList m_enabledInputs, m_enabledOutputs;
+    std::vector<std::pair<int, int>> m_outputTargets;
+    mutable std::mutex m_mutex;
+    int64_t m_lastLearnEmit = 0;
 };
 
-} // namespace mt
+}   // namespace mt

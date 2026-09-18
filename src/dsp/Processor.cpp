@@ -4,10 +4,12 @@
 namespace mt {
 
 QJsonObject IProcessor::saveState() const {
-    QJsonObject o; QJsonObject p;
+    QJsonObject o;
+    QJsonObject p;
     auto& ps = const_cast<IProcessor*>(this)->params();
     for (int i = 0; i < ps.count(); ++i) p[QString::number(ps.desc(i).id)] = ps.getAt(i);
-    o["params"] = p; o["key"] = key();
+    o["params"] = p;
+    o["key"] = key();
     return o;
 }
 
@@ -16,10 +18,15 @@ void IProcessor::restoreState(const QJsonObject& s) {
     for (auto it = p.begin(); it != p.end(); ++it) params().set(it.key().toUInt(), (float)it.value().toDouble());
 }
 
-NativeEditorFactory& nativeEditorFactory() { static NativeEditorFactory f = nullptr; return f; }
+NativeEditorFactory& nativeEditorFactory() {
+    static NativeEditorFactory f = nullptr;
+    return f;
+}
 
 QString IProcessor::formatValue(uint32_t id) const {
-    auto& ps = const_cast<IProcessor*>(this)->params(); const ParamDesc* d = ps.descById(id); if (!d) return QString();
+    auto& ps = const_cast<IProcessor*>(this)->params();
+    const ParamDesc* d = ps.descById(id);
+    if (!d) return QString();
     float v = ps.get(id);
     switch (d->unit) {
     case ParamUnit::Decibel: return QString::number(v, 'f', 1) + " dB";
@@ -31,10 +38,14 @@ QString IProcessor::formatValue(uint32_t id) const {
     case ParamUnit::Cents: return QString::number(v, 'f', 0) + " ct";
     case ParamUnit::Ratio: return QString::number(v, 'f', 2) + ":1";
     case ParamUnit::Degrees: return QString::number(v, 'f', 0) + "\u00b0";
-    case ParamUnit::Choice: { int i = (int)std::lround(v); if (i >= 0 && i < (int)d->choices.size()) return QString::fromStdString(d->choices[i]); return QString::number(i); }
+    case ParamUnit::Choice: {
+        int i = (int)std::lround(v);
+        if (i >= 0 && i < (int)d->choices.size()) return QString::fromStdString(d->choices[i]);
+        return QString::number(i);
+    }
     case ParamUnit::Toggle: return v >= 0.5f ? "On" : "Off";
     default: return QString::number(v, 'f', d->steps ? 0 : 2);
     }
 }
 
-} // namespace mt
+}   // namespace mt

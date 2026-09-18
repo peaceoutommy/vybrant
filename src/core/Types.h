@@ -7,9 +7,9 @@
 
 namespace mt {
 
-using Id = uint64_t;            // Stable unique object id (0 = invalid)
-using Tick = int64_t;           // Musical time in MIDI ticks
-constexpr int PPQ = 960;        // Ticks per quarter note
+using Id = uint64_t;   // Stable unique object id (0 = invalid)
+using Tick = int64_t;   // Musical time in MIDI ticks
+constexpr int PPQ = 960;   // Ticks per quarter note
 constexpr Id kInvalidId = 0;
 
 inline Tick beatsToTicks(double beats) { return (Tick)std::llround(beats * PPQ); }
@@ -29,6 +29,11 @@ inline float lerp(float a, float b, float t) { return a + (b - a) * t; }
 enum class CurveType : uint8_t { Linear = 0, Stepped, Smooth, Bezier };
 
 // Shared time-signature / snap helpers
-struct TimeSignature { int numerator = 4; int denominator = 4; Tick ticksPerBar() const { return (Tick)PPQ * 4 / denominator * numerator; } Tick ticksPerBeat() const { return (Tick)PPQ * 4 / denominator; } };
+struct TimeSignature {
+    int numerator = 4;
+    int denominator = 4;
+    Tick ticksPerBar() const { return (Tick)PPQ * 4 / denominator * numerator; }
+    Tick ticksPerBeat() const { return (Tick)PPQ * 4 / denominator; }
+};
 
-} // namespace mt
+}   // namespace mt

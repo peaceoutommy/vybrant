@@ -14,7 +14,14 @@
 
 namespace mt {
 
-struct RecordedTake { Id mixerTrackId = 0; QString filePath; Tick startTick = 0; int64_t frames = 0; int channels = 1; int takeIndex = 0; };
+struct RecordedTake {
+    Id mixerTrackId = 0;
+    QString filePath;
+    Tick startTick = 0;
+    int64_t frames = 0;
+    int channels = 1;
+    int takeIndex = 0;
+};
 
 class RecordingEngine : public QObject {
     Q_OBJECT
@@ -28,20 +35,38 @@ public:
     QString recordDirectory() const { return m_dir; }
     // Begin writing files for the given armed tracks
     void start(const std::vector<std::pair<Id, int>>& armedTracks, Tick startTick);
-    void newTake(Tick startTick);           // finalise current files and begin a new pass (loop recording)
-    std::vector<RecordedTake> stop();       // finalise, returns takes
+    void newTake(Tick startTick);   // finalise current files and begin a new pass (loop recording)
+    std::vector<RecordedTake> stop();   // finalise, returns takes
     bool isActive() const { return m_active.load(); }
     int takeCounter() const { return m_takeCounter; }
 Q_SIGNALS:
     void takesFinished(const std::vector<RecordedTake>& takes);
+
 private:
-    struct Writer { Id trackId; int channels; FloatRing* ring; void* sndfile = nullptr; QString path; Tick startTick; int64_t frames = 0; int take = 0; };
+    struct Writer {
+        Id trackId;
+        int channels;
+        FloatRing* ring;
+        void* sndfile = nullptr;
+        QString path;
+        Tick startTick;
+        int64_t frames = 0;
+        int take = 0;
+    };
     void writerLoop();
     void flushWriter(Writer& w, bool all);
     std::vector<RecordedTake> finalise();
-    std::map<Id, std::unique_ptr<FloatRing>> m_rings; std::map<Id, int> m_ringChannels;
-    std::vector<Writer> m_writers; std::mutex m_mutex; std::thread m_thread; std::atomic<bool> m_active{false}, m_running{false};
-    double m_sr = 44100; QString m_dir; int m_takeCounter = 0; std::vector<float> m_tmp; std::vector<RecordedTake> m_finished;
+    std::map<Id, std::unique_ptr<FloatRing>> m_rings;
+    std::map<Id, int> m_ringChannels;
+    std::vector<Writer> m_writers;
+    std::mutex m_mutex;
+    std::thread m_thread;
+    std::atomic<bool> m_active{false}, m_running{false};
+    double m_sr = 44100;
+    QString m_dir;
+    int m_takeCounter = 0;
+    std::vector<float> m_tmp;
+    std::vector<RecordedTake> m_finished;
 };
 
-} // namespace mt
+}   // namespace mt

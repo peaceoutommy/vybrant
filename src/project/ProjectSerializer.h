@@ -16,4 +16,4 @@ public:
     static QJsonObject migrate(QJsonObject root, int fromVersion);
 };
 
-} // namespace mt
+}   // namespace mt

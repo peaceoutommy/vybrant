@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config qmake6 qt6-base-dev libgl1-mesa-dev \
+            portaudio19-dev libasound2-dev libsndfile1-dev libsamplerate0-dev \
+            librubberband-dev libmp3lame-dev libfftw3-dev libx11-dev python3
+
+      - name: Build
+        run: |
+          qmake6 MusicThingy.pro
+          make -j"$(nproc)"
+
+      - name: Self test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          XDG_CONFIG_HOME: ${{ runner.temp }}/cfg
+          XDG_RUNTIME_DIR: ${{ runner.temp }}
+        run: ./bin/musicthingy --selftest
+
+      - name: UI test (control socket)
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}
+        run: python3 tests/ui_test.py ./bin/musicthingy
+
+  format-check:
+    # Advisory: clang-format output differs slightly between versions, so a mismatch here doesn't fail the build
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends clang-format
+      - name: Check formatting
+        run: git ls-files 'src/*.cpp' 'src/*.h' | xargs clang-format --dry-run --Werror

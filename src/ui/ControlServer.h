@@ -5,15 +5,19 @@
 #include <QLocalServer>
 
 namespace mt {
-class App; class MainWindow;
+class App;
+class MainWindow;
 
 class ControlServer : public QObject {
     Q_OBJECT
 public:
     ControlServer(App& app, MainWindow& win, QObject* parent = nullptr);
     static QString socketPath();
+
 private:
     QString handle(const QString& line);
-    App& m_app; MainWindow& m_win; QLocalServer m_server;
+    App& m_app;
+    MainWindow& m_win;
+    QLocalServer m_server;
 };
-}
+}   // namespace mt

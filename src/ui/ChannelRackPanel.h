@@ -19,56 +19,125 @@ class RackView : public QWidget {
 public:
     explicit RackView(App& app, QWidget* parent = nullptr);
     void handleDrop(const QMimeData* mime, const QPoint& at);   // drop logic shared with the panel
-    void refresh(); void uiTick();
-    void setGraphMode(int mode) { m_graphMode = mode; update(); }   // -1 off, 0 vel, 1 pan, 2 pitch, 3 prob, 4 offset
+    void refresh();
+    void uiTick();
+    void setGraphMode(int mode) {
+        m_graphMode = mode;
+        update();
+    }   // -1 off, 0 vel, 1 pan, 2 pitch, 3 prob, 4 offset
     int graphMode() const { return m_graphMode; }
     QSize sizeHint() const override;
-    int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 18) / stepW() / 4 * 4; return std::max(4, n); }   // inverse of widthForSteps(): whole beats that fit
-    int stepsPerBar() const; int patternSteps() const; void setFitSteps(int n) { if (n != m_fitSteps) { m_fitSteps = n; refresh(); } } int m_fitSteps = 16;
+    int stepsThatFit(int availableWidth) const {
+        int n = (availableWidth - m_leftW - 18) / stepW() / 4 * 4;
+        return std::max(4, n);
+    }   // inverse of widthForSteps(): whole beats that fit
+    int stepsPerBar() const;
+    int patternSteps() const;
+    void setFitSteps(int n) {
+        if (n != m_fitSteps) {
+            m_fitSteps = n;
+            refresh();
+        }
+    }
+    int m_fitSteps = 16;
     int widthForSteps(int n) const { return m_leftW + 18 + n * stepW(); }
-    QPoint debugStepPoint(int row, int step) const { return QPoint(stepX(step) + stepW() / 2, row * m_rowH + m_rowH / 2); }   // tests: centre of a step cell
+    QPoint debugStepPoint(int row, int step) const {
+        return QPoint(stepX(step) + stepW() / 2, row * m_rowH + m_rowH / 2);
+    }   // tests: centre of a step cell
 Q_SIGNALS:
-    void openEditor(Id channelId); void openPianoRoll(Id channelId); void addChannelRequested(const QPoint& globalPos);
+    void openEditor(Id channelId);
+    void openPianoRoll(Id channelId);
+    void addChannelRequested(const QPoint& globalPos);
+
 protected:
-    void paintEvent(QPaintEvent*) override; void keyPressEvent(QKeyEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
+    void paintEvent(QPaintEvent*) override;
+    void keyPressEvent(QKeyEvent*) override;
+    void mousePressEvent(QMouseEvent*) override;
+    void mouseMoveEvent(QMouseEvent*) override;
+    void mouseReleaseEvent(QMouseEvent*) override;
+    void mouseDoubleClickEvent(QMouseEvent*) override;
+    void wheelEvent(QWheelEvent*) override;
+    void contextMenuEvent(QContextMenuEvent*) override;
     void leaveEvent(QEvent*) override { update(); }
-    void dragEnterEvent(QDragEnterEvent*) override; void dragMoveEvent(QDragMoveEvent*) override; void dropEvent(QDropEvent*) override;
+    void dragEnterEvent(QDragEnterEvent*) override;
+    void dragMoveEvent(QDragMoveEvent*) override;
+    void dropEvent(QDropEvent*) override;
+
 private:
     enum Hit { None, Grip, Enable, Name, Mute, Solo, Pan, Vol, Mixer, StepCell, Graph, AddButton };
-    struct HitInfo { Hit hit = None; int row = -1; int step = -1; };
+    struct HitInfo {
+        Hit hit = None;
+        int row = -1;
+        int step = -1;
+    };
     HitInfo hitTest(const QPoint& p) const;
     int graphTop() const { return ((int)m_app.project().channels.size() + 1) * m_rowH; }   // channel rows, then the '+' row, then the graph
-    QRect rowRect(int row) const; int stepX(int step) const; int stepW() const;
-    Pattern* pattern() const; const Step* stepAt(Id ch, int step) const; int visibleSteps() const;   // steps covering the pattern's full (bar-rounded) length
+    QRect rowRect(int row) const;
+    int stepX(int step) const;
+    int stepW() const;
+    Pattern* pattern() const;
+    const Step* stepAt(Id ch, int step) const;
+    int visibleSteps() const;   // steps covering the pattern's full (bar-rounded) length
     void showChannelMenu(int row, const QPoint& global);
     void applyGraphAt(const QPoint& p, bool commit);
-    App& m_app; int m_rowH = 28, m_leftW = 270, m_graphH = 100; int m_graphMode = -1;
+    App& m_app;
+    int m_rowH = 28, m_leftW = 270, m_graphH = 100;
+    int m_graphMode = -1;
     // drag state
-    std::set<Id> m_multi; Id m_anchor = 0;   // multi-selection (Ctrl / Shift click); the project's selectedChannelId is the primary
+    std::set<Id> m_multi;
+    Id m_anchor = 0;   // multi-selection (Ctrl / Shift click); the project's selectedChannelId is the primary
     std::vector<Id> selectedIds() const;
     void deleteSelected();
-    anim::Pulses m_pulses; anim::Ticker* m_ticker = nullptr;
-    HitInfo m_press; bool m_paintValue = false; bool m_erasing = false; int m_dragRow = -1; QPoint m_lastPos; float m_knobStart = 0; int m_reorderTarget = -1; int m_playStep = -1; bool m_dragging = false;
+    anim::Pulses m_pulses;
+    anim::Ticker* m_ticker = nullptr;
+    HitInfo m_press;
+    bool m_paintValue = false;
+    bool m_erasing = false;
+    int m_dragRow = -1;
+    QPoint m_lastPos;
+    float m_knobStart = 0;
+    int m_reorderTarget = -1;
+    int m_playStep = -1;
+    bool m_dragging = false;
 };
 
 class ChannelRackPanel : public QWidget {
     Q_OBJECT
 public:
     explicit ChannelRackPanel(App& app, QWidget* parent = nullptr);
-    void refresh(uint32_t flags); void uiTick();
+    void refresh(uint32_t flags);
+    void uiTick();
     QSize sizeHint() const override { return {widthForSteps(16), 320}; }
+
 protected:
-    void dragEnterEvent(QDragEnterEvent* e) override; void dragMoveEvent(QDragMoveEvent* e) override; void dropEvent(QDropEvent* e) override;
+    void dragEnterEvent(QDragEnterEvent* e) override;
+    void dragMoveEvent(QDragMoveEvent* e) override;
+    void dropEvent(QDropEvent* e) override;
+
 public:
-    int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; } RackView* view() const { return m_view; }
+    int widthForSteps(int n) const { return m_view->widthForSteps(n) + 16; }
+    RackView* view() const { return m_view; }
     int heightForContent() const;   // toolbar + all channel rows (+ graph editor when open)
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;
 Q_SIGNALS:
-    void openEditor(Id channelId); void openPianoRoll(Id channelId); void addChannelRequested(const QPoint& globalPos);
+    void openEditor(Id channelId);
+    void openPianoRoll(Id channelId);
+    void addChannelRequested(const QPoint& globalPos);
+
 private:
     void fitStepsToWidth();
-    App& m_app; RackView* m_view; QMenu* m_addMenu = nullptr; QScrollArea* m_scroll; QTimer* m_fitTimer = nullptr; QLabel* m_patName; Knob* m_swing; DragValue* m_steps; QComboBox* m_resolution; QComboBox* m_graph; bool m_updating = false;
+    App& m_app;
+    RackView* m_view;
+    QMenu* m_addMenu = nullptr;
+    QScrollArea* m_scroll;
+    QTimer* m_fitTimer = nullptr;
+    QLabel* m_patName;
+    Knob* m_swing;
+    DragValue* m_steps;
+    QComboBox* m_resolution;
+    QComboBox* m_graph;
+    bool m_updating = false;
 };
 
-} // namespace mt
+}   // namespace mt

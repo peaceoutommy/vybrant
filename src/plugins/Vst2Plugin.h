@@ -9,7 +9,17 @@
 
 namespace mt {
 
-struct Vst2Info { QString name; QString vendor; QString product; int32_t uniqueId = 0; int version = 0; bool isSynth = false; bool hasEditor = false; int numInputs = 0, numOutputs = 0; int numParams = 0; };
+struct Vst2Info {
+    QString name;
+    QString vendor;
+    QString product;
+    int32_t uniqueId = 0;
+    int version = 0;
+    bool isSynth = false;
+    bool hasEditor = false;
+    int numInputs = 0, numOutputs = 0;
+    int numParams = 0;
+};
 
 class Vst2Plugin : public IProcessor {
 public:
@@ -34,18 +44,31 @@ public:
     QString formatValue(uint32_t id) const override;
     QString pluginFormat() const override { return "vst2"; }
     const MidiEventList* outputMidi() const override { return &m_outMidi; }
-    void syncFromPlugin();      // UI thread: read parameter values from the plugin (e.g. after editor moves)
+    void syncFromPlugin();   // UI thread: read parameter values from the plugin (e.g. after editor moves)
     std::function<void(uint32_t, float)> onParamEdited;
     const Vst2Info& info() const { return m_info; }
     intptr_t dispatch(int32_t opcode, int32_t index = 0, intptr_t value = 0, void* ptr = nullptr, float opt = 0.f) const;
+
 private:
     Vst2Plugin() = default;
     bool init(const QString& path, QString* error);
     static intptr_t hostCallback(vst2::AEffect* e, int32_t opcode, int32_t index, intptr_t value, void* ptr, float opt);
-    void* m_handle = nullptr; vst2::AEffect* m_effect = nullptr; Vst2Info m_info; ParameterSet m_params; std::vector<float> m_lastSent;
-    double m_sr = 44100; int m_maxBlock = 512; bool m_active = false; std::atomic<bool> m_latencyDirty{false};
-    std::vector<std::vector<float>> m_inBufs, m_outBufs; std::vector<float*> m_inPtrs, m_outPtrs; std::vector<uint8_t> m_eventsMem; std::vector<vst2::VstMidiEvent> m_midiEvents; vst2::VstTimeInfo m_timeInfo{}; MidiEventList m_outMidi;
+    void* m_handle = nullptr;
+    vst2::AEffect* m_effect = nullptr;
+    Vst2Info m_info;
+    ParameterSet m_params;
+    std::vector<float> m_lastSent;
+    double m_sr = 44100;
+    int m_maxBlock = 512;
+    bool m_active = false;
+    std::atomic<bool> m_latencyDirty{false};
+    std::vector<std::vector<float>> m_inBufs, m_outBufs;
+    std::vector<float*> m_inPtrs, m_outPtrs;
+    std::vector<uint8_t> m_eventsMem;
+    std::vector<vst2::VstMidiEvent> m_midiEvents;
+    vst2::VstTimeInfo m_timeInfo{};
+    MidiEventList m_outMidi;
     QString m_path;
 };
 
-} // namespace mt
+}   // namespace mt

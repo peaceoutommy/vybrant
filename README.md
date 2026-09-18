@@ -34,6 +34,20 @@ out-of-process plugin scanner.
 Plugin GUIs need an X11 window, so on Wayland the app starts under XWayland (`QT_QPA_PLATFORM=xcb`) unless you set
 the platform yourself.
 
+## Tests and code style
+
+```bash
+./bin/musicthingy --selftest          # engine / model checks (serializer, undo, processors, render)
+python3 tests/ui_test.py              # UI behaviour through the control socket, in an offscreen instance
+```
+
+Both run in CI (`.github/workflows/ci.yml`). The UI test uses a private config directory and socket, so it is
+safe to run while the app is open. Sources are formatted with `clang-format` (`.clang-format` in the root):
+
+```bash
+git ls-files 'src/*.cpp' 'src/*.h' | xargs clang-format -i
+```
+
 ## Architecture
 
 ```

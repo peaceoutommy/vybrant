@@ -7,7 +7,13 @@
 
 namespace mt {
 
-struct NativeProcessorInfo { QString key; QString name; QString category; ProcessorKind kind; std::function<std::unique_ptr<IProcessor>()> factory; };
+struct NativeProcessorInfo {
+    QString key;
+    QString name;
+    QString category;
+    ProcessorKind kind;
+    std::function<std::unique_ptr<IProcessor>()> factory;
+};
 
 class NativeRegistry {
 public:
@@ -16,9 +22,10 @@ public:
     std::unique_ptr<IProcessor> create(const QString& key) const;
     const NativeProcessorInfo* info(const QString& key) const;
     std::vector<const NativeProcessorInfo*> byKind(ProcessorKind k) const;
+
 private:
     NativeRegistry();
     std::vector<NativeProcessorInfo> m_infos;
 };
 
-} // namespace mt
+}   // namespace mt
