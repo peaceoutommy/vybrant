@@ -23,9 +23,9 @@ public:
     void setGraphMode(int mode) { m_graphMode = mode; update(); }   // -1 off, 0 vel, 1 pan, 2 pitch, 3 prob, 4 offset
     int graphMode() const { return m_graphMode; }
     QSize sizeHint() const override;
-    int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 18) / (4 * stepW() + 4) * 4; return std::max(4, n); }   // inverse of sizeHint(): groups of 4 that fit
+    int stepsThatFit(int availableWidth) const { int n = (availableWidth - m_leftW - 18) / stepW() / 4 * 4; return std::max(4, n); }   // inverse of widthForSteps(): whole beats that fit
     int stepsPerBar() const; int patternSteps() const; void setFitSteps(int n) { if (n != m_fitSteps) { m_fitSteps = n; refresh(); } } int m_fitSteps = 16;
-    int widthForSteps(int n) const { return m_leftW + 18 + (n / 4) * (4 * stepW() + 4); }
+    int widthForSteps(int n) const { return m_leftW + 18 + n * stepW(); }
     QPoint debugStepPoint(int row, int step) const { return QPoint(stepX(step) + stepW() / 2, row * m_rowH + m_rowH / 2); }   // tests: centre of a step cell
 Q_SIGNALS:
     void openEditor(Id channelId); void openPianoRoll(Id channelId); void addChannelRequested(const QPoint& globalPos);
