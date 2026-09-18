@@ -186,7 +186,7 @@ QLabel { background: transparent; }
 }
 
 
-QString noteName(int midi) { static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}; return QString("%1%2").arg(names[((midi % 12) + 12) % 12]).arg(midi / 12 - 1); }
+QString noteName(int midi) { static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}; return QString("%1%2").arg(names[((midi % 12) + 12) % 12]).arg(midi / 12); }   // FL-style octaves: MIDI 60 is C5, MIDI 0 is C0 (no octave -1)
 QString tickToBBT(int64_t tick, int tsNum, int tsDen) { TimeSignature ts{tsNum, tsDen}; int64_t bar = ts.ticksPerBar(), beat = ts.ticksPerBeat(); if (tick < 0) tick = 0; return QString("%1:%2:%3").arg(tick / bar + 1, 3, 10, QChar('0')).arg((tick % bar) / beat + 1).arg(tick % beat, 3, 10, QChar('0')); }
 
 // Selecting a tool puts that tool's own icon under the pointer. The glyph is drawn white over a dark halo so it stays

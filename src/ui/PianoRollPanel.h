@@ -20,6 +20,9 @@ public:
     enum KeyLabels { LabelsC = 0, LabelsAll = 1, LabelsNone = 2 };   // note names drawn on the key column
     explicit PianoRollView(App& app, QWidget* parent = nullptr);
     void setTool(Tool t);
+    // tests: view-local point of a tick/pitch cell, and the vertical scroll state
+    QPoint debugPoint(Tick t, int pitch) const { return QPoint(tickToX(t) + 3, pitchToY(pitch) + m_rowH / 2); }
+    QString debugScroll() const { return QString("top=%1 min=%2 rowH=%3 gridH=%4 vbar=%5/%6").arg(m_topPitch).arg(minTopPitch()).arg(m_rowH).arg(layout().grid.height()).arg(m_vbar->value()).arg(m_vbar->maximum()); }
     static QCursor toolCursorFor(Tool t);
     Tool tool() const { return m_tool; }
     void setChannel(Id id) { m_channel = id; m_selected.clear(); invalidate(); }
@@ -50,7 +53,7 @@ private:
     Layout layout() const;
     Pattern* pattern() const; PatternChannelData* data() const;
     static constexpr Id kVirtualBase = (Id)1 << 60; std::vector<Note> stepsAsNotes() const; std::vector<Note> ghostNotesOf(const PatternChannelData& oc) const; bool stepMode() const; const std::vector<Note>& notesView() const; mutable std::vector<Note> m_virtual; std::set<Id> m_selBase;
-    Tick xToTick(int x) const; int tickToX(Tick t) const; int yToPitch(int y) const; int pitchToY(int pitch) const; Tick snap(Tick t, bool force = false) const; Tick snapNear(Tick t) const; Tick snapTicks() const;
+    Tick xToTick(int x) const; int tickToX(Tick t) const; int yToPitch(int y) const; int pitchToY(int pitch) const; int minTopPitch() const; Tick snap(Tick t, bool force = false) const; Tick snapNear(Tick t) const; Tick snapTicks() const;
     Note* noteAt(const QPoint& p, bool* nearEdge = nullptr) const;
     void beginEdit(); void commitEdit(const QString& desc); void cancelEdit(); void seekToPatternTick(Tick t);
     void invalidate() { m_cacheValid = false; update(); }
@@ -60,7 +63,7 @@ private:
     App& m_app; Tool m_tool = Draw; Id m_channel = 0; bool m_ghost = true; int m_scaleRoot = 0, m_scale = 0, m_chord = 0; bool m_noteRepeat = false; int m_snapDiv = 4;
     double m_ppt = 0.08; int m_rowH = 17; Tick m_scrollTick = 0; int m_topPitch = 84; int m_keyLabels = LabelsC; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
     std::set<Id> m_selected; Id m_toggleOnRelease = 0; Tick m_lastLength = PPQ / 4; float m_lastVelocity = 0.8f;
-    Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer, m_autoScroll; QPoint m_lastMouse; bool m_altHeld = false; bool m_erasedAny = false;
+    Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressPitch = 0; Id m_dragNote = 0; PatternChannelData m_before; std::vector<Note> m_baseNotes; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_previewPitch = -1; QTimer m_repeatTimer, m_autoScroll; QPoint m_lastMouse; bool m_altHeld = false; bool m_erasedAny = false;
     int m_lane = 0; int m_velH = 80; int m_laneResizeStart = 0; QRect m_laneLabelRect; Tick m_selStart = 0, m_selEnd = 0; bool m_timeSel = false; Tick m_selAnchor = 0; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
     anim::RectTracker<Id> m_noteAnim; anim::Ticker* m_ticker = nullptr;
     std::vector<Note> m_clipboard; QPixmap m_cache; bool m_cacheValid = false; int m_themeRev = -1; double m_playTick = -1; QPoint m_hoverPos;

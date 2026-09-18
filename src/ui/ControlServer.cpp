@@ -15,6 +15,8 @@
 #include <QDragEnterEvent>
 #include <QUrl>
 #include <QMimeData>
+#include <QMouseEvent>
+#include <QWheelEvent>
 
 namespace mt {
 
@@ -55,6 +57,25 @@ QString ControlServer::handle(const QString& line) {
     if (c == "droptest" && a.size() >= 2) { // simulate a browser drop of a file on the rack (view or panel)
         auto* md = new QMimeData(); md->setUrls({QUrl::fromLocalFile(a[1])}); md->setData("application/x-musicthingy-item", ("audio|" + a[1]).toUtf8()); QWidget* target = a.size() > 2 && a[2] == "panel" ? (QWidget*)m_win.rackPanel() : (QWidget*)m_win.rackPanel()->view(); QPointF pos(target->width() / 2.0, target->height() - 5.0);
         QDragEnterEvent en(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &en); QDragMoveEvent mv(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &mv); QDropEvent dr(pos, Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &dr); delete md; return QString("enter=%1 move=%2 drop=%3 channels=%4").arg(en.isAccepted()).arg(mv.isAccepted()).arg(dr.isAccepted()).arg(m_app.project().channels.size()); }
+    if (c == "prclick" && a.size() >= 3) { // click a piano-roll cell: prclick <tick> <pitch> [right]
+        auto* v = m_win.pianoRoll()->view(); QPoint pt = v->debugPoint(a[1].toLongLong(), a[2].toInt()); Qt::MouseButton b = a.size() > 3 && a[3] == "right" ? Qt::RightButton : Qt::LeftButton;
+        QMouseEvent pr(QEvent::MouseButtonPress, pt, v->mapToGlobal(pt), b, b, Qt::NoModifier); QCoreApplication::sendEvent(v, &pr); QMouseEvent rl(QEvent::MouseButtonRelease, pt, v->mapToGlobal(pt), b, Qt::NoButton, Qt::NoModifier); QCoreApplication::sendEvent(v, &rl); return QString("ok %1,%2").arg(pt.x()).arg(pt.y()); }
+    if (c == "prdrag" && a.size() >= 5) { // drag in the piano roll: prdrag <tick> <pitch> <toTick> <toPitch> [xoffset of the press]
+        auto* v = m_win.pianoRoll()->view(); QPoint p1 = v->debugPoint(a[1].toLongLong(), a[2].toInt()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0), p2 = v->debugPoint(a[3].toLongLong(), a[4].toInt());
+        QMouseEvent pr(QEvent::MouseButtonPress, p1, v->mapToGlobal(p1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(v, &pr);
+        for (int i = 1; i <= 4; ++i) { QPoint m = p1 + (p2 - p1) * i / 4; QMouseEvent mv(QEvent::MouseMove, m, v->mapToGlobal(m), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(v, &mv); }
+        QMouseEvent rl(QEvent::MouseButtonRelease, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::NoButton, Qt::NoModifier); QCoreApplication::sendEvent(v, &rl); return "ok"; }
+    if (c == "prwheel" && a.size() >= 2) { // vertical wheel over the piano-roll grid: prwheel <ticks> [alt]
+        auto* v = m_win.pianoRoll()->view(); int n = a[1].toInt(); QPointF pt(v->width() / 2.0, v->height() / 2.0); Qt::KeyboardModifiers mods = a.size() > 2 && a[2] == "alt" ? Qt::AltModifier : Qt::NoModifier;
+        for (int i = 0; i < std::abs(n); ++i) { QWheelEvent w(pt, v->mapToGlobal(pt), QPoint(), QPoint(0, n > 0 ? 120 : -120), Qt::NoButton, mods, Qt::NoScrollPhase, false); QCoreApplication::sendEvent(v, &w); } return v->debugScroll(); }
+    if (c == "prinfo") return m_win.pianoRoll()->view()->debugScroll();
+    if (c == "rackclick" && a.size() >= 3) { // click a rack step cell: rackclick <row> <step> [right]
+        auto* v = m_win.rackPanel()->view(); QPoint pt = v->debugStepPoint(a[1].toInt(), a[2].toInt()); Qt::MouseButton b = a.size() > 3 && a[3] == "right" ? Qt::RightButton : Qt::LeftButton;
+        QMouseEvent pr(QEvent::MouseButtonPress, pt, v->mapToGlobal(pt), b, b, Qt::NoModifier); QCoreApplication::sendEvent(v, &pr); QMouseEvent rl(QEvent::MouseButtonRelease, pt, v->mapToGlobal(pt), b, Qt::NoButton, Qt::NoModifier); QCoreApplication::sendEvent(v, &rl); return "ok"; }
+    if (c == "patdata") { // dump the selected pattern's per-channel steps / notes
+        Pattern* p = m_app.project().pattern(m_app.project().selectedPatternId); if (!p) return "err no pattern"; QString out = QString("steps=%1").arg(p->stepCount);
+        for (auto& d : p->channels) { QString st; for (size_t i = 0; i < d.steps.size(); ++i) st += d.steps[i].enabled ? 'x' : '.'; out += QString(" | ch%1 steps=%2 notes=").arg(d.id).arg(st); for (auto& n : d.notes) out += QString("(%1@%2+%3)").arg(n.pitch).arg(n.start).arg(n.duration); }
+        return out; }
     if (c == "leftsplit" && a.size() >= 2) { m_win.debugLeftDock(a[1].toInt()); return "ok"; }
     if (c == "leftsizes") return m_win.debugLeftSizes();
     if (c == "dock" && a.size() >= 2) { m_win.debugDock(a[1] == "top" ? Qt::TopDockWidgetArea : Qt::BottomDockWidgetArea); return "ok"; }

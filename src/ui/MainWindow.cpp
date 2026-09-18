@@ -102,7 +102,7 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
     m_defaultState = saveState(); m_defaultWorkspaceState = m_workspace->saveState();
     // order matters: the rack must already be a child of the right main window before either state is restored - restoring a
     // state that references the rack and then moving the rack leaves a dangling layout item behind (crash on first show)
-    QSettings s; if (s.contains("ui/geometry")) restoreGeometry(s.value("ui/geometry").toByteArray()); restoreRackDock(); if (s.contains("ui/state")) restoreState(s.value("ui/state").toByteArray()); m_toolBar->show(); m_toolBar->toggleViewAction()->setVisible(false); if (s.contains("ui/workspace")) m_workspace->restoreState(s.value("ui/workspace").toByteArray());
+    QSettings s; if (s.contains("ui/geometry")) restoreGeometry(s.value("ui/geometry").toByteArray()); restoreRackDock(); if (s.contains("ui/state")) restoreState(s.value("ui/state").toByteArray()); m_toolBar->show(); m_toolBar->toggleViewAction()->setVisible(false); if (s.contains("ui/workspace")) m_workspace->restoreState(s.value("ui/workspace").toByteArray()); if (!m_dRack->isFloating() && m_workspace->dockWidgetArea(m_dRack) == Qt::BottomDockWidgetArea) { /* layouts saved before the rack moved to the split top area */ int h = s.value("ui/rackHeight", 0).toInt(); QTimer::singleShot(0, this, [this, h] { placeRackInWorkspace(true); if (h > 60) m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); updateWorkspaceSeparators(); }); }
     enforceSingleEditor();
     updateTitle();
     QTimer::singleShot(0, this, [this] { m_dBrowser->show(); { QSettings st; m_leftSplit->setBrowserWidth(st.value("ui/browserWidth", 260).toInt()); m_leftSplit->setStripWidth(st.value("ui/stripWidth", 180).toInt()); } m_leftSplit->setStripVisible(QSettings().value("ui/samplesVisible", true).toBool()); if (!QSettings().contains("ui/state")) applyDefaultLayout(); m_layoutReady = true; if (qEnvironmentVariableIsSet("MT_DEBUG_LAYOUT")) { fprintf(stderr, "layout: browser %d,%d %dx%d vis=%d | samples %d,%d %dx%d vis=%d floating=%d area=%d\n", m_dBrowser->x(), m_dBrowser->y(), m_dBrowser->width(), m_dBrowser->height(), (int)m_dBrowser->isVisible(), m_dSamples->x(), m_dSamples->y(), m_dSamples->width(), m_dSamples->height(), (int)m_dSamples->isVisible(), (int)m_dSamples->isFloating(), (int)dockWidgetArea(m_dSamples)); qDebug() << "win" << size() << "workspace" << m_workspace->geometry() << "hint" << m_workspace->sizeHint() << m_workspace->minimumSizeHint() << "rackdock" << m_dRack->geometry() << m_dRack->sizeHint() << m_dRack->minimumSizeHint() << "rack" << m_rack->sizeHint() << m_rack->minimumSizeHint() << "mixer" << m_mixer->sizeHint() << m_mixer->minimumSizeHint() << "playlistdock" << m_dPlaylist->geometry() << m_playlist->sizeHint() << m_playlist->minimumSizeHint(); } });
@@ -247,8 +247,8 @@ void MainWindow::scheduleLayoutSave() { if (m_layoutReady) m_layoutSaveTimer.sta
 void MainWindow::saveLayout() {
     if (!m_layoutReady || m_dRack->minimumHeight() == m_dRack->maximumHeight()) return;   // not while the rack is mid-animation
     QSettings s; s.setValue("ui/geometry", saveGeometry()); s.setValue("ui/state", saveState()); s.setValue("ui/workspace", m_workspace->saveState());
-    bool inWorkspace = !m_dRack->isFloating() && m_workspace->isAncestorOf(m_dRack); Qt::DockWidgetArea area = inWorkspace ? m_workspace->dockWidgetArea(m_dRack) : Qt::NoDockWidgetArea;
-    s.setValue("ui/rackArea", area == Qt::TopDockWidgetArea ? "top" : area == Qt::BottomDockWidgetArea ? "bottom" : "floating"); s.setValue("ui/rackVisible", m_dRack->isVisible()); s.setValue("ui/rackHeight", m_dRack->height());
+    bool inWorkspace = !m_dRack->isFloating() && m_workspace->isAncestorOf(m_dRack);
+    s.setValue("ui/rackArea", !inWorkspace ? "floating" : rackDockedAtBottom() ? "bottom" : "top"); s.setValue("ui/rackVisible", m_dRack->isVisible()); s.setValue("ui/rackHeight", m_dRack->height());
     s.setValue("ui/browserWidth", m_leftSplit->browserWidth()); s.setValue("ui/stripWidth", m_leftSplit->stripWidth()); s.setValue("ui/samplesVisible", m_samples->isVisible());
 }
 // The rack lives in the main window while floating and moves into the workspace when docked; restoreState can only place it
@@ -256,10 +256,22 @@ void MainWindow::saveLayout() {
 void MainWindow::restoreRackDock() {
     QSettings s; QString where = s.value("ui/rackArea", "floating").toString(); if (where != "top" && where != "bottom") return;
     Qt::DockWidgetArea area = where == "top" ? Qt::TopDockWidgetArea : Qt::BottomDockWidgetArea;
-    m_dRack->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea); m_dRack->setFloating(false); m_workspace->addDockWidget(area, m_dRack);
-    if (area == Qt::TopDockWidgetArea) { m_workspace->splitDockWidget(m_dRack, m_dPlaylist, Qt::Vertical); m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); }
+    m_dRack->setFloating(false); placeRackInWorkspace(area == Qt::BottomDockWidgetArea);
     m_dRack->setVisible(s.value("ui/rackVisible", true).toBool()); int h = s.value("ui/rackHeight", 0).toInt(); if (h > 60) QTimer::singleShot(0, this, [this, h] { m_workspace->resizeDocks({m_dRack}, {h}, Qt::Vertical); updateWorkspaceSeparators(); });
     QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); updateWorkspaceSeparators(); });
+}
+// The rack always lives in the workspace's top dock area, split above or below the editors (playlist / piano roll tabs):
+// putting it in the bottom area would leave Qt's empty central widget between the two and draw two resizable separators
+void MainWindow::placeRackInWorkspace(bool bottom) {
+    m_dRack->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea);
+    if (bottom) { m_workspace->addDockWidget(Qt::TopDockWidgetArea, m_dRack, Qt::Vertical); return; }   // appended below whatever the area holds; the editor tabs stay intact
+    // above the editors: split against whichever editor is shown (a hidden one would turn the split into a tab), then re-tab the other one
+    QDockWidget* ref = (m_dPlaylist->isVisible() || !m_dPiano->isVisible()) ? m_dPlaylist : m_dPiano; QDockWidget* other = ref == m_dPlaylist ? m_dPiano : m_dPlaylist; bool pianoOnTop = m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty();
+    m_workspace->addDockWidget(Qt::TopDockWidgetArea, m_dRack); m_workspace->splitDockWidget(m_dRack, ref, Qt::Vertical); m_workspace->tabifyDockWidget(ref, other); (pianoOnTop ? m_dPiano : m_dPlaylist)->raise();
+}
+bool MainWindow::rackDockedAtBottom() const {
+    if (m_workspace->dockWidgetArea(m_dRack) == Qt::BottomDockWidgetArea) return true;
+    const QDockWidget* ref = m_dPlaylist->isVisible() ? m_dPlaylist : m_dPiano; return m_dRack->geometry().top() > ref->geometry().top();
 }
 bool MainWindow::saveScreenshot(const QString& path) { QPixmap pm = grab(); bool ok = pm.save(path); if (QWidget* m = QApplication::activeModalWidget()) { QString p = path; p.insert(p.lastIndexOf('.'), "_dialog"); m->grab().save(p); } int ei = 0; for (auto& [id, w] : m_editors) if (w && w->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), QString("_editor%1").arg(ei++)); w->grab().save(p); } for (auto* d : {m_dRack}) if (d->isFloating() && d->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), "_" + d->objectName()); d->grab().save(p); } return ok; }
 
@@ -317,7 +329,7 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
 // The workspace is a QMainWindow whose central widget is empty, so Qt still offers a resize separator along its bottom edge.
 // Only show separators when the rack is actually docked there (then the playlist/rack split is a real resize).
 QString MainWindow::debugLeftSizes() const { return QString("dock=%1 browser=%2 strip=%3 panel=%4").arg(m_dBrowser->width()).arg(m_leftSplit->browserWidth()).arg(m_leftSplit->stripWidth()).arg(m_leftSplit->width()); }
-QString MainWindow::debugLayout() const { bool inWs = !m_dRack->isFloating() && m_workspace->isAncestorOf(m_dRack); return QString("rack=%1 visible=%2 height=%3 browser=%4 strip=%5 stripVisible=%6").arg(inWs ? (m_workspace->dockWidgetArea(m_dRack) == Qt::TopDockWidgetArea ? "top" : "bottom") : "floating").arg(m_dRack->isVisible()).arg(m_dRack->height()).arg(m_leftSplit->browserWidth()).arg(m_leftSplit->stripWidth()).arg(m_samples->isVisible()); }
+QString MainWindow::debugLayout() const { bool inWs = !m_dRack->isFloating() && m_workspace->isAncestorOf(m_dRack); return QString("rack=%1 visible=%2 height=%3 browser=%4 strip=%5 stripVisible=%6").arg(inWs ? (rackDockedAtBottom() ? "bottom" : "top") : "floating").arg(m_dRack->isVisible()).arg(m_dRack->height()).arg(m_leftSplit->browserWidth()).arg(m_leftSplit->stripWidth()).arg(m_samples->isVisible()); }
 QMenu* MainWindow::createPopupMenu() { return nullptr; }   // no Qt toolbar/dock toggle menu on right-click: one wrong click there hid the whole toolbar
 void MainWindow::updateWorkspaceSeparators() { bool rackDocked = m_dRack && !m_dRack->isFloating() && m_dRack->parentWidget() && m_workspace->isAncestorOf(m_dRack); m_workspace->setStyleSheet(rackDocked ? QString() : QStringLiteral("QMainWindow::separator { width: 0px; height: 0px; margin: 0; padding: 0; }")); }
 void MainWindow::animateRackDock() {
@@ -356,8 +368,7 @@ void MainWindow::dockRackAtCandidate() {
         // Qt's own dock animation would first snap the layout to the rack's full height; we run our own instead:
         // the rack enters collapsed (1 px) so the editors don't jump, then slides open to its content height
         m_workspace->setDockOptions(AllowNestedDocks | AllowTabbedDocks); m_dRack->hide(); m_dRack->setAllowedAreas(Qt::TopDockWidgetArea | Qt::BottomDockWidgetArea); m_dRack->setFixedHeight(1); /* explicit min+max: overrides the content's minimum size hint */
-        m_workspace->addDockWidget(area, m_dRack); m_dRack->setFloating(false);
-        if (area == Qt::TopDockWidgetArea) { /* the top area already holds the editors: put the rack above them, full width */ bool pianoOnTop = m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty(); m_workspace->splitDockWidget(m_dRack, m_dPlaylist, Qt::Vertical); m_workspace->tabifyDockWidget(m_dPlaylist, m_dPiano); (pianoOnTop ? m_dPiano : m_dPlaylist)->raise(); }
+        placeRackInWorkspace(area == Qt::BottomDockWidgetArea); m_dRack->setFloating(false);
         m_workspace->resizeDocks({m_dRack}, {1}, Qt::Vertical); m_dRack->show(); animateRackDock(); QTimer::singleShot(0, this, [this] { m_dRack->setAllowedAreas(Qt::NoDockWidgetArea); }); });
 }
 void MainWindow::showHelp() {
