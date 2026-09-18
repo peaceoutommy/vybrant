@@ -1,4 +1,6 @@
 #include "ui/PlaylistPanel.h"
+#include "dsp/DspUtils.h"
+#include <QPainterPath>
 #include "ui/TransportBar.h"
 #include "ui/Theme.h"
 #include <QPainter>
@@ -65,6 +67,27 @@ QColor PlaylistView::clipColor(const Clip& c) const {
     else if (c.type == ClipType::Automation) { if (auto* l = proj.lane(c.sourceId)) return l->color; }
     return theme::accent2();
 }
+// Audio clip handles are lines: the fade-in / fade-out curves (grab anywhere on the curve) and the horizontal gain line
+QPolygonF PlaylistView::fadeCurve(const Clip& c, int which) const {
+    QRect r = clipRect(c); QRect body = r.adjusted(1, 14, -1, -1); Tick len = m_app.project().clipLength(c); bool in = which == 1; Tick f = in ? c.fadeIn : c.fadeOut; float shape = in ? c.fadeInShape : c.fadeOutShape;
+    QPolygonF none; if (f <= 0) return none;   // no fade: the corner icon is the handle (see fadeIconRect)
+    int xa, xb; if (in) { xa = r.left(); xb = tickToX(c.start + f); } else { xb = r.right(); xa = tickToX(c.start + len - f); }
+    QPolygonF poly; if (xb <= xa || body.height() < 6) return poly; int n = std::max(4, (xb - xa) / 6);
+    for (int i = 0; i <= n; ++i) { double t = (double)i / n; double x = xa + (xb - xa) * t; float g = dsp::fadeShape((float)(in ? t : 1.0 - t), shape); poly << QPointF(x, body.bottom() - g * (body.height() - 1)); }
+    return poly;
+}
+// Small handle icons shown while a control is at its default: fade icons in the top corners, gain icon at the top centre
+QRect PlaylistView::fadeIconRect(const Clip& c, int which) const { QRect r = clipRect(c); int y = r.top() + 16; return which == 1 ? QRect(r.left() + 3, y, 13, 13) : QRect(r.right() - 16, y, 13, 13); }
+QRect PlaylistView::gainIconRect(const Clip& c) const { QRect r = clipRect(c); return QRect(r.center().x() - 22, r.bottom() - 15, 44, 13); }   // bottom centre
+int PlaylistView::gainY(const Clip& c) const { QRect body = clipRect(c).adjusted(1, 14, -1, -1); return body.top() + 3 + (int)((1.0 - std::min(c.gain, 2.f) / 2.0) * (body.height() - 6)); }
+static double distToPolyline(const QPolygonF& poly, const QPointF& pt) { double best = 1e9; for (int i = 1; i < poly.size(); ++i) { QPointF a = poly[i - 1], b = poly[i]; QPointF ab = b - a; double l2 = QPointF::dotProduct(ab, ab); double t = l2 > 0 ? std::clamp(QPointF::dotProduct(pt - a, ab) / l2, 0.0, 1.0) : 0.0; QPointF pr = a + ab * t; best = std::min(best, std::hypot(pt.x() - pr.x(), pt.y() - pr.y())); } return best; }
+int PlaylistView::clipHandleAt(const Clip& c, const QPoint& pos, QPoint*) const {
+    if (c.type != ClipType::Audio) return 0; QRect r = clipRect(c); if (r.width() < 30 || r.height() < 30) return 0;
+    if (c.fadeIn > 0 ? distToPolyline(fadeCurve(c, 1), pos) <= 5 : fadeIconRect(c, 1).adjusted(-2, -2, 2, 2).contains(pos)) return 1;
+    if (c.fadeOut > 0 ? distToPolyline(fadeCurve(c, 2), pos) <= 5 : fadeIconRect(c, 2).adjusted(-2, -2, 2, 2).contains(pos)) return 2;
+    if (gainIconRect(c).adjusted(-2, -2, 2, 2).contains(pos)) return 3;
+    return 0;
+}
 void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, double alpha) {
     QRect r = rectF.toRect(); Layout L = layout(); if (r.isNull() || r.right() < L.area.left() || r.left() > L.area.right() || r.bottom() < L.area.top() || r.top() > L.area.bottom()) return;
     p.save();   // the caller clips to the clip area; save/restore keeps that intact instead of dropping it per clip
@@ -94,10 +117,21 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
             p.setPen(col.lighter(150)); int64_t srcStart = src->trimStart; int64_t srcLen = (src->trimEnd > 0 ? src->trimEnd : a->frames) - srcStart; bool rev = c.reverse != src->reverse; float g = c.gain * src->gain * (src->normalize && a->peakValue > 0 ? 1.f / a->peakValue : 1.f);
             int x0 = std::max(r.left() + 1, L.area.left()), x1 = std::min(r.right() - 1, L.area.right());
             for (int x = x0; x <= x1; ++x) { double tick = xToTick(x) - c.start + c.sourceOffset; double frame = tick * framesPerTick; if (frame >= srcLen && !c.loopSource) break; if (c.loopSource && srcLen > 0) frame = std::fmod(frame, (double)srcLen); if (rev) frame = srcLen - 1 - frame; int64_t bin = (int64_t)((srcStart + frame) / lv.samplesPerBin); if (bin < 0 || bin >= (int64_t)lv.maxL.size()) continue; float mx = std::max(lv.maxL[bin], lv.maxR[bin]) * g, mn = std::min(lv.minL[bin], lv.minR[bin]) * g; p.drawLine(x, mid - (int)(clamp(mx, -1.f, 1.f) * hh), x, mid - (int)(clamp(mn, -1.f, 1.f) * hh)); }
-            // fades
-            p.setPen(QPen(Qt::white, 1)); if (c.fadeIn > 0) { int fx = tickToX(c.start + c.fadeIn); p.drawLine(r.left(), body.bottom(), fx, body.top()); p.setBrush(QColor(255, 255, 255, 30)); p.setPen(Qt::NoPen); p.drawPolygon(QPolygon({QPoint(r.left(), body.top()), QPoint(fx, body.top()), QPoint(r.left(), body.bottom())})); }
-            p.setPen(QPen(Qt::white, 1)); if (c.fadeOut > 0) { int fx = tickToX(c.start + c.length - c.fadeOut); p.drawLine(fx, body.top(), r.right(), body.bottom()); p.setBrush(QColor(255, 255, 255, 30)); p.setPen(Qt::NoPen); p.drawPolygon(QPolygon({QPoint(fx, body.top()), QPoint(r.right(), body.top()), QPoint(r.right(), body.bottom())})); }
-            p.setPen(Qt::white); p.setBrush(Qt::white); p.drawRect(r.left() + 2, r.top() + 15, 5, 5); p.drawRect(r.right() - 7, r.top() + 15, 5, 5);   // fade handles
+            // fades: the curve itself is the handle (grab it: sideways = length, up/down = slope); the attenuated part of the
+            // sound is darkened so the fade reads at a glance. A zero-length fade still shows a short stub in the corner to grab.
+            p.setRenderHint(QPainter::Antialiasing);
+            auto drawFade = [&](int which) { bool in = which == 1; bool hot = m_hoverHandle == which && m_hoverHandleClip == c.id; Tick f = in ? c.fadeIn : c.fadeOut;
+                if (f <= 0) { if (r.width() < 40 || r.height() < 30) return; QRect ir = fadeIconRect(c, which); QColor ic = hot ? theme::accent() : QColor(255, 255, 255, 150); p.setPen(QPen(ic, 1.5, Qt::SolidLine, Qt::FlatCap)); p.setBrush(Qt::NoBrush); QRectF arc = in ? QRectF(ir.left() + 1.5, ir.top() + 1.5, 2.0 * (ir.width() - 3), 2.0 * (ir.height() - 3)) : QRectF(ir.right() - 1.5 - 2.0 * (ir.width() - 3), ir.top() + 1.5, 2.0 * (ir.width() - 3), 2.0 * (ir.height() - 3)); p.drawArc(arc, in ? 90 * 16 : 0, 90 * 16); return; }   // rounded-corner arc icon: grab it to start a fade
+                QPolygonF cv = fadeCurve(c, which); if (cv.size() < 2) return;
+                if (f > 0) { QPolygonF dark = cv; if (in) { dark << QPointF(cv.last().x(), body.top()) << QPointF(cv.first().x(), body.top()); } else { dark << QPointF(cv.last().x(), body.top()) << QPointF(cv.first().x(), body.top()); } p.setPen(Qt::NoPen); p.setBrush(QColor(0, 0, 0, 120)); p.drawPolygon(dark); }
+                p.setPen(QPen(hot ? theme::accent() : QColor(255, 255, 255, f > 0 ? 210 : 120), hot ? 2.0 : 1.4)); p.setBrush(Qt::NoBrush); p.drawPolyline(cv); };
+            drawFade(1); drawFade(2);
+            if (r.width() >= 60 && r.height() >= 30) { // gain: a small tag at the bottom centre showing the value in dB; grab it and drag up/down
+                bool hot = m_hoverHandle == 3 && m_hoverHandleClip == c.id; bool unity = std::fabs(c.gain - 1.f) <= 0.005f; QRect ir = gainIconRect(c); p.setFont(theme::smallFont());
+                QString txt = unity ? "0 dB" : (c.gain <= 0.0005f ? "-inf" : QString("%1%2 dB").arg(c.gain > 1.f ? "+" : "").arg(20.0 * std::log10(c.gain), 0, 'f', 1));
+                p.setPen(Qt::NoPen); p.setBrush(hot ? theme::withAlpha(theme::accent(), 200) : QColor(0, 0, 0, unity ? 60 : 120)); p.drawRoundedRect(ir, 3, 3);
+                p.setPen(hot ? theme::bg() : QColor(255, 255, 255, unity ? 130 : 230)); p.drawText(ir, Qt::AlignCenter, txt); }
+            p.setRenderHint(QPainter::Antialiasing, false);
         } else { p.setPen(theme::textDim()); p.drawText(body, Qt::AlignCenter, src && src->missing ? "MISSING FILE" : "loading..."); }
     } else if (c.type == ClipType::Automation) {
         if (auto* l = proj.lane(c.sourceId)) {
@@ -146,7 +180,7 @@ void PlaylistView::paintEvent(QPaintEvent*) {
     if (m_themeRev != theme::revision()) { m_themeRev = theme::revision(); m_cacheValid = false; }   // the cached pixmap still holds the old theme
     if (!m_cacheValid) renderCache(); QPainter p(this); p.drawPixmap(0, 0, m_cache); Layout L = layout();
     { // clips: animated (appear / move / vanish), instant while being dragged
-        p.save(); p.setClipRect(L.area); auto& proj = m_app.project(); bool dragging = m_drag == Moving || m_drag == ResizingL || m_drag == ResizingR || m_drag == FadeIn || m_drag == FadeOut;
+        p.save(); p.setClipRect(L.area); auto& proj = m_app.project(); bool dragging = m_drag == Moving || m_drag == ResizingL || m_drag == ResizingR || m_drag == FadeIn || m_drag == FadeOut || m_drag == Gain;
         m_clipAnim.begin();
         // tracked in song space (tick / track index) so scrolling, zooming or resizing the view never "moves" clips
         auto trackIndex = [&](Id id) { auto& tr = proj.playlistTracks; for (size_t i = 0; i < tr.size(); ++i) if (tr[i].id == id) return (int)i; return -1; };
@@ -198,9 +232,10 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
     if (c) {
         // automation point editing
         if (c->type == ClipType::Automation && !(e->modifiers() & Qt::ControlModifier)) { int pi = autoPointAt(*c, e->pos()); if (pi >= 0) { m_autoLane = c->sourceId; m_autoPoint = pi; m_dragClip = c->id; m_laneBefore = *proj.lane(m_autoLane); m_drag = AutoPoint; return; } }
-        if (c->type == ClipType::Audio) { QRect r = clipRect(*c); if (e->pos().y() < r.top() + 22 && e->pos().y() >= r.top() + 14) { if (e->pos().x() <= r.left() + 9) { m_selected = {c->id}; beginEdit(); m_dragClip = c->id; m_drag = FadeIn; return; } if (e->pos().x() >= r.right() - 9) { m_selected = {c->id}; beginEdit(); m_dragClip = c->id; m_drag = FadeOut; return; } } }
+        if (int h = clipHandleAt(*c, e->pos())) { m_selected = {c->id}; beginEdit(); m_dragClip = c->id; m_pressPos = e->pos(); m_handleStartFade = h == 1 ? c->fadeIn : c->fadeOut; m_handleStartShape = h == 1 ? c->fadeInShape : c->fadeOutShape; m_handleStartGain = c->gain; m_drag = h == 1 ? FadeIn : h == 2 ? FadeOut : Gain; return; }
         if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) { m_toggleOnRelease = c->id; m_selBase = m_selected; m_drag = Rubber; m_rubber = QRect(e->pos(), QSize(0, 0)); invalidate(); return; }   // Ctrl: drag = rubber-band selection from here, click = toggle this clip
         if (!m_selected.count(c->id)) { if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear(); m_selected.insert(c->id); }
+        if (c->type == ClipType::Pattern && e->button() == Qt::LeftButton && c->sourceId != proj.selectedPatternId) m_app.selectPattern(c->sourceId);   // FL: the clicked pattern becomes the one the draw tool places
         beginEdit(); m_dragClip = c->id; m_pressTick = xToTick(e->pos().x()); m_pressTrack = trackIdx; m_duplicated = false;
         if (e->modifiers() & Qt::ShiftModifier && e->modifiers() & Qt::ControlModifier) { std::vector<Clip> copies; for (auto& x : proj.clips) if (m_selected.count(x.id)) { Clip d = x; d.id = proj.newId(); copies.push_back(d); } m_selected.clear(); for (auto& d : copies) { proj.clips.push_back(d); m_selected.insert(d.id); } m_duplicated = true; m_dragClip = copies.empty() ? 0 : copies.front().id; }
         m_drag = edge == 1 ? ResizingR : edge == -1 ? ResizingL : Moving; invalidate(); return;
@@ -212,7 +247,7 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
 }
 void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     m_hoverPos = e->pos(); m_altHeld = e->modifiers() & Qt::AltModifier; Layout L = layout(); auto& proj = m_app.project();
-    if (m_drag == NoDrag) { int edge = 0; Clip* c = L.area.contains(e->pos()) ? clipAt(e->pos(), &edge) : nullptr; if (m_tool == Draw || m_tool == Select) { if (L.headers.contains(e->pos())) { int idx = trackAtY(e->pos().y()); setCursor(idx >= 0 && e->pos().y() - trackTop(idx) >= trackH(idx) - 5 ? Qt::SizeVerCursor : Qt::ArrowCursor); } else setCursor(c ? (edge != 0 ? QCursor(Qt::SizeHorCursor) : QCursor(Qt::SizeAllCursor)) : toolCursorFor(m_tool)); } if (m_tool == Draw) update(); return; }
+    if (m_drag == NoDrag) { int edge = 0; Clip* c = L.area.contains(e->pos()) ? clipAt(e->pos(), &edge) : nullptr; if (m_tool == Draw || m_tool == Select) { if (L.headers.contains(e->pos())) { int idx = trackAtY(e->pos().y()); setCursor(idx >= 0 && e->pos().y() - trackTop(idx) >= trackH(idx) - 5 ? Qt::SizeVerCursor : Qt::ArrowCursor); } else { int hh = c ? clipHandleAt(*c, e->pos()) : 0; if (hh != m_hoverHandle || (c ? c->id : 0) != m_hoverHandleClip) { m_hoverHandle = hh; m_hoverHandleClip = c ? c->id : 0; invalidate(); } setCursor(c ? (hh ? QCursor(Qt::ArrowCursor) : edge != 0 ? QCursor(Qt::SizeHorCursor) : QCursor(Qt::SizeAllCursor)) : toolCursorFor(m_tool)); } } if (m_tool == Draw) update(); return; }
     if (m_drag == Pan) { int dx = e->pos().x() - m_lastPos.x(), dy = e->pos().y() - m_lastPos.y(); m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(dx / m_ppt)); m_scrollY = std::max(0, m_scrollY - dy); m_lastPos = e->pos(); updateScrollbars(); invalidate(); return; }
     if (m_drag == Seek) { Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x()))); if (t != m_pressTick) { m_pressTick = t; m_app.seek(t); } return; }
     if (m_drag == LoopRange) { Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x()))); if (std::abs(e->pos().x() - m_pressPos.x()) > 3) { Tick a = std::min(m_loopDragStart, t), b = std::max(m_loopDragStart, t); if (b > a) { proj.transport.loopStart = a; proj.transport.loopEnd = b; proj.transport.loopEnabled = true; m_app.engine().setLoop(true, a, b); invalidate(); } } return; }
@@ -221,7 +256,9 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == Erasing) { if (Clip* c = clipAt(e->pos())) { m_app.deleteClips({c->id}); m_erasedAny = true; } return; }
     if (m_drag == Muting) { if (Clip* c = clipAt(e->pos())) { if (!m_touched.count(c->id)) { m_touched.insert(c->id); m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; }); } } return; }
     if (m_drag == AutoPoint) { auto* l = proj.lane(m_autoLane); const Clip* c = proj.clip(m_dragClip); if (!l || !c || m_autoPoint < 0 || m_autoPoint >= (int)l->points.size()) return; auto& pt = l->points[m_autoPoint]; pt.value = autoValueAtY(*c, e->pos().y()); Tick lo = m_autoPoint > 0 ? l->points[m_autoPoint - 1].time : 0, hi = m_autoPoint + 1 < (int)l->points.size() ? l->points[m_autoPoint + 1].time : LLONG_MAX; if (m_autoPoint > 0 && m_autoPoint + 1 < (int)l->points.size()) pt.time = clamp(snap(autoTickAtX(*c, e->pos().x())), lo, hi); invalidate(); return; }
-    if (m_drag == FadeIn || m_drag == FadeOut) { Clip* c = proj.clip(m_dragClip); if (!c) return; Tick t = xToTick(e->pos().x()); if (m_drag == FadeIn) c->fadeIn = clamp<Tick>(t - c->start, 0, c->length); else c->fadeOut = clamp<Tick>(c->start + c->length - t, 0, c->length); invalidate(); return; }
+    if (m_drag == FadeIn || m_drag == FadeOut) { Clip* c = proj.clip(m_dragClip); if (!c) return; Tick len = proj.clipLength(*c); Tick t = xToTick(e->pos().x()); float shape = clamp(m_handleStartShape + (m_pressPos.y() - e->pos().y()) / 50.f, -1.f, 1.f);   // sideways = length, up/down = slope
+        if (m_drag == FadeIn) { c->fadeIn = clamp<Tick>(t - c->start, 0, len); c->fadeInShape = shape; } else { c->fadeOut = clamp<Tick>(c->start + len - t, 0, len); c->fadeOutShape = shape; } invalidate(); return; }
+    if (m_drag == Gain) { Clip* c = proj.clip(m_dragClip); if (!c) return; c->gain = clamp(m_handleStartGain + (m_pressPos.y() - e->pos().y()) / 60.f, 0.f, 2.f); invalidate(); return; }
     if (m_drag == Moving) {
         Tick dt = xToTick(e->pos().x()) - m_pressTick; int dtrack = trackAtY(e->pos().y()) >= 0 ? trackAtY(e->pos().y()) - m_pressTrack : 0;
         auto ab = m_before.find(m_dragClip); Tick anchorStart = ab != m_before.end() ? ab->second.start : (proj.clip(m_dragClip) ? proj.clip(m_dragClip)->start : 0); Tick delta = snap(anchorStart + dt) - anchorStart;
@@ -241,7 +278,7 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
 void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
     auto& proj = m_app.project();
     switch (m_drag) {
-    case Moving: commitEdit(m_duplicated ? "Duplicate clips" : "Move clips"); if (m_placed) { m_selected.clear(); m_placed = false; } break; case ResizingR: case ResizingL: commitEdit("Resize clips"); break; case FadeIn: case FadeOut: commitEdit("Edit fade"); break;
+    case Moving: commitEdit(m_duplicated ? "Duplicate clips" : "Move clips"); if (m_placed) { m_selected.clear(); m_placed = false; } break; case ResizingR: case ResizingL: commitEdit("Resize clips"); break; case FadeIn: case FadeOut: commitEdit("Edit fade"); break; case Gain: commitEdit("Clip gain"); break;
     case LoopRange: { if (std::abs(e->pos().x() - m_pressPos.x()) > 3) { Tick a = proj.transport.loopStart, b = proj.transport.loopEnd; m_app.setLoopRange(a, b); if (!proj.transport.loopEnabled) m_app.setLoop(true); } else if (proj.transport.loopEnabled) m_app.setLoop(false); else m_app.seek(m_pressTick); break; }
     case Seek: m_app.seek(m_pressTick); break;
     case TrackHeight: { int h = proj.playlistTracks[m_heightTrack].height; proj.playlistTracks[m_heightTrack].height = m_heightStart; m_app.editTrack(proj.playlistTracks[m_heightTrack].id, "Track height", [h](PlaylistTrack& t) { t.height = h; }); break; }

@@ -38,7 +38,7 @@ struct RtAutomationLane { Id id; RtParamTarget target; std::vector<AutomationPoi
 struct RtClip {
     ClipType type; Tick start, end; int trackIdx = -1; int patternIdx = -1; int laneIdx = -1; Tick sourceOffset = 0; bool loopSource = true;
     // audio
-    AudioAssetPtr asset; int64_t srcStart = 0, srcEnd = 0; float gain = 1.f; bool reverse = false; double rate = 1.0; Tick fadeIn = 0, fadeOut = 0; bool muted = false;
+    AudioAssetPtr asset; int64_t srcStart = 0, srcEnd = 0; float gain = 1.f; bool reverse = false; double rate = 1.0; Tick fadeIn = 0, fadeOut = 0; float fadeInShape = 0, fadeOutShape = 0; bool muted = false;
 };
 struct RtClipState { bool active = false; double pos = 0; };
 

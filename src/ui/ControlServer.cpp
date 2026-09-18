@@ -61,6 +61,8 @@ QString ControlServer::handle(const QString& line) {
     if (c == "layout") return m_win.debugLayout();
     if (c == "winsize" && a.size() >= 3) { m_win.resize(a[1].toInt(), a[2].toInt()); return "ok"; }
     if (c == "split") { auto ids = m_app.splitPatternByChannel(m_app.project().selectedPatternId); QStringList l; for (auto& p : m_app.project().patterns) l << p.name; QStringList cl; for (auto& cc : m_app.project().clips) cl << QString("%1@t%2").arg(cc.name).arg(m_app.project().mixerIndex(0) * 0 + [&]{ int i = 0; for (size_t k = 0; k < m_app.project().playlistTracks.size(); ++k) if (m_app.project().playlistTracks[k].id == cc.trackId) i = (int)k + 1; return i; }()); return QString("new=%1 patterns: %2 | clips: %3").arg(ids.size()).arg(l.join(", ")).arg(cl.join(", ")); }
+    if (c == "audioclip" && a.size() >= 2) { Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id; Id id = m_app.addAudioClip(track, a[1], 0); return id ? "ok" : "err"; }
+    if (c == "clipfade" && a.size() >= 5) { auto& cl = m_app.project().clips; if (cl.empty()) return "err no clips"; Tick fi = a[1].toLongLong(), fo = a[2].toLongLong(); float sh = a[3].toFloat(), g = a[4].toFloat(); m_app.editClip(cl.front().id, "test fade", [fi, fo, sh, g](Clip& x) { x.fadeIn = fi; x.fadeOut = fo; x.fadeInShape = sh; x.fadeOutShape = -sh; x.gain = g; }); return "ok"; }
     if (c == "quit") { QTimer::singleShot(0, qApp, [] { qApp->quit(); }); return "ok"; }
     return "err unknown command (ping play stop note select channels stats screenshot editor action theme quit)";
 }

@@ -6,6 +6,7 @@
 #include <QComboBox>
 #include <QToolButton>
 #include <QPixmap>
+#include <QPolygonF>
 #include "ui/Anim.h"
 #include <set>
 #include <map>
@@ -29,7 +30,9 @@ protected:
     void paintEvent(QPaintEvent*) override; void mousePressEvent(QMouseEvent*) override; void mouseMoveEvent(QMouseEvent*) override; void mouseReleaseEvent(QMouseEvent*) override; void mouseDoubleClickEvent(QMouseEvent*) override; void wheelEvent(QWheelEvent*) override; void keyPressEvent(QKeyEvent*) override; void resizeEvent(QResizeEvent*) override; void contextMenuEvent(QContextMenuEvent*) override;
     void dragEnterEvent(QDragEnterEvent*) override; void dragMoveEvent(QDragMoveEvent*) override; void dropEvent(QDropEvent*) override;
 private:
-    enum Drag { NoDrag, Moving, ResizingR, ResizingL, Rubber, LoopRange, Seek, Muting, TrackHeight, Pan, AutoPoint, FadeIn, FadeOut, Erasing };
+    enum Drag { NoDrag, Moving, ResizingR, ResizingL, Rubber, LoopRange, Seek, Muting, TrackHeight, Pan, AutoPoint, FadeIn, FadeOut, Gain, Erasing };
+    // audio clip handles: 1 = fade-in, 2 = fade-out, 3 = gain (0 = none); positions in view coordinates
+    int clipHandleAt(const Clip& c, const QPoint& pos, QPoint* where = nullptr) const; QPolygonF fadeCurve(const Clip& c, int which) const; int gainY(const Clip& c) const; QRect fadeIconRect(const Clip& c, int which) const; QRect gainIconRect(const Clip& c) const;
     struct Layout { int headerW = 170, rulerH = 24; QRect ruler, headers, area; };
     Layout layout() const;
     QColor clipColor(const Clip& c) const;
@@ -42,7 +45,7 @@ private:
     anim::RectTracker<Id> m_clipAnim; std::map<Id, QColor> m_clipColor; /* last drawn colour per clip, so a deleted clip's ghost keeps it */ anim::Ticker* m_ticker = nullptr;
     void showClipMenu(Clip* c, const QPoint& global); void showTrackMenu(int idx, const QPoint& global); void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
     App& m_app; Tool m_tool = Draw; int m_snapDiv = -1; double m_ppt = 0.03; Tick m_scrollTick = 0; int m_scrollY = 0; QScrollBar *m_hbar, *m_vbar; bool m_updatingBars = false;
-    std::set<Id> m_selected, m_selBase; Id m_toggleOnRelease = 0; Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressTrack = -1; Id m_dragClip = 0; std::map<Id, Clip> m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_heightTrack = -1; int m_heightStart = 0; Id m_autoLane = 0; int m_autoPoint = -1; AutomationLane m_laneBefore; double m_playTick = -1; QPixmap m_cache; bool m_cacheValid = false; int m_themeRev = -1; bool m_altHeld = false; QPoint m_hoverPos; Tick m_loopDragStart = 0; bool m_erasedAny = false; bool m_placed = false; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false; double m_vzoom = 1.0;
+    std::set<Id> m_selected, m_selBase; Id m_toggleOnRelease = 0; float m_handleStartShape = 0, m_handleStartGain = 1; Tick m_handleStartFade = 0; int m_hoverHandle = 0; Id m_hoverHandleClip = 0; Drag m_drag = NoDrag; QPoint m_pressPos, m_lastPos; Tick m_pressTick = 0; int m_pressTrack = -1; Id m_dragClip = 0; std::map<Id, Clip> m_before; bool m_editing = false; bool m_duplicated = false; QRect m_rubber; int m_heightTrack = -1; int m_heightStart = 0; Id m_autoLane = 0; int m_autoPoint = -1; AutomationLane m_laneBefore; double m_playTick = -1; QPixmap m_cache; bool m_cacheValid = false; int m_themeRev = -1; bool m_altHeld = false; QPoint m_hoverPos; Tick m_loopDragStart = 0; bool m_erasedAny = false; bool m_placed = false; std::set<Id> m_touched; qint64 m_lastEraseTime = 0; bool m_lastEraseWasClick = false; double m_vzoom = 1.0;
 };
 
 class PlaylistPanel : public QWidget {

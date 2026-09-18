@@ -20,7 +20,11 @@ public:
     enum { PayloadRole = Qt::UserRole, PathRole = Qt::UserRole + 1, IdRole = Qt::UserRole + 2 };
 protected:
     // no rubber-band selection: a press on empty space just clears the selection (Ctrl / Shift + click do the multi-selecting)
-    void mousePressEvent(QMouseEvent* e) override { if (!indexAt(e->pos()).isValid()) { if (!(e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))) clearSelection(); m_emptyPress = true; return; } m_emptyPress = false; QListWidget::mousePressEvent(e); }
+    void mousePressEvent(QMouseEvent* e) override { QModelIndex idx = indexAt(e->pos()); if (!idx.isValid()) { if (!(e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))) clearSelection(); m_emptyPress = true; return; } m_emptyPress = false;
+        // Qt only starts a drag from an item that was selected *before* the press, otherwise a drag extends the selection.
+        // A plain press therefore selects the item first, so the following drag moves it (Ctrl / Shift keep their meaning).
+        if (e->button() == Qt::LeftButton && !(e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) && !selectionModel()->isSelected(idx)) { clearSelection(); setCurrentIndex(idx); selectionModel()->select(idx, QItemSelectionModel::ClearAndSelect); }
+        QListWidget::mousePressEvent(e); }
     void mouseMoveEvent(QMouseEvent* e) override { if (m_emptyPress) return; QListWidget::mouseMoveEvent(e); }
     void mouseReleaseEvent(QMouseEvent* e) override { if (m_emptyPress) { m_emptyPress = false; return; } QListWidget::mouseReleaseEvent(e); }
     bool m_emptyPress = false;

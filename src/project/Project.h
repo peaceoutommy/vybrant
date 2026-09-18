@@ -97,6 +97,7 @@ struct Clip {
     bool muted = false;
     float gain = 1.f;
     Tick fadeIn = 0, fadeOut = 0;
+    float fadeInShape = 0.f, fadeOutShape = 0.f;   // fade slope: 0 linear, >0 slow start (exponential), <0 fast start (logarithmic)
     double timeStretch = 1.0;   // playback ratio (1 = original); audio only
     float pitch = 0.f;          // semitones (audio only)
     Tick sourceOffset = 0;      // offset into the source

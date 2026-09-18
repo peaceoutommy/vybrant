@@ -151,6 +151,9 @@ struct EnvelopeFollower {
     inline float process(float x) { x = std::fabs(x); float c = x > env ? attCoeff : relCoeff; env = c * env + (1.f - c) * x; return flushDenormal(env); }
 };
 
+// Fade curve: t in 0..1 -> gain 0..1. shape 0 = linear, >0 = slow start (t^(1+3s)), <0 = fast start (1-(1-t)^(1+3|s|))
+inline float fadeShape(float t, float shape) { t = clamp(t, 0.f, 1.f); if (shape > 0.001f) return std::pow(t, 1.f + 3.f * shape); if (shape < -0.001f) return 1.f - std::pow(1.f - t, 1.f - 3.f * shape); return t; }
+
 struct DcBlocker { float x1 = 0, y1 = 0; inline float process(float x) { float y = x - x1 + 0.995f * y1; x1 = x; y1 = flushDenormal(y); return y; } };
 
 // Linear-interpolated sample read helper

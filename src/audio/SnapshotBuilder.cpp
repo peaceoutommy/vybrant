@@ -183,7 +183,7 @@ void AudioEngine::rebuild(const Project& p) {
                 double scale = stretched ? c.timeStretch : 1.0;
                 rc.srcStart = (int64_t)(src->trimStart * scale); rc.srcEnd = src->trimEnd > 0 ? (int64_t)(src->trimEnd * scale) : a->frames; rc.srcStart = clamp<int64_t>(rc.srcStart, 0, a->frames); rc.srcEnd = clamp<int64_t>(rc.srcEnd, rc.srcStart + 1, a->frames);
                 rc.gain = c.gain * src->gain * (src->normalize && a->peakValue > 0 ? 1.f / a->peakValue : 1.f); rc.reverse = c.reverse != src->reverse; rc.rate = stretched ? 1.0 : std::pow(2.0, c.pitch / 12.0);
-                rc.fadeIn = c.fadeIn; rc.fadeOut = c.fadeOut; s.heldAssets.push_back(a);
+                rc.fadeIn = c.fadeIn; rc.fadeOut = c.fadeOut; rc.fadeInShape = c.fadeInShape; rc.fadeOutShape = c.fadeOutShape; s.heldAssets.push_back(a);
             }
         }
         s.clips.push_back(std::move(rc));

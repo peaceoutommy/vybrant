@@ -403,8 +403,8 @@ void AudioEngine::renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n) {
             double rp = clip.reverse ? (srcLen - 1 - p) : p; double fr = clip.srcStart + rp;
             float l = dsp::readInterp(a->L(), a->frames, fr), r = dsp::readInterp(a->R(), a->frames, fr);
             float env = g; double cp = clipPosS + i;
-            if (fadeInS > 0 && cp < fadeInS) env *= (float)(cp / fadeInS);
-            if (fadeOutS > 0 && cp > clipLenS - fadeOutS) env *= (float)std::max(0.0, (clipLenS - cp) / fadeOutS);
+            if (fadeInS > 0 && cp < fadeInS) env *= dsp::fadeShape((float)(cp / fadeInS), clip.fadeInShape);
+            if (fadeOutS > 0 && cp > clipLenS - fadeOutS) env *= dsp::fadeShape((float)std::max(0.0, (clipLenS - cp) / fadeOutS), clip.fadeOutShape);
             t.genL[i] += l * env; t.genR[i] += r * env; st.pos += clip.rate;
         }
     }
