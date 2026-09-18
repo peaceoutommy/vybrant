@@ -40,7 +40,9 @@ protected:
 // ---------------- Sampler ----------------
 class Sampler : public InstrumentBase {
 public:
-    enum P : uint32_t { pRoot = 1, pAttack, pDecay, pSustain, pRelease, pStart, pLoopMode, pTune, pFine, pCutoff, pReso, pFilterType, pReverse, pLevel, pPan, pVelSens, pPitchBendRange, pLoopStart, pLoopEnd, pGlide, pEnvOn };
+    enum P : uint32_t { pRoot = 1, pAttack, pDecay, pSustain, pRelease, pStart, pLoopMode, pTune, pFine, pCutoff, pReso, pFilterType, pReverse, pLevel, pPan, pVelSens, pPitchBendRange, pLoopStart, pLoopEnd, pGlide, pEnvOn, pDeclick };
+    // Declicking modes (after FL Studio's Sampler): fade-out length when a voice is cut, fade-in length at the start; 'transient' only ramps the first few samples in
+    static void declickTimes(int mode, float& inSec, float& outSec, bool& transientIn);
     Sampler();
     QString key() const override { return "native.sampler"; }
     QString displayName() const override { return "Sampler"; }
@@ -57,7 +59,9 @@ public:
 protected:
     void onPrepare() override;
 private:
-    struct Voice { bool active = false; int note = 0; double pos = 0; double inc = 0; float vel = 1; float pan = 0; dsp::ADSR env; dsp::SVF fl, fr; int dir = 1; float glideFrom = 0; float glideT = 1; int noteId = -1; };
+    struct Voice { bool active = false; int note = 0; double pos = 0; double inc = 0; float vel = 1; float pan = 0; dsp::ADSR env; dsp::SVF fl, fr; int dir = 1; float glideFrom = 0; float glideT = 1; int noteId = -1;
+        int fadeInLen = 0, fadeInPos = 0; int fadeOutLen = 0, fadeOutPos = -1; };   // declick ramps (cosine S-shape); fadeOutPos >= 0 while the voice is being cut
+    void cutVoice(Voice& v);   // stop a voice through the declick fade-out
     std::array<Voice, 32> m_voices;
     SwapHolder<AudioAsset> m_sample;
     QString m_path;

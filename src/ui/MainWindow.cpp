@@ -20,6 +20,8 @@
 #include <QFileDialog>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QMenu>
+#include <QDialog>
 #include <QTextEdit>
 #include <QPlainTextEdit>
 #include <QAbstractSpinBox>
@@ -219,9 +221,11 @@ bool MainWindow::typingKeyEvent(QObject* o, QEvent* e) {
     // this one. They still have to count as ours: every command is a Qt::ApplicationShortcut, so without this the letter
     // keys skip typing mode and fire the shortcuts instead whenever a plugin editor holds focus.
     QWidget* f = QApplication::focusWidget();
-    auto ours = [this](QWidget* x) { QWidget* win = x ? x->window() : nullptr; return win == this || qobject_cast<PluginWindow*>(win) != nullptr; };
+    // Ours: the main window, plugin/sound editors, floating docks (rack, project samples) - anything whose parent chain
+    // leads back here, except dialogs (settings, file pickers) and popup menus, where letters keep their normal meaning.
+    auto ours = [this](QWidget* x) { QWidget* win = x ? x->window() : nullptr; if (!win) return false; if (win == this || qobject_cast<PluginWindow*>(win)) return true; if (qobject_cast<QDialog*>(win) || qobject_cast<QMenu*>(win)) return false; for (QWidget* w = win->parentWidget(); w; w = w->parentWidget()) if (w == this) return true; return false; };
     if (!ours(qobject_cast<QWidget*>(o)) && !ours(f)) return false;
-    bool textual = qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QAbstractSpinBox*>(f) || qobject_cast<QComboBox*>(f); if (textual) return false;
+    auto* combo = qobject_cast<QComboBox*>(f); bool textual = qobject_cast<QLineEdit*>(f) || qobject_cast<QTextEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QAbstractSpinBox*>(f) || (combo && combo->isEditable()); if (textual) return false;   // a plain selector combo (loop mode, filter type...) is not a text field: letters still play
     auto* ke = static_cast<QKeyEvent*>(e); if (ke->modifiers() & ~(Qt::KeypadModifier | Qt::ShiftModifier)) return false; int k = ke->key(); if (k < 0x20 || k >= 0x7f) return false; int note = typingNote(k); if (note < 0 || note > 127) return false;
     if (t == QEvent::ShortcutOverride) { ke->accept(); return true; }
     if (ke->isAutoRepeat()) return true;

@@ -14,17 +14,22 @@ Sampler::Sampler() {
     p.addChoice(pLoopMode, "Loop", {"Off", "Forward", "Ping-Pong"}); p.add(pTune, "Tune", -24, 24, 0, ParamUnit::Semitones); p.add(pFine, "Fine", -100, 100, 0, ParamUnit::Cents);
     p.add(pCutoff, "Cutoff", 20, 20000, 20000, ParamUnit::Hertz, true); p.add(pReso, "Resonance", 0, 1, 0); p.addChoice(pFilterType, "Filter", {"Low-pass", "High-pass", "Band-pass"});
     p.addToggle(pReverse, "Reverse"); p.add(pLevel, "Level", 0, 2, 1); p.add(pPan, "Pan", -1, 1, 0); p.add(pVelSens, "Vel. Sensitivity", 0, 1, 1); p.add(pPitchBendRange, "Bend Range", 0, 24, 2, ParamUnit::Semitones);
-    p.add(pLoopStart, "Loop Start", 0, 1, 0, ParamUnit::Percent); p.add(pLoopEnd, "Loop End", 0, 1, 1, ParamUnit::Percent); p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds); p.addToggle(pEnvOn, "Envelope", false);
+    p.add(pLoopStart, "Loop Start", 0, 1, 0, ParamUnit::Percent); p.add(pLoopEnd, "Loop End", 0, 1, 1, ParamUnit::Percent); p.add(pGlide, "Glide", 0, 2, 0, ParamUnit::Seconds); p.addToggle(pEnvOn, "Envelope", false); p.addChoice(pDeclick, "Declicking", {"Out only (10 ms)", "Transient (10 ms)", "Transient bleeding (20 ms)", "Generic (20 ms)", "Smooth (100 ms)", "Crossfade (200 ms)"});
     m_holders.push_back(&m_sample);
 }
 void Sampler::onPrepare() { reset(); }
 void Sampler::reset() { for (auto& v : m_voices) { v.active = false; v.env.kill(); v.fl.reset(); v.fr.reset(); } }
 
+// FL Studio's Sampler declicking table: fade-out on any cut (note-off, cut itself, stolen voice), optional fade-in
+void Sampler::declickTimes(int mode, float& inSec, float& outSec, bool& transientIn) {
+    transientIn = false; switch (mode) { default: case 0: inSec = 0.f; outSec = 0.010f; break; case 1: inSec = 0.f; outSec = 0.010f; transientIn = true; break; case 2: inSec = 0.f; outSec = 0.020f; transientIn = true; break; case 3: inSec = 0.020f; outSec = 0.020f; break; case 4: inSec = 0.100f; outSec = 0.100f; break; case 5: inSec = 0.200f; outSec = 0.200f; break; }
+}
+void Sampler::cutVoice(Voice& v) { if (!v.active || v.fadeOutPos >= 0) return; float in, out; bool tr; declickTimes(m_params.getInt(pDeclick), in, out, tr); v.fadeOutLen = std::max(1, (int)(out * m_sr)); v.fadeOutPos = 0; }
 void Sampler::noteOn(const MidiEvent& e) {
     const AudioAsset* a = m_sample.get(); if (!a || a->frames < 2) return;
     Voice* v = nullptr; for (auto& vv : m_voices) if (!vv.active) { v = &vv; break; }
     if (!v) { v = &m_voices[0]; float best = 2; for (auto& vv : m_voices) if (vv.env.value < best) { best = vv.env.value; v = &vv; } }
-    auto& p = m_params;
+    auto& p = m_params; { float in, out; bool tr; declickTimes(p.getInt(pDeclick), in, out, tr); v->fadeInLen = tr ? 8 : (int)(in * m_sr); v->fadeInPos = 0; v->fadeOutLen = 0; v->fadeOutPos = -1; }
     v->active = true; v->note = e.data1; v->noteId = e.noteId; v->vel = 1.f - p.get(pVelSens) * (1.f - e.velocity); v->pan = e.pan;
     if (p.getBool(pEnvOn)) v->env.set(m_sr, p.get(pAttack), p.get(pDecay), p.get(pSustain), p.get(pRelease)); else v->env.set(m_sr, 0.f, 0.f, 1.f, 0.f);   // envelope off: the sound plays as it is
     v->env.noteOn();
@@ -36,7 +41,11 @@ void Sampler::noteOn(const MidiEvent& e) {
     m_lastNote = e.data1;
 }
 // A sequenced note-off carries the id of the note that started the voice: only that voice is released (live MIDI has no id and releases by pitch)
-void Sampler::noteOff(const MidiEvent& e) { if (!m_params.getBool(pEnvOn) && m_params.getInt(pLoopMode) == 0) return;   /* envelope off: one-shot, the sample plays to its end (looping samples still stop on note-off) */ for (auto& v : m_voices) if (v.active && v.note == e.data1 && v.env.stage != ADSR::Release && (e.noteId < 0 || v.noteId < 0 || v.noteId == e.noteId)) v.env.noteOff(); }
+void Sampler::noteOff(const MidiEvent& e) {
+    bool envOn = m_params.getBool(pEnvOn); if (!envOn && m_params.getInt(pLoopMode) == 0) return;   // envelope off: one-shot, the sample plays to its end (looping samples still stop on note-off)
+    float in, out; bool tr; declickTimes(m_params.getInt(pDeclick), in, out, tr);
+    for (auto& v : m_voices) if (v.active && v.note == e.data1 && v.env.stage != ADSR::Release && (e.noteId < 0 || v.noteId < 0 || v.noteId == e.noteId)) { if (envOn && m_params.get(pRelease) >= out) v.env.noteOff(); else cutVoice(v); }   // a release shorter than the declick fade would click: the fade takes over
+}
 
 void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
     m_sample.rtTick();
@@ -50,7 +59,7 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
         while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
             const auto& e = midi.events[mi++];
             if (e.type == MidiEvent::NoteOn) noteOn(e); else if (e.type == MidiEvent::NoteOff) noteOff(e);
-            else if (e.type == MidiEvent::AllNotesOff) { for (auto& v : m_voices) { if (e.data1 == 1) v.env.r = 0.004f; /* choke ('Cut itself'): a 4 ms fade instead of the release time */ v.env.noteOff(); } }
+            else if (e.type == MidiEvent::AllNotesOff) { for (auto& v : m_voices) { if (e.data1 == 1) cutVoice(v); /* choke ('Cut itself'): the declick fade-out */ else v.env.noteOff(); } }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
             else if (e.type == MidiEvent::CC && e.data1 == 1) m_modWheel = e.data2 / 127.f;
         }
@@ -63,7 +72,9 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
             double semis = (v.note - p.get(pRoot)) + p.get(pTune) + p.get(pFine) / 100.0 + m_bend + glideSemi;
             v.inc = std::pow(2.0, semis / 12.0) * (a->sampleRate / m_sr);
             int64_t ls = (int64_t)(p.get(pLoopStart) * a->frames), le = std::max<int64_t>(ls + 2, (int64_t)(p.get(pLoopEnd) * a->frames));
-            float xl = readInterp(a->L(), a->frames, v.pos) * env * v.vel, xr = readInterp(a->R(), a->frames, v.pos) * env * v.vel;
+            float dg = 1.f; if (v.fadeInPos < v.fadeInLen) { dg = 0.5f - 0.5f * std::cos(3.14159265f * (float)v.fadeInPos / (float)v.fadeInLen); ++v.fadeInPos; }
+            if (v.fadeOutPos >= 0) { if (v.fadeOutPos >= v.fadeOutLen) { v.active = false; v.env.kill(); continue; } dg *= 0.5f + 0.5f * std::cos(3.14159265f * (float)v.fadeOutPos / (float)v.fadeOutLen); ++v.fadeOutPos; }
+            float xl = readInterp(a->L(), a->frames, v.pos) * env * v.vel * dg, xr = readInterp(a->R(), a->frames, v.pos) * env * v.vel * dg;
             if (useFilter) { v.fl.set(m_sr, cutoff, reso); v.fr.set(m_sr, cutoff, reso); xl = v.fl.process(xl, ftype); xr = v.fr.process(xr, ftype); }
             float vl, vr; panGains(v.pan, vl, vr);
             sl += xl * vl * 1.4142f; sr += xr * vr * 1.4142f;
@@ -145,7 +156,7 @@ void DrumSampler::process(float* L, float* R, int n, const MidiEventList& midi, 
         while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
             const auto& e = midi.events[mi++];
             if (e.type == MidiEvent::NoteOn) trigger(e);
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.env.r = 0.004f; v.env.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.env.r = 0.006f; v.env.noteOff(); }
         }
         float sl = 0, sr = 0;
         for (auto& v : m_voices) {
@@ -212,7 +223,7 @@ void Synth::process(float* L, float* R, int n, const MidiEventList& midi, const 
         while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
             const auto& e = midi.events[mi++];
             if (e.type == MidiEvent::NoteOn) noteOn(e); else if (e.type == MidiEvent::NoteOff) noteOff(e);
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.004f; v.amp.noteOff(); v.fenv.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.006f; v.amp.noteOff(); v.fenv.noteOff(); }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
             else if (e.type == MidiEvent::CC && e.data1 == 1) m_modWheel = e.data2 / 127.f;
         }
@@ -301,7 +312,7 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
                 v->amp.set(m_sr, p.get(pAA), p.get(pAD), p.get(pAS), p.get(pAR)); v->amp.noteOn(); v->fenv.set(m_sr, p.get(pFA), p.get(pFD), p.get(pFS), p.get(pFR)); v->fenv.noteOn();
                 Rng r; r.s = 77 + e.data1 + (uint32_t)m_counter; for (int u = 0; u < 8; ++u) v->phase[u] = r.uniform(); m_lastNote = e.data1;
             } else if (e.type == MidiEvent::NoteOff) { for (auto& v : m_voices) if (v.active && v.note == e.data1) { v.amp.noteOff(); v.fenv.noteOff(); } }
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.004f; v.amp.noteOff(); v.fenv.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.006f; v.amp.noteOff(); v.fenv.noteOff(); }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * 2.f;
         }
         float lfo = m_lfo.next(lfoRate, m_sr, lfoShape); float sl = 0, sr = 0;
@@ -352,7 +363,7 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
                 for (int o = 0; o < 4; ++o) { v->ph[o] = 0; v->env[o].set(m_sr, p.get(opParam(o, 3)), p.get(opParam(o, 4)), p.get(opParam(o, 5)), p.get(opParam(o, 6))); v->env[o].noteOn(); }
                 v->amp.set(m_sr, p.get(pAA), p.get(pAD), p.get(pAS), p.get(pAR)); v->amp.noteOn();
             } else if (e.type == MidiEvent::NoteOff) { for (auto& v : m_voices) if (v.active && v.note == e.data1) { v.amp.noteOff(); for (auto& en : v.env) en.noteOff(); } }
-            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.004f; v.amp.noteOff(); for (auto& en : v.env) en.noteOff(); }
+            else if (e.type == MidiEvent::AllNotesOff) for (auto& v : m_voices) { if (e.data1 == 1) v.amp.r = 0.006f; v.amp.noteOff(); for (auto& en : v.env) en.noteOff(); }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
         }
         float lfo = m_lfo.next(lfoRate, m_sr, 0); float s = 0;
