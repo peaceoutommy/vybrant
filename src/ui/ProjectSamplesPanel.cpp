@@ -1,4 +1,5 @@
 #include "ui/ProjectSamplesPanel.h"
+#include <QSignalBlocker>
 #include <QMessageBox>
 #include <QSet>
 #include <QSettings>
@@ -28,7 +29,7 @@ void ProjectItemList::startDrag(Qt::DropActions) {
 }
 
 ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
-    setMinimumWidth(180); setMaximumWidth(360);
+    setMinimumWidth(180);   // no maximum: the dock's outer edge resizes this strip alone
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(3, 3, 3, 3); lay->setSpacing(3);
     // three tabs styled like the browser's search box: one segmented control
     auto* tabs = new QWidget(this); tabs->setObjectName("projTabs"); theme::styled(tabs, "QWidget#projTabs { background: @surface@; border: 1px solid @border@; border-radius: 3px; }"); auto* tl = new QHBoxLayout(tabs); tl->setContentsMargins(2, 2, 2, 2); tl->setSpacing(2);
@@ -56,7 +57,7 @@ void ProjectSamplesPanel::setTab(int t) { m_tab = std::clamp(t, 0, 2); m_tabs[m_
 void ProjectSamplesPanel::refresh(uint32_t flags) { if (flags & (ChangeAudio | ChangePlaylist | ChangeChannels | ChangeStructure | ChangePatterns | ChangeAutomation | ChangeAll)) rebuild(); }
 QListWidgetItem* ProjectSamplesPanel::addItem(const QString& text, const QColor& dot, const QString& tip) { auto* it = new QListWidgetItem(text); QPixmap pm(10, 10); pm.fill(Qt::transparent); { QPainter p(&pm); p.setRenderHint(QPainter::Antialiasing); p.setPen(Qt::NoPen); p.setBrush(dot); p.drawEllipse(1, 1, 8, 8); } it->setIcon(QIcon(pm)); it->setToolTip(tip); m_list->addItem(it); return it; }
 void ProjectSamplesPanel::rebuild() {
-    QString keep = m_list->currentItem() ? m_list->currentItem()->data(ProjectItemList::PayloadRole).toString() : QString(); m_list->clear(); auto& proj = m_app.project();
+    QString keep = m_list->currentItem() ? m_list->currentItem()->data(ProjectItemList::PayloadRole).toString() : QString(); QSet<QString> keepSel; for (auto* x : m_list->selectedItems()) keepSel.insert(x->data(ProjectItemList::PayloadRole).toString()); m_list->clear(); auto& proj = m_app.project();
     if (m_tab == Samples) { // one row per sample: blue = in the playlist, green = on a channel, grey = unused, red = missing
         QSet<QString> seen;
         auto addRow = [&](const QString& name, const QString& path, const QString& used, double secs, bool isMissing, bool isUnused, bool onChannel) { QColor dot = isMissing ? theme::red() : isUnused ? theme::textDim() : onChannel ? theme::green() : QColor("#4e8fb8"); auto* it = addItem(name, dot, QString("%1\n%2%3\n%4").arg(name, used, secs > 0 ? QString("  |  %1 s").arg(secs, 0, 'f', 2) : QString(), isMissing ? "MISSING: " + path : path)); it->setData(ProjectItemList::PathRole, path); it->setData(ProjectItemList::PayloadRole, "audio|" + path); if (isMissing) it->setForeground(theme::red()); else if (isUnused) it->setForeground(theme::textDim()); };
@@ -68,7 +69,7 @@ void ProjectSamplesPanel::rebuild() {
         for (auto& l : proj.automationLanes) { auto* it = addItem(l.name, l.color, l.name + "\ndrag into the playlist to place an automation clip"); it->setData(ProjectItemList::IdRole, (qulonglong)l.id); it->setData(ProjectItemList::PayloadRole, "lane|" + QString::number(l.id)); }
         if (proj.automationLanes.empty()) { auto* it = new QListWidgetItem("No automation yet - right-click a knob > Create automation clip"); it->setFlags(Qt::NoItemFlags); it->setForeground(theme::textDim()); m_list->addItem(it); }
     }
-    if (!keep.isEmpty()) for (int i = 0; i < m_list->count(); ++i) if (m_list->item(i)->data(ProjectItemList::PayloadRole).toString() == keep) { m_list->setCurrentItem(m_list->item(i)); break; }
+    { QSignalBlocker b(m_list); for (int i = 0; i < m_list->count(); ++i) { auto* x = m_list->item(i); QString pl = x->data(ProjectItemList::PayloadRole).toString(); if (pl == keep) m_list->setCurrentItem(x, QItemSelectionModel::NoUpdate); if (keepSel.contains(pl)) x->setSelected(true); } }
 }
 void ProjectSamplesPanel::onContext(const QPoint& pos) {
     auto* it = m_list->itemAt(pos); QMenu m(this);

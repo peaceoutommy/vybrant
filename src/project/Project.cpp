@@ -87,7 +87,7 @@ Project makeDefaultProject(bool demo) {
     for (int i = 0; i < 8; ++i) { Note n; n.id = p.newId(); n.pitch = melody[i]; n.start = (Tick)i * PPQ / 2; n.duration = PPQ / 4; n.velocity = 0.7f; syn.notes.push_back(n); } }
     p.patterns.push_back(pat);
     p.selectedPatternId = pat.id; p.selectedChannelId = p.channels.empty() ? 0 : p.channels[0].id;
-    for (int i = 1; i <= 8; ++i) { PlaylistTrack t; t.id = p.newId(); t.name = QString("Track %1").arg(i); p.playlistTracks.push_back(t); }
+    for (int i = 1; i <= 12; ++i) { PlaylistTrack t; t.id = p.newId(); t.name = QString("Track %1").arg(i); p.playlistTracks.push_back(t); }
     if (demo) { Clip c; c.id = p.newId(); c.type = ClipType::Pattern; c.trackId = p.playlistTracks[0].id; c.sourceId = pat.id; c.start = 0; c.length = 0; c.loopSource = false; c.name = pat.name; p.clips.push_back(c); }
     p.transport.loopEnd = PPQ * 16;
     return p;

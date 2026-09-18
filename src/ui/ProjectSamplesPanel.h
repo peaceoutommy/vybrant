@@ -19,6 +19,11 @@ public:
     std::function<void()> onDelete;   // Delete key: remove the selection (the panel decides what that means per tab)
     enum { PayloadRole = Qt::UserRole, PathRole = Qt::UserRole + 1, IdRole = Qt::UserRole + 2 };
 protected:
+    // no rubber-band selection: a press on empty space just clears the selection (Ctrl / Shift + click do the multi-selecting)
+    void mousePressEvent(QMouseEvent* e) override { if (!indexAt(e->pos()).isValid()) { if (!(e->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier))) clearSelection(); m_emptyPress = true; return; } m_emptyPress = false; QListWidget::mousePressEvent(e); }
+    void mouseMoveEvent(QMouseEvent* e) override { if (m_emptyPress) return; QListWidget::mouseMoveEvent(e); }
+    void mouseReleaseEvent(QMouseEvent* e) override { if (m_emptyPress) { m_emptyPress = false; return; } QListWidget::mouseReleaseEvent(e); }
+    bool m_emptyPress = false;
     void startDrag(Qt::DropActions) override; void keyPressEvent(QKeyEvent* e) override { if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && onDelete) { onDelete(); return; } QListWidget::keyPressEvent(e); }
 };
 
