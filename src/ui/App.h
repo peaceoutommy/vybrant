@@ -62,7 +62,7 @@ public:
     void setChannelSample(Id id, const QString& path); void changeChannelInstrument(Id id, const QString& key, Id pluginId = 0);
 
     // ---- patterns
-    Id addPattern(const QString& name = QString()); void deletePattern(Id id); Id clonePattern(Id id); void renamePattern(Id id, const QString& name); void setPatternColor(Id id, const QColor& c); void movePattern(Id id, int index);
+    Id addPattern(const QString& name = QString()); void deletePattern(Id id); Id clonePattern(Id id); std::vector<Id> splitPatternByChannel(Id id); /* FL split by channel: one new pattern per channel with content, named after the channel */ void renamePattern(Id id, const QString& name); void setPatternColor(Id id, const QColor& c); void movePattern(Id id, int index);
     void editPattern(Id id, const QString& desc, std::function<void(Pattern&)> fn, int mergeId = 0) { m_model.edit<Pattern>(id, desc, std::move(fn), mergeId); }
     void setStep(Id patternId, Id channelId, int step, bool enabled); void setStepProperty(Id patternId, Id channelId, int step, int which, float value, bool commit);
 

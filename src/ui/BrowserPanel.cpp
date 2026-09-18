@@ -164,7 +164,7 @@ void BrowserTree::startDrag(Qt::DropActions) {
 // ---------------------------------------------------------------- panel
 BrowserPanel::BrowserPanel(App& app, QWidget* parent) : QWidget(parent), m_app(app) {
     auto* lay = new QVBoxLayout(this); lay->setContentsMargins(2, 2, 2, 2); lay->setSpacing(2);
-    m_search = new QLineEdit(this); m_search->setPlaceholderText("Search samples, plugins, presets, tags..."); m_search->setClearButtonEnabled(true); m_search->setToolTip("Type to search the whole library (results appear as you type). Right-click the browser to add folders."); lay->addWidget(m_search);
+    m_search = new QLineEdit(this); m_search->setPlaceholderText("Search samples, plugins, presets, tags..."); m_search->setClearButtonEnabled(true); m_search->setFixedHeight(26); m_search->setToolTip("Type to search the whole library (results appear as you type). Right-click the browser to add folders."); lay->addWidget(m_search);
     m_tree = new BrowserTree(this); m_model = new BrowserModel(app, this); m_tree->setModel(m_model);
     m_tree->setHeaderHidden(true); m_tree->setDragEnabled(true); m_tree->setAcceptDrops(true); m_tree->setDragDropMode(QAbstractItemView::DragDrop); m_tree->setDefaultDropAction(Qt::CopyAction); m_tree->setDropIndicatorShown(true); m_tree->setContextMenuPolicy(Qt::CustomContextMenu); m_tree->setUniformRowHeights(true); m_tree->setIndentation(14); m_tree->setAlternatingRowColors(true); m_tree->setExpandsOnDoubleClick(false); m_tree->installEventFilter(this);
     lay->addWidget(m_tree);

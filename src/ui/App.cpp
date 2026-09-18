@@ -225,6 +225,25 @@ void App::changeChannelInstrument(Id id, const QString& key, Id pluginId) {
 Id App::addPattern(const QString& name) { Pattern p; p.id = project().newId(); p.name = name.isEmpty() ? QString("Pattern %1").arg(project().patterns.size() + 1) : name; static const char* pal[] = {"#8f97a1", "#f2a93b", "#6dc26d", "#c07be0", "#e2665c", "#5ad1c9"}; /* first (and default) pattern is grey */ p.color = QColor(pal[project().patterns.size() % 6]); for (auto& c : project().channels) p.ensureChannel(c.id); m_model.insert<Pattern>(p, "Add pattern"); selectPattern(p.id); return p.id; }
 void App::deletePattern(Id id) { std::vector<std::unique_ptr<Command>> cmds; for (auto& c : project().clips) if (c.type == ClipType::Pattern && c.sourceId == id) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, c.id, "")); cmds.push_back(std::make_unique<RemoveObjectCommand<Pattern>>(m_model, id, "")); m_model.macro("Delete pattern", std::move(cmds)); if (project().selectedPatternId == id) selectPattern(project().patterns.empty() ? 0 : project().patterns.front().id); }
 Id App::clonePattern(Id id) { const Pattern* src = project().pattern(id); if (!src) return 0; Pattern p = *src; p.id = project().newId(); p.name = src->name + " (copy)"; for (auto& c : p.channels) for (auto& n : c.notes) n.id = project().newId(); m_model.insert<Pattern>(p, "Clone pattern"); return p.id; }
+// Split by channel: every channel that has steps or notes in the pattern becomes its own pattern, named after the channel
+// (a sampler channel carries its sample's name). Playlist clips of the source are replaced by one clip per new pattern, stacked
+// on the following tracks, so the song still plays the same; the source pattern is then removed. One undo step.
+std::vector<Id> App::splitPatternByChannel(Id id) {
+    const Pattern* src = project().pattern(id); std::vector<Id> out; if (!src) return out;
+    std::vector<std::unique_ptr<Command>> cmds; std::vector<Pattern> parts;
+    for (auto& cd : src->channels) { bool has = !cd.notes.empty(); for (auto& st : cd.steps) if (st.enabled) has = true; if (!has) continue; const Channel* ch = project().channel(cd.id); if (!ch) continue;
+        Pattern p = *src; p.id = project().newId(); p.name = ch->name; p.color = ch->color; p.channels.clear(); p.channels.push_back(cd); for (auto& n : p.channels[0].notes) n.id = project().newId(); parts.push_back(p); }
+    if (parts.size() < 2) { Q_EMIT statusMessage("Split by channel: the pattern has content on only one channel", 3000); return out; }
+    int at = -1; for (size_t i = 0; i < project().patterns.size(); ++i) if (project().patterns[i].id == id) at = (int)i + 1;
+    for (size_t i = 0; i < parts.size(); ++i) { cmds.push_back(std::make_unique<InsertObjectCommand<Pattern>>(m_model, parts[i], "", at < 0 ? -1 : at + (int)i)); out.push_back(parts[i].id); }
+    // playlist: each clip of the source becomes a stack of clips, one per part, starting on the clip's track and going down
+    auto& tracks = project().playlistTracks; std::vector<Clip> srcClips; for (auto& c : project().clips) if (c.type == ClipType::Pattern && c.sourceId == id) srcClips.push_back(c);
+    int neededTracks = 0; for (auto& c : srcClips) { int ti = 0; for (size_t i = 0; i < tracks.size(); ++i) if (tracks[i].id == c.trackId) ti = (int)i; neededTracks = std::max(neededTracks, ti + (int)parts.size()); }
+    std::vector<Id> trackIds; for (auto& t : tracks) trackIds.push_back(t.id); for (int i = (int)tracks.size(); i < neededTracks; ++i) { PlaylistTrack t; t.id = project().newId(); t.name = QString("Track %1").arg(i + 1); cmds.push_back(std::make_unique<InsertObjectCommand<PlaylistTrack>>(m_model, t, "", -1)); trackIds.push_back(t.id); }
+    for (auto& c : srcClips) { int ti = 0; for (size_t i = 0; i < trackIds.size(); ++i) if (trackIds[i] == c.trackId) ti = (int)i; for (size_t i = 0; i < parts.size(); ++i) { Clip nc = c; nc.id = project().newId(); nc.sourceId = parts[i].id; nc.name = parts[i].name; nc.trackId = trackIds[std::min<size_t>(ti + i, trackIds.size() - 1)]; cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, nc, "", -1)); } cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, c.id, "")); }
+    cmds.push_back(std::make_unique<RemoveObjectCommand<Pattern>>(m_model, id, ""));
+    m_model.macro("Split pattern by channel", std::move(cmds)); if (!out.empty()) selectPattern(out.front()); return out;
+}
 void App::renamePattern(Id id, const QString& name) { m_model.edit<Pattern>(id, "Rename pattern", [name](Pattern& p) { p.name = name; }); std::vector<std::unique_ptr<Command>> cmds; for (auto& c : project().clips) if (c.type == ClipType::Pattern && c.sourceId == id) cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [name](Clip& cl) { cl.name = name; }, 0)); if (!cmds.empty()) m_model.macro("Rename clips", std::move(cmds)); }
 void App::setPatternColor(Id id, const QColor& c) { m_model.edit<Pattern>(id, "Pattern color", [c](Pattern& p) { p.color = c; }); }
 void App::movePattern(Id id, int index) { m_model.reorder<Pattern>(id, index, "Reorder pattern"); }

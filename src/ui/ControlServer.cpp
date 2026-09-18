@@ -57,7 +57,10 @@ QString ControlServer::handle(const QString& line) {
         QDragEnterEvent en(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &en); QDragMoveEvent mv(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &mv); QDropEvent dr(pos, Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &dr); delete md; return QString("enter=%1 move=%2 drop=%3 channels=%4").arg(en.isAccepted()).arg(mv.isAccepted()).arg(dr.isAccepted()).arg(m_app.project().channels.size()); }
     if (c == "leftsplit" && a.size() >= 2) { m_win.debugLeftDock(a[1].toInt()); return "ok"; }
     if (c == "leftsizes") return m_win.debugLeftSizes();
+    if (c == "dock" && a.size() >= 2) { m_win.debugDock(a[1] == "top" ? Qt::TopDockWidgetArea : Qt::BottomDockWidgetArea); return "ok"; }
+    if (c == "layout") return m_win.debugLayout();
     if (c == "winsize" && a.size() >= 3) { m_win.resize(a[1].toInt(), a[2].toInt()); return "ok"; }
+    if (c == "split") { auto ids = m_app.splitPatternByChannel(m_app.project().selectedPatternId); QStringList l; for (auto& p : m_app.project().patterns) l << p.name; QStringList cl; for (auto& cc : m_app.project().clips) cl << QString("%1@t%2").arg(cc.name).arg(m_app.project().mixerIndex(0) * 0 + [&]{ int i = 0; for (size_t k = 0; k < m_app.project().playlistTracks.size(); ++k) if (m_app.project().playlistTracks[k].id == cc.trackId) i = (int)k + 1; return i; }()); return QString("new=%1 patterns: %2 | clips: %3").arg(ids.size()).arg(l.join(", ")).arg(cl.join(", ")); }
     if (c == "quit") { QTimer::singleShot(0, qApp, [] { qApp->quit(); }); return "ok"; }
     return "err unknown command (ping play stop note select channels stats screenshot editor action theme quit)";
 }
