@@ -40,17 +40,32 @@
 
 namespace mt {
 
-// Browser | project-strip splitter: the browser's width is whatever the user last set with the inner handle; resizing the
-// dock (its outer edge) only changes the strip. A plain QSplitter would shrink both proportionally.
-class LeftSplitter : public QSplitter {
+// Browser | project strip: two independent panels, not a splitter. Each has its own width (with a min and a max) and its own
+// grip; dragging a grip changes that panel only and grows/shrinks the dock by the same amount, so the other panel never moves.
+// When the main window resizes the dock from its outer edge, the change goes to the strip alone.
+class LeftPanels : public QWidget {
 public:
-    explicit LeftSplitter(QWidget* parent) : QSplitter(Qt::Horizontal, parent) { connect(this, &QSplitter::splitterMoved, this, [this](int, int) { m_browserW = sizes().value(0); }); }
-    void setSizes(const QList<int>& l) { QSplitter::setSizes(l); m_browserW = l.value(0); }
-    bool restoreState(const QByteArray& st) { bool ok = QSplitter::restoreState(st); m_browserW = sizes().value(0); return ok; }
-protected:
-    void resizeEvent(QResizeEvent* e) override { QSplitter::resizeEvent(e); if (count() < 2 || !widget(1)->isVisible()) return; int total = width() - handleWidth(); int strip = std::max(widget(1)->minimumWidth(), total - std::max(m_browserW, widget(0)->minimumWidth())); int browser = std::max(widget(0)->minimumWidth(), total - strip); QSplitter::setSizes({browser, total - browser}); }
+    static constexpr int kGrip = 5;
+    struct Bounds { int min, max; };
+    LeftPanels(QWidget* browser, QWidget* strip, QWidget* parent) : QWidget(parent), m_browser(browser), m_strip(strip) { browser->setParent(this); strip->setParent(this); m_grip = new Grip(this, [this](int dx) { setBrowserWidth(m_browserW + dx); }); updateBounds(); }
+    void setBrowserWidth(int w) { m_browserW = std::clamp(w, m_bb.min, m_bb.max); requestDockWidth(); }
+    void setStripWidth(int w) { m_stripW = std::clamp(w, m_sb.min, m_sb.max); requestDockWidth(); }
+    int browserWidth() const { return m_browserW; } int stripWidth() const { return m_stripW; }
+    void setStripVisible(bool v) { m_strip->setVisible(v); m_grip->setVisible(v); requestDockWidth(); }
+    std::function<void(int)> onWantWidth;   // ask the main window to give the dock this width
+    void resizeEvent(QResizeEvent*) override { relayout(); }
 private:
-    int m_browserW = 260;
+    struct Grip : QWidget { std::function<void(int)> onDrag; int last = 0; Grip(QWidget* p, std::function<void(int)> f) : QWidget(p), onDrag(std::move(f)) { setCursor(Qt::SplitHCursor); setFixedWidth(kGrip); }
+        void mousePressEvent(QMouseEvent* e) override { last = e->globalPosition().toPoint().x(); } void mouseMoveEvent(QMouseEvent* e) override { if (!(e->buttons() & Qt::LeftButton)) return; int x = e->globalPosition().toPoint().x(); onDrag(x - last); last = x; }
+        void paintEvent(QPaintEvent*) override { QPainter p(this); p.fillRect(rect(), theme::withAlpha(theme::border(), 120)); } };
+    // The dock can only be as wide as browser + strip-max and as narrow as browser + strip-min: the main window's separator
+    // then stops exactly at the limits instead of overshooting and snapping back on release.
+    void updateBounds() { bool v = m_strip->isVisible(); setMinimumWidth(m_browserW + (v ? kGrip + m_sb.min : 0)); setMaximumWidth(m_browserW + (v ? kGrip + m_sb.max : 0)); }
+    void requestDockWidth() { updateBounds(); m_wantW = m_browserW + (m_strip->isVisible() ? kGrip + m_stripW : 0); if (onWantWidth) onWantWidth(m_wantW); if (width() == m_wantW) relayout(); }   // otherwise the dock resize delivers the resizeEvent
+    // The strip always takes whatever the dock gives beyond the browser (the bounds keep that within the strip's min/max)
+    void relayout() { int h = height(); if (m_strip->isVisible()) m_stripW = std::clamp(width() - m_browserW - kGrip, m_sb.min, m_sb.max);
+        m_browser->setGeometry(0, 0, m_browserW, h); if (m_strip->isVisible()) { m_grip->setGeometry(m_browserW, 0, kGrip, h); m_strip->setGeometry(m_browserW + kGrip, 0, m_stripW, h); } }
+    QWidget* m_browser; QWidget* m_strip; Grip* m_grip; int m_browserW = 260, m_stripW = 180, m_wantW = -1; Bounds m_bb{200, 520}, m_sb{180, 300};
 };
 
 MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(app) {
@@ -82,7 +97,7 @@ MainWindow::MainWindow(App& app, QWidget* parent) : QMainWindow(parent), m_app(a
     QSettings s; if (s.contains("ui/geometry")) restoreGeometry(s.value("ui/geometry").toByteArray()); if (s.contains("ui/state")) restoreState(s.value("ui/state").toByteArray()); if (s.contains("ui/workspace")) m_workspace->restoreState(s.value("ui/workspace").toByteArray());
     enforceSingleEditor();
     updateTitle();
-    QTimer::singleShot(0, this, [this] { m_dBrowser->show(); { QSettings st; if (st.contains("ui/leftSplit")) m_leftSplit->restoreState(st.value("ui/leftSplit").toByteArray()); else { resizeDocks({m_dBrowser}, {450}, Qt::Horizontal); m_leftSplit->setSizes({260, 180}); } }   /* first run with the split dock: room for both */ m_samples->setVisible(QSettings().value("ui/samplesVisible", true).toBool()); if (!QSettings().contains("ui/state")) applyDefaultLayout(); if (qEnvironmentVariableIsSet("MT_DEBUG_LAYOUT")) { fprintf(stderr, "layout: browser %d,%d %dx%d vis=%d | samples %d,%d %dx%d vis=%d floating=%d area=%d\n", m_dBrowser->x(), m_dBrowser->y(), m_dBrowser->width(), m_dBrowser->height(), (int)m_dBrowser->isVisible(), m_dSamples->x(), m_dSamples->y(), m_dSamples->width(), m_dSamples->height(), (int)m_dSamples->isVisible(), (int)m_dSamples->isFloating(), (int)dockWidgetArea(m_dSamples)); qDebug() << "win" << size() << "workspace" << m_workspace->geometry() << "hint" << m_workspace->sizeHint() << m_workspace->minimumSizeHint() << "rackdock" << m_dRack->geometry() << m_dRack->sizeHint() << m_dRack->minimumSizeHint() << "rack" << m_rack->sizeHint() << m_rack->minimumSizeHint() << "mixer" << m_mixer->sizeHint() << m_mixer->minimumSizeHint() << "playlistdock" << m_dPlaylist->geometry() << m_playlist->sizeHint() << m_playlist->minimumSizeHint(); } });
+    QTimer::singleShot(0, this, [this] { m_dBrowser->show(); { QSettings st; m_leftSplit->setBrowserWidth(st.value("ui/browserWidth", 260).toInt()); m_leftSplit->setStripWidth(st.value("ui/stripWidth", 180).toInt()); } m_leftSplit->setStripVisible(QSettings().value("ui/samplesVisible", true).toBool()); if (!QSettings().contains("ui/state")) applyDefaultLayout(); if (qEnvironmentVariableIsSet("MT_DEBUG_LAYOUT")) { fprintf(stderr, "layout: browser %d,%d %dx%d vis=%d | samples %d,%d %dx%d vis=%d floating=%d area=%d\n", m_dBrowser->x(), m_dBrowser->y(), m_dBrowser->width(), m_dBrowser->height(), (int)m_dBrowser->isVisible(), m_dSamples->x(), m_dSamples->y(), m_dSamples->width(), m_dSamples->height(), (int)m_dSamples->isVisible(), (int)m_dSamples->isFloating(), (int)dockWidgetArea(m_dSamples)); qDebug() << "win" << size() << "workspace" << m_workspace->geometry() << "hint" << m_workspace->sizeHint() << m_workspace->minimumSizeHint() << "rackdock" << m_dRack->geometry() << m_dRack->sizeHint() << m_dRack->minimumSizeHint() << "rack" << m_rack->sizeHint() << m_rack->minimumSizeHint() << "mixer" << m_mixer->sizeHint() << m_mixer->minimumSizeHint() << "playlistdock" << m_dPlaylist->geometry() << m_playlist->sizeHint() << m_playlist->minimumSizeHint(); } });
 }
 
 void MainWindow::buildDocks() {
@@ -90,8 +105,9 @@ void MainWindow::buildDocks() {
     // Browser and the project strip share one dock through a splitter: the strip resizes against the browser with the inner
     // handle, and the dock's outer edge only resizes the strip (the browser keeps its width)
     m_browser = new BrowserPanel(m_app, this); m_samples = new ProjectSamplesPanel(m_app, this);
-    m_leftSplit = new LeftSplitter(this); m_leftSplit->setChildrenCollapsible(false); m_leftSplit->setHandleWidth(4); m_leftSplit->addWidget(m_browser); m_leftSplit->addWidget(m_samples); m_leftSplit->setSizes({260, 180});
-    m_dBrowser = mkDock(this, "Browser", "dockBrowser", m_leftSplit, Qt::LeftDockWidgetArea); m_browser->setMinimumWidth(200); m_dSamples = m_dBrowser;
+    m_leftSplit = new LeftPanels(m_browser, m_samples, this);
+    m_dBrowser = mkDock(this, "Browser", "dockBrowser", m_leftSplit, Qt::LeftDockWidgetArea); m_dSamples = m_dBrowser;
+    m_leftSplit->onWantWidth = [this](int w) { resizeDocks({m_dBrowser}, {w}, Qt::Horizontal); };
     m_playlist = new PlaylistPanel(m_app, this); m_dPlaylist = mkDock(m_workspace, "Playlist", "dockPlaylist", m_playlist, Qt::TopDockWidgetArea);
     m_pianoRoll = new PianoRollPanel(m_app, this); m_dPiano = mkDock(m_workspace, "Piano Roll", "dockPianoRoll", m_pianoRoll, Qt::TopDockWidgetArea);
     // fixed panels don't need a title bar: the browser / samples / playlist / piano roll are where they are (the rack keeps its bar - that's how it floats and docks)
@@ -150,7 +166,7 @@ void MainWindow::buildMenus() {
     auto addDockAction = [&](const QString& id, QDockWidget* d, const QKeySequence& k, bool inWorkspace) { auto* a = reg.add(id, d->windowTitle(), "View", k, [this, d, inWorkspace] { bool shown = d->isVisible() && !d->visibleRegion().isEmpty() && (!inWorkspace || m_pages->currentWidget() == m_workspace); if (inWorkspace) showWorkspaceDock(d); /* switch, never toggle off: the workspace always shows one of the two editors */ else if (shown) d->hide(); else { d->show(); d->raise(); d->widget()->setFocus(); } syncWindowButtons(); }, this); view->addAction(a); };
     addDockAction("view.playlist", m_dPlaylist, QKeySequence("F5"), true); addDockAction("view.rack", m_dRack, QKeySequence("F6"), false); addDockAction("view.pianoRoll", m_dPiano, QKeySequence("F7"), true); addDockAction("view.browser", m_dBrowser, QKeySequence("F8"), false);
     view->addAction(reg.add("view.mixer", "Mixer", "View", QKeySequence("F9"), [this] { showMixerPage(m_pages->currentWidget() != m_mixer); }, this));
-    view->addAction(reg.add("view.samples", "Project panel (samples / patterns / automation)", "View", QKeySequence("Alt+S"), [this] { m_samples->setVisible(!m_samples->isVisible()); if (m_samples->isVisible()) m_dBrowser->show(); QSettings().setValue("ui/samplesVisible", m_samples->isVisible()); syncWindowButtons(); }, this));
+    view->addAction(reg.add("view.samples", "Project panel (samples / patterns / automation)", "View", QKeySequence("Alt+S"), [this] { m_leftSplit->setStripVisible(!m_samples->isVisible()); if (m_samples->isVisible()) m_dBrowser->show(); QSettings().setValue("ui/samplesVisible", m_samples->isVisible()); syncWindowButtons(); }, this));
     view->addAction(reg.add("view.closeAll", "Close all windows", "View", QKeySequence("F12"), [this] { closeAllWindows(); }, this));
     view->addSeparator(); view->addAction(reg.add("view.resetLayout", "Reset workspace layout", "View", QKeySequence(), [this] { resetLayout(); }, this));
     auto* opt = mb->addMenu("&Options");
@@ -189,7 +205,7 @@ void MainWindow::resetLayout() { restoreState(m_defaultState); m_workspace->rest
 // FL-style default: Browser docked left, Playlist / Piano Roll in the main area, Channel Rack floating over the
 // workspace and the Mixer in its own floating window along the bottom.
 void MainWindow::applyDefaultLayout() {
-    resizeDocks({m_dBrowser}, {450}, Qt::Horizontal); m_leftSplit->setSizes({260, 180});
+    m_leftSplit->setBrowserWidth(260); m_leftSplit->setStripWidth(180);
     QRect g = geometry(); int left = g.left() + 300, top = g.top() + 110;
     m_dRack->setFloating(true); m_dRack->move(left, top); m_dRack->show(); m_dRack->raise(); QTimer::singleShot(0, m_dRack, [this] { m_dRack->resize(m_rack->widthForSteps(16), m_rack->heightForContent() + 24); });
     showMixerPage(false);
@@ -216,7 +232,7 @@ void MainWindow::syncWindowButtons() {
     bool mixer = m_pages->currentWidget() == m_mixer; set("mixer", mixer); set("playlist", !mixer && m_dPlaylist->isVisible() && !m_dPlaylist->visibleRegion().isEmpty()); set("pianoroll", !mixer && m_dPiano->isVisible() && !m_dPiano->visibleRegion().isEmpty()); set("rack", m_dRack->isVisible()); set("browser", m_dBrowser->isVisible()); set("samples", m_samples->isVisible() && m_dBrowser->isVisible());
 }
 void MainWindow::startupChecks() { if (m_app.hasRecoveryFile()) { auto r = QMessageBox::question(this, "Recover project", "An autosaved recovery file from a previous session was found. Recover it?", QMessageBox::Yes | QMessageBox::No); if (r == QMessageBox::Yes) m_app.recoverAutosave(); else QFile::remove(m_app.autosavePath()); } }
-void MainWindow::closeEvent(QCloseEvent* e) { if (!m_forceClose && !maybeSave()) { e->ignore(); return; } QSettings s; s.setValue("ui/geometry", saveGeometry()); s.setValue("ui/state", saveState()); s.setValue("ui/workspace", m_workspace->saveState()); s.setValue("ui/leftSplit", m_leftSplit->saveState()); for (auto& [id, w] : m_editors) w->close(); e->accept(); }
+void MainWindow::closeEvent(QCloseEvent* e) { if (!m_forceClose && !maybeSave()) { e->ignore(); return; } QSettings s; s.setValue("ui/geometry", saveGeometry()); s.setValue("ui/state", saveState()); s.setValue("ui/workspace", m_workspace->saveState()); s.setValue("ui/browserWidth", m_leftSplit->browserWidth()); s.setValue("ui/stripWidth", m_leftSplit->stripWidth()); for (auto& [id, w] : m_editors) w->close(); e->accept(); }
 bool MainWindow::saveScreenshot(const QString& path) { QPixmap pm = grab(); bool ok = pm.save(path); if (QWidget* m = QApplication::activeModalWidget()) { QString p = path; p.insert(p.lastIndexOf('.'), "_dialog"); m->grab().save(p); } int ei = 0; for (auto& [id, w] : m_editors) if (w && w->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), QString("_editor%1").arg(ei++)); w->grab().save(p); } for (auto* d : {m_dRack}) if (d->isFloating() && d->isVisible()) { QString p = path; p.insert(p.lastIndexOf('.'), "_" + d->objectName()); d->grab().save(p); } return ok; }
 
 int MainWindow::typingNote(int key) const {
@@ -272,7 +288,7 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
 // Slide the freshly docked rack open instead of letting the layout jump (undocking is already animated by Qt)
 // The workspace is a QMainWindow whose central widget is empty, so Qt still offers a resize separator along its bottom edge.
 // Only show separators when the rack is actually docked there (then the playlist/rack split is a real resize).
-QString MainWindow::debugLeftSizes() const { auto sz = m_leftSplit->sizes(); return QString("dock=%1 browser=%2 strip=%3 splitter=%4").arg(m_dBrowser->width()).arg(sz.value(0)).arg(sz.value(1)).arg(m_leftSplit->width()); }
+QString MainWindow::debugLeftSizes() const { return QString("dock=%1 browser=%2 strip=%3 panel=%4").arg(m_dBrowser->width()).arg(m_leftSplit->browserWidth()).arg(m_leftSplit->stripWidth()).arg(m_leftSplit->width()); }
 void MainWindow::updateWorkspaceSeparators() { bool rackDocked = m_dRack && !m_dRack->isFloating() && m_dRack->parentWidget() && m_workspace->isAncestorOf(m_dRack); m_workspace->setStyleSheet(rackDocked ? QString() : QStringLiteral("QMainWindow::separator { width: 0px; height: 0px; margin: 0; padding: 0; }")); }
 void MainWindow::animateRackDock() {
     int h = m_rack->heightForContent() + 24; bool dbg = qEnvironmentVariableIsSet("MT_DEBUG_DOCK");

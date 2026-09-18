@@ -18,7 +18,7 @@
 
 namespace mt {
 
-QString ControlServer::socketPath() { QString d = qEnvironmentVariable("XDG_RUNTIME_DIR"); if (d.isEmpty()) d = QDir::tempPath(); return d + "/musicthingy.sock"; }
+QString ControlServer::socketPath() { QString env = qEnvironmentVariable("MT_CONTROL_SOCKET"); if (!env.isEmpty()) return env; /* tests: a private socket so they never talk to the user's instance */ QString d = qEnvironmentVariable("XDG_RUNTIME_DIR"); if (d.isEmpty()) d = QDir::tempPath(); return d + "/musicthingy.sock"; }
 
 ControlServer::ControlServer(App& app, MainWindow& win, QObject* parent) : QObject(parent), m_app(app), m_win(win) {
     // don't steal the socket from another running instance (e.g. an offscreen test run next to the real app)
@@ -57,6 +57,7 @@ QString ControlServer::handle(const QString& line) {
         QDragEnterEvent en(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &en); QDragMoveEvent mv(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &mv); QDropEvent dr(pos, Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier); QCoreApplication::sendEvent(target, &dr); delete md; return QString("enter=%1 move=%2 drop=%3 channels=%4").arg(en.isAccepted()).arg(mv.isAccepted()).arg(dr.isAccepted()).arg(m_app.project().channels.size()); }
     if (c == "leftsplit" && a.size() >= 2) { m_win.debugLeftDock(a[1].toInt()); return "ok"; }
     if (c == "leftsizes") return m_win.debugLeftSizes();
+    if (c == "winsize" && a.size() >= 3) { m_win.resize(a[1].toInt(), a[2].toInt()); return "ok"; }
     if (c == "quit") { QTimer::singleShot(0, qApp, [] { qApp->quit(); }); return "ok"; }
     return "err unknown command (ping play stop note select channels stats screenshot editor action theme quit)";
 }
