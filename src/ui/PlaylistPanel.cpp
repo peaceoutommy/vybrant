@@ -1920,6 +1920,7 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent)
     top->addWidget(hint);
     lay->addLayout(top);
     m_view = new PlaylistView(app, this);
+    theme::roundedFrame(m_view);
     lay->addWidget(m_view, 1);
     m_view->setSnapDivision(-1);
     auto showMode = [this](int t) {

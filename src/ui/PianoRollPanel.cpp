@@ -1938,6 +1938,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     menuBtn->setMenu(tm);
     lay->addLayout(top);
     m_view = new PianoRollView(app, this);
+    theme::roundedFrame(m_view);
     lay->addWidget(m_view, 1);
     connect(m_view, &PianoRollView::channelRequested, this, [this](Id id) {
         m_app.selectChannel(id);

@@ -473,9 +473,10 @@ void MixerStrip::uiTick() {
 }
 void MixerStrip::paintEvent(QPaintEvent*) {
     QPainter p(this);
-    p.fillRect(rect(), m_selected ? theme::hover() : theme::panel());
-    p.setPen(theme::border());
-    p.drawLine(width() - 1, 0, width() - 1, height());
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QPen(theme::border(), 1));
+    p.setBrush(m_selected ? theme::hover() : theme::panel());
+    p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), theme::kRadius, theme::kRadius);   // each strip is a rounded card
 }
 void MixerStrip::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) Q_EMIT selected(m_track, e->modifiers());

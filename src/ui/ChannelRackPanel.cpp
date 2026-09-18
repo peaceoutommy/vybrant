@@ -3,6 +3,7 @@
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
 #include <QPainter>
+#include <QPainterPath>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QContextMenuEvent>
@@ -145,7 +146,7 @@ void RackView::paintEvent(QPaintEvent*) {
         bool hot = QRectF(0, y, m_leftW, m_rowH).contains(mapFromGlobal(QCursor::pos()));
         p.setPen(Qt::NoPen);
         p.setBrush(theme::withAlpha(theme::raised(), hot ? 110 : 60));
-        p.drawRect(rr.adjusted(0, 1, 0, -1));
+        p.drawRoundedRect(rr.adjusted(2, 1, -2, -1), theme::kRadius, theme::kRadius);
         QRectF nb(30, y + 3, 102, m_rowH - 6);
         p.setPen(QPen(hot ? theme::accent() : theme::border(), 1, Qt::DashLine));
         p.setBrush(hot ? theme::withAlpha(theme::accent(), 25) : Qt::NoBrush);
@@ -180,8 +181,19 @@ void RackView::paintEvent(QPaintEvent*) {
         QRect rr = rowRect(r);
         bool selected = c.id == proj.selectedChannelId;
         bool multi = m_multi.count(c.id) > 0;
-        p.fillRect(rr.adjusted(0, 0, 0, -1), (selected || multi) ? QColor(0x27, 0x2c, 0x33) : (r % 2 ? theme::panel() : theme::altRow()));
-        if (multi) { p.fillRect(QRect(0, rr.top(), 2, rr.height() - 1), theme::accent()); }
+        // rows are rounded bands (like the mixer's strip cards), inset 2px from the view edges
+        QRectF band = QRectF(rr).adjusted(2, 0, -2, -1);
+        p.setPen(Qt::NoPen);
+        p.setBrush((selected || multi) ? QColor(0x27, 0x2c, 0x33) : (r % 2 ? theme::panel() : theme::altRow()));
+        p.drawRoundedRect(band, theme::kRadius, theme::kRadius);
+        if (multi) {
+            p.save();
+            QPainterPath clip;
+            clip.addRoundedRect(band, theme::kRadius, theme::kRadius);
+            p.setClipPath(clip);
+            p.fillRect(QRectF(band.left(), band.top(), 3, band.height()), theme::accent());
+            p.restore();
+        }
         if (m_reorderTarget == r && m_dragging && m_press.hit == Grip) {
             p.setPen(QPen(theme::accent(), 2));
             p.drawLine(rr.left(), rr.top(), rr.right(), rr.top());
@@ -1101,6 +1113,7 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
     m_scroll->setWidget(m_view);
     m_scroll->setWidgetResizable(false);
     m_scroll->setFrameShape(QFrame::NoFrame);
+    theme::roundedFrame(m_scroll);
     lay->addWidget(m_scroll);
     connect(m_view, &RackView::addChannelRequested, this, [this](const QPoint& g) { m_addMenu->popup(g); });
     connect(m_view, &RackView::openEditor, this, &ChannelRackPanel::openEditor);

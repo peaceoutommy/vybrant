@@ -2,6 +2,7 @@
 #include "core/Types.h"
 #include <QPixmap>
 #include <QPainterPath>
+#include <QEvent>
 #include <QFrame>
 #include <QSettings>
 #include <QApplication>
@@ -317,6 +318,44 @@ QLabel { background: transparent; }
 )";
     return css(sheet);
 }
+
+namespace {
+class RoundedFrameOverlay : public QWidget {
+public:
+    explicit RoundedFrameOverlay(QWidget* host)
+        : QWidget(host)
+        , m_host(host) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+        setAttribute(Qt::WA_NoSystemBackground);
+        host->installEventFilter(this);
+        setGeometry(host->rect());
+        raise();
+    }
+    bool eventFilter(QObject* o, QEvent* e) override {
+        if (o == m_host && (e->type() == QEvent::Resize || e->type() == QEvent::ChildAdded || e->type() == QEvent::Show)) {
+            setGeometry(m_host->rect());
+            raise();
+        }
+        return false;
+    }
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath outer;
+        outer.addRect(QRectF(rect()).adjusted(-1, -1, 1, 1));
+        QPainterPath inner;
+        inner.addRoundedRect(r, kRadius, kRadius);
+        p.fillPath(outer.subtracted(inner), bg());   // hide the host's square corners
+        p.setPen(QPen(border(), 1));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(r, kRadius, kRadius);
+    }
+private:
+    QWidget* m_host;
+};
+}   // namespace
+void roundedFrame(QWidget* host) { new RoundedFrameOverlay(host); }
 
 QString noteName(int midi) {
     static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
