@@ -352,7 +352,7 @@ QString ControlServer::handle(const QString& line) {
     if (c == "layout") return m_win.debugLayout();
     if (c == "winsize" && a.size() >= 3) {
         m_win.resize(a[1].toInt(), a[2].toInt());
-        return "ok";
+        return QString("ok %1x%2 min %3").arg(m_win.width()).arg(m_win.height()).arg(m_win.minimumSizeHint().width());
     }
     if (c == "split") {
         auto ids = m_app.splitPatternByChannel(m_app.project().selectedPatternId);
@@ -406,6 +406,17 @@ QString ControlServer::handle(const QString& line) {
         QNativeGestureEvent g(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, pt, pt, v->mapToGlobal(pt), a[1].toDouble(), QPointF());
         QCoreApplication::sendEvent(v, &g);
         return QString("%1 %2").arg(before).arg(v->debugPpt());
+    }
+    if (c == "patsteps" && a.size() >= 2) {   // set the selected pattern's step count
+        auto* p = m_app.project().pattern(m_app.project().selectedPatternId);
+        if (!p) return "err no pattern";
+        int n = a[1].toInt();
+        m_app.editPattern(p->id, "Pattern steps", [n](Pattern& pp) {
+            pp.stepCount = n;
+            for (auto& c : pp.channels)
+                if ((int)c.steps.size() < n) c.steps.resize(n);
+        });
+        return "ok";
     }
     if (c == "clips") {   // clips as track:start+length(loop) in project order
         QStringList out;

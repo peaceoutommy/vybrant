@@ -1955,7 +1955,9 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent)
         "Drag samples / patterns / automation from the Browser · Ctrl+drag the ruler selects the loop area · Ctrl+B duplicates it · Ctrl+Shift+drag duplicates clips",
         this);
     theme::styled(hint, "color:@textDim@; font-size:8pt;");
-    top->addWidget(hint);
+    hint->setToolTip(hint->text());
+    hint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);   // tips may be cut short: never widen the window past the screen
+    top->addWidget(hint, 1);
     lay->addLayout(top);
     m_view = new PlaylistView(app, this);
     theme::roundedFrame(m_view);

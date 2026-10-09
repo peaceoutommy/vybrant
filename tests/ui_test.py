@@ -120,6 +120,15 @@ def main():
     check(ins.send("layout").startswith("rack=top visible=1"), "top dock is restored after a restart", ins.send("layout"))
     ins.quit()
 
+    # ---- the window fits a small screen: no hint text or toolbar may force it wider (the rack's Steps box went off screen)
+    cfg5 = os.path.join(tmp, "cfg5")
+    os.makedirs(cfg5)
+    ins = Instance(cfg5, sock)
+    ins.send("patsteps 128")
+    r = ins.send("winsize 1100 800")
+    check(r.startswith("ok 1100x800"), "the main window shrinks to 1100 px wide with a 128-step pattern", r)
+    ins.quit()
+
     # ---- piano roll selection, velocity lane modifiers, trackpad zoom
     cfg3 = os.path.join(tmp, "cfg3")
     os.makedirs(cfg3)

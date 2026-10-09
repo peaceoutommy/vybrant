@@ -135,8 +135,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     theme::styled(m_hint,
         "QLabel { color:@textDim@; font-size:8pt; padding:0 6px; background:@surface@; border:1px solid @border@; border-radius:3px; }");
     m_hint->setFixedHeight(theme::kBarH);
-    m_hint->setMinimumWidth(240);
-    m_hint->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_hint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);   // shrinks (even away) on small screens instead of widening the window
     lay->addWidget(m_hint, 1);
     // ---- row 2: hint bar, window buttons, pattern selector, status
     row2->addStretch(1);   // the window buttons / pattern / stats stay on the right, where they have always been
