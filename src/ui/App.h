@@ -224,6 +224,7 @@ private:
     void recordAutomationPoint(const ParamTarget& t, float normalized);
     void syncTransportToEngine();
     void syncMixerTrackNames();
+    void updateSamplerStretch();
 
     ProjectModel m_model;
     AudioDeviceManager m_devices;
@@ -236,6 +237,7 @@ private:
     std::unique_ptr<PluginHost> m_pluginHost;
     CommandRegistry m_commands;
     QTimer m_autosaveTimer;
+    QTimer m_stretchTimer;
     std::map<int, std::pair<double, MidiEvent>> m_pendingNotes;
     bool m_learnActive = false;
     ParamTarget m_learnTarget;

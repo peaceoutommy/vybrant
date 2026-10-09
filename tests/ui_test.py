@@ -162,6 +162,8 @@ def main():
     ins.send("pldrag 0 960 0 960")
     ins.send("pldrag 2 7680 2 7680")
     check(ins.send("clips").split()[-1] == "2:7680+7680", "clicking a clip keeps its size as the brush", ins.send("clips"))
+    b, z = map(float, ins.send("plpinch 0.5").split())
+    check(abs(z - b * 1.5) < 1e-6, "trackpad pinch zooms the playlist", f"{b} -> {z}")
     ins.quit()
 
     print("\n%s" % ("All UI checks passed" if fails == 0 else f"{fails} UI check(s) FAILED"))

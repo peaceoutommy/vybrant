@@ -6,6 +6,7 @@
 #include "ui/MixerPanel.h"
 #include "ui/PianoRollPanel.h"
 #include "ui/PlaylistPanel.h"
+#include "ui/PluginWindow.h"
 #include "ui/ChannelRackPanel.h"
 #include "audio/RenderEngine.h"
 #include <QLocalSocket>
@@ -374,10 +375,11 @@ QString ControlServer::handle(const QString& line) {
     }
     if (c == "clipfade" && a.size() >= 5) {
         auto& cl = m_app.project().clips;
-        if (cl.empty()) return "err no clips";
+        auto it = std::find_if(cl.begin(), cl.end(), [](const Clip& x) { return x.type == ClipType::Audio; });
+        if (it == cl.end()) return "err no audio clip";
         Tick fi = a[1].toLongLong(), fo = a[2].toLongLong();
         float sh = a[3].toFloat(), g = a[4].toFloat();
-        m_app.editClip(cl.front().id, "test fade", [fi, fo, sh, g](Clip& x) {
+        m_app.editClip(it->id, "test fade", [fi, fo, sh, g](Clip& x) {
             x.fadeIn = fi;
             x.fadeOut = fo;
             x.fadeInShape = sh;
@@ -397,6 +399,14 @@ QString ControlServer::handle(const QString& line) {
         QCoreApplication::sendEvent(v, &rl);
         return "ok";
     }
+    if (c == "plpinch" && a.size() >= 2) {   // trackpad pinch over the playlist: plpinch <value> -> "<ppt before> <ppt after>"
+        auto* v = m_win.playlist()->view();
+        double before = v->debugPpt();
+        QPointF pt(v->width() / 2.0, v->height() / 2.0);
+        QNativeGestureEvent g(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, pt, pt, v->mapToGlobal(pt), a[1].toDouble(), QPointF());
+        QCoreApplication::sendEvent(v, &g);
+        return QString("%1 %2").arg(before).arg(v->debugPpt());
+    }
     if (c == "clips") {   // clips as track:start+length(loop) in project order
         QStringList out;
         auto& pr = m_app.project();
@@ -406,6 +416,16 @@ QString ControlServer::handle(const QString& line) {
             out << QString("%1:%2+%3%4").arg(ti).arg(cl.start).arg(pr.clipLength(cl)).arg(cl.loopSource ? "L" : "");
         }
         return out.join(' ');
+    }
+    if (c == "clipeditor" && a.size() >= 2) {   // open the editor of the first audio clip and save a screenshot of it
+        for (auto& cl : m_app.project().clips)
+            if (cl.type == ClipType::Audio) {
+                auto* e = new AudioClipEditor(m_app, cl.id, &m_win);
+                e->show();
+                QCoreApplication::processEvents();
+                return e->grab().save(a[1]) ? "ok" : "err save";
+            }
+        return "err no audio clip";
     }
     if (c == "quit") {
         QTimer::singleShot(0, qApp, [] { qApp->quit(); });

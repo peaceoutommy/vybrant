@@ -39,6 +39,8 @@ App::App(QObject* parent)
     connect(m_recorder.get(), &RecordingEngine::takesFinished, this, &App::onTakesFinished);
     connect(m_midi.get(), &MidiEngine::ccReceived, this, &App::onCcReceived);
     connect(&m_autosaveTimer, &QTimer::timeout, this, &App::autosave);
+    connect(&m_stretchTimer, &QTimer::timeout, this, &App::updateSamplerStretch);
+    m_stretchTimer.start(250);
     {
         auto as = autosaveSettings();
         if (as.enabled && as.intervalMinutes > 0) m_autosaveTimer.start(as.intervalMinutes * 60 * 1000);
@@ -103,6 +105,26 @@ void App::syncMixerTrackNames() {
                 t.name = c.name;
                 break;
             }
+    }
+}
+// Samplers in a stretch mode play a Rubber Band render of their sample (Tune, Time and tempo fit applied). Keep it current:
+// a changed setting or tempo drops the stale render (resampling covers the gap) and requests the new one. The cache renders
+// one file at a time, so polling while a knob moves only renders the value it settles on.
+void App::updateSamplerStretch() {
+    double bpm = project().transport.bpm;
+    for (auto& c : project().channels) {
+        auto* s = dynamic_cast<Sampler*>(processor(c.id));
+        if (!s) continue;
+        auto& p = s->params();
+        int mode = p.getInt(Sampler::pStretchMode);
+        double ratio = s->timeRatio(bpm), pitch = p.get(Sampler::pTune);
+        QString path = s->samplePath();
+        bool want = mode != StretchResample && !path.isEmpty() && s->sample() && (std::fabs(ratio - 1.0) > 1e-4 || std::fabs(pitch) > 1e-3);
+        QString key = want ? QString("%1|%2|%3|%4").arg(path).arg(ratio, 0, 'f', 5).arg(pitch, 0, 'f', 3).arg(mode) : QString();
+        if (key == s->stretchKey()) continue;
+        AudioAssetPtr a = want ? m_cache.getStretched(path, ratio, pitch, mode) : nullptr;
+        if (a || !want) s->setStretched(a, key);
+        else if (!s->stretchKey().isEmpty()) s->setStretched(nullptr, QString());   // stale: resample until the render lands
     }
 }
 void App::syncTransportToEngine() {
@@ -405,7 +427,33 @@ void App::seekToStart() {
 void App::setBpm(double bpm, bool commit) {
     bpm = clamp(bpm, 20.0, 999.0);
     m_engine->setBpm(bpm);
-    if (commit) m_model.editTransport("Change tempo", [bpm](TransportSettings& t) { t.bpm = bpm; }, 1001);
+    if (!commit) return;
+    // Audio clips and the tempo (Fit tempo clips follow it through their source BPM and need nothing):
+    //  - Resample: the audio keeps its speed, so the clip keeps its length in seconds - its beat-based length, start offset and
+    //    fades are rescaled (otherwise a slower tempo leaves an empty tail, a faster one cuts the audio)
+    //  - Stretch modes: the clip keeps its size in bars and the audio is re-stretched to fill it, at the same pitch
+    double old = project().transport.bpm, k = bpm / old;
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (auto& c : project().clips) {
+        if (c.type != ClipType::Audio || c.fitTempo || std::fabs(k - 1.0) < 1e-9) continue;
+        if (c.stretchMode != StretchResample) {
+            cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [k](Clip& x) { x.timeStretch /= k; }, 0));
+            continue;
+        }
+        cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [k](Clip& x) {
+                auto sc = [k](Tick t) { return (Tick)std::llround(t * k); };
+                x.length = std::max<Tick>(1, sc(x.length));
+                x.sourceOffset = sc(x.sourceOffset);
+                x.fadeIn = sc(x.fadeIn);
+                x.fadeOut = sc(x.fadeOut);
+            }, 0));
+    }
+    if (cmds.empty()) {
+        m_model.editTransport("Change tempo", [bpm](TransportSettings& t) { t.bpm = bpm; }, 1001);
+        return;
+    }
+    cmds.push_back(m_model.transportCommand("", [bpm](TransportSettings& t) { t.bpm = bpm; }));
+    m_model.macro("Change tempo", std::move(cmds));
 }
 void App::setTimeSig(int n, int d) {
     m_model.editTransport("Time signature", [n, d](TransportSettings& t) {
@@ -621,6 +669,7 @@ void App::setChannelSample(Id id, const QString& path) {
         if (auto* s = dynamic_cast<Sampler*>(processor(id))) {
             if (asset) s->setSample(asset, path);
             else s->pendingPath = path;
+            if (double b = AudioFile::bpmFromName(path); b > 0) s->params().set(Sampler::pSourceBpm, (float)b);   // "loop 83 bpm.wav"
         }
         if (auto* d = dynamic_cast<DrumSampler*>(processor(id))) {
             if (asset) d->setPadSample(0, asset, path);

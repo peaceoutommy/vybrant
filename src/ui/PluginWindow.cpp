@@ -1,5 +1,6 @@
 #include "ui/PluginWindow.h"
 #include "ui/Theme.h"
+#include "ui/widgets/WaveView.h"
 #include "plugins/Vst3Plugin.h"
 #include "plugins/Vst2Plugin.h"
 #include <QVBoxLayout>
@@ -19,7 +20,7 @@ namespace mt {
 
 // ---------------------------------------------------------------- generic panel
 GenericParamPanel::GenericParamPanel(
-    App& app, Id ownerId, IProcessor* proc, std::function<bool(const ParamDesc&)> filter, int columns, QWidget* parent)
+    App& app, Id ownerId, IProcessor* proc, std::function<bool(const ParamDesc&)> filter, int columns, QWidget* parent, int cellWidth)
     : QWidget(parent)
     , m_app(app)
     , m_owner(ownerId)
@@ -29,7 +30,7 @@ GenericParamPanel::GenericParamPanel(
     grid->setHorizontalSpacing(8);
     grid->setVerticalSpacing(6);
     auto& ps = proc->params();
-    int cell = 0;
+    int gridRow = 0, gridCol = 0;
     for (int i = 0; i < ps.count(); ++i) {
         const ParamDesc& d = ps.desc(i);
         if (filter && !filter(d)) continue;
@@ -58,7 +59,9 @@ GenericParamPanel::GenericParamPanel(
             m.exec(g);
         };
         // every cell is the height of a knob cell (knob 40 + name + value) so combos and checkboxes sit level with the knobs
-        cellW->setFixedHeight(40 + 2 * 14 + 2);
+        cellW->setFixedHeight(kCellH);
+        int span = cellWidth > 0 && d.unit == ParamUnit::Choice && !d.choices.empty() ? 2 : 1;
+        if (cellWidth > 0) cellW->setFixedWidth(span * cellWidth + (span - 1) * grid->horizontalSpacing());
         if (d.unit == ParamUnit::Choice && !d.choices.empty()) {
             vl->addStretch(1);
             auto* lbl = new QLabel(QString::fromStdString(d.name), cellW);
@@ -102,6 +105,8 @@ GenericParamPanel::GenericParamPanel(
             row.knob->setDefault(d.toNormalized(d.def));
             row.knob->setValue(ps.getNormalized(id));
             if (!d.automatable) row.knob->setColor(theme::textDim());
+            if ((d.unit == ParamUnit::Semitones || d.unit == ParamUnit::Bpm) && !d.steps)
+                row.knob->snap = Knob::wholeStepSnap(d.min, d.max);   // land on whole semitones / BPM
             row.knob->valueText = [this, id](float) { return m_proc->formatValue(id); };
             vl->addWidget(row.knob, 0, Qt::AlignHCenter);
             row.value = new QLabel(proc->formatValue(id), cellW);
@@ -118,11 +123,16 @@ GenericParamPanel::GenericParamPanel(
                 row.knob, &Knob::dragFinished, this, [this, id, k = row.knob] { m_app.setProcessorParam(m_owner, id, k->value(), true); });
             connect(row.knob, &Knob::contextRequested, this, [contextMenu](const QPoint& g) { contextMenu(g); });
         }
-        grid->addWidget(cellW, cell / columns, cell % columns);
-        ++cell;
+        if (gridCol > 0 && gridCol + span > columns) {
+            ++gridRow;
+            gridCol = 0;
+        }
+        grid->addWidget(cellW, gridRow, gridCol, 1, span);
+        gridCol += span;
         m_rows.push_back(row);
     }
     grid->setRowStretch(grid->rowCount(), 1);
+    if (cellWidth > 0) grid->setColumnStretch(columns, 1);   // spare width goes after the cells, never between them
 }
 void GenericParamPanel::sync() {
     m_updating = true;
@@ -287,96 +297,261 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent)
         deleteLater();
         return;
     }
-    setWindowTitle("Audio clip: " + c->name);
-    auto* form = new QFormLayout(this);
-    auto* info = new QLabel(QString("%1\n%2 Hz, %3 ch, %4 s")
-                                .arg(s->filePath)
-                                .arg(s->sampleRate)
-                                .arg(s->channels)
-                                .arg(s->sampleRate > 0 ? s->frames / s->sampleRate : 0, 0, 'f', 2),
-        this);
-    info->setWordWrap(true);
-    form->addRow(info);
-    auto mkSpin = [&](double min, double max, double val, int dec, const QString& suffix) {
-        auto* sp = new QDoubleSpinBox(this);
-        sp->setRange(min, max);
-        sp->setDecimals(dec);
-        sp->setValue(val);
-        sp->setSuffix(suffix);
-        return sp;
+    // Knobs edit this working copy and the waveform draws it, so every movement shows at once; releasing commits it
+    m_draft = *c;
+    m_draftSrc = *s;
+    setWindowTitle(c->name);
+    const QString path = s->filePath;
+    const Id sid = s->id;
+    const int64_t frames = std::max<int64_t>(1, s->frames);
+    const double srcSec = s->sampleRate > 0 ? frames / s->sampleRate : 1.0;
+    auto bpm = [this] { return m_app.project().transport.bpm; };
+    auto speed = [bpm](const Clip& x) { return clipSourceSpeed(x, bpm()); };   // source seconds per clip second
+    auto trimSec = [this, srcSec](bool end) {
+        double sr = std::max(1.0, m_draftSrc.sampleRate);
+        return end ? (m_draftSrc.trimEnd > 0 ? m_draftSrc.trimEnd / sr : srcSec) : m_draftSrc.trimStart / sr;
     };
-    auto* gain = mkSpin(-60, 24, gainToDb(c->gain), 1, " dB");
-    form->addRow("Clip gain", gain);
-    connect(gain, &QDoubleSpinBox::editingFinished, this, [this, gain] {
-        double db = gain->value();
-        m_app.editClip(m_clip, "Clip gain", [db](Clip& x) { x.gain = dbToGain((float)db); });
+    auto startSec = [this, bpm, speed, trimSec] { return trimSec(false) + ticksToSeconds(m_draft.sourceOffset, bpm()) * speed(m_draft); };
+    auto* lay = new QVBoxLayout(this);
+    lay->setContentsMargins(10, 8, 10, 10);
+    lay->setSpacing(6);
+    // header: same layout as the sampler editor (play + file name, waveform underneath)
+    auto* head = new QHBoxLayout();
+    auto* play = new QPushButton("▶ Play", this);
+    play->setToolTip("Preview the source file (click again to stop). Clip settings are not applied to the preview.");
+    connect(play, &QPushButton::clicked, this, [this, path] {
+        if (m_previewing) m_app.stopPreview();
+        else m_app.previewFile(path);
     });
-    auto* fi = mkSpin(0, 64, ticksToBeats(c->fadeIn), 2, " beats");
-    form->addRow("Fade in", fi);
-    connect(fi, &QDoubleSpinBox::editingFinished, this, [this, fi] {
-        double b = fi->value();
-        m_app.editClip(m_clip, "Fade in", [b](Clip& x) { x.fadeIn = beatsToTicks(b); });
+    connect(&app, &App::previewChanged, this, [this, play, path](const QString& p) {
+        m_previewing = p == path;
+        play->setText(m_previewing ? "■ Stop" : "▶ Play");
     });
-    auto* fo = mkSpin(0, 64, ticksToBeats(c->fadeOut), 2, " beats");
-    form->addRow("Fade out", fo);
-    connect(fo, &QDoubleSpinBox::editingFinished, this, [this, fo] {
-        double b = fo->value();
-        m_app.editClip(m_clip, "Fade out", [b](Clip& x) { x.fadeOut = beatsToTicks(b); });
-    });
-    auto* stretch = mkSpin(0.25, 4.0, c->timeStretch, 3, " x");
-    stretch->setToolTip("Time stretch ratio (1 = original length). Rendered offline with Rubber Band; pitch is preserved.");
-    form->addRow("Time stretch", stretch);
-    connect(stretch, &QDoubleSpinBox::editingFinished, this, [this, stretch] {
-        double r = stretch->value();
-        m_app.editClip(m_clip, "Time stretch", [r](Clip& x) { x.timeStretch = r; });
-    });
-    auto* pitch = mkSpin(-24, 24, c->pitch, 2, " st");
-    pitch->setToolTip(
-        "Pitch shift in semitones (with stretch = 1 this changes speed like a turntable; with stretch != 1 the pitch is shifted independently)");
-    form->addRow("Pitch", pitch);
-    connect(pitch, &QDoubleSpinBox::editingFinished, this, [this, pitch] {
-        double p = pitch->value();
-        m_app.editClip(m_clip, "Pitch", [p](Clip& x) { x.pitch = (float)p; });
-    });
-    auto* off = mkSpin(0, 100000, ticksToBeats(c->sourceOffset), 2, " beats");
-    form->addRow("Start offset", off);
-    connect(off, &QDoubleSpinBox::editingFinished, this, [this, off] {
-        double b = off->value();
-        m_app.editClip(m_clip, "Start offset", [b](Clip& x) { x.sourceOffset = beatsToTicks(b); });
-    });
-    auto* ts = mkSpin(0, 1e9, (double)s->trimStart, 0, " frames");
-    form->addRow("Trim start (source)", ts);
-    connect(ts, &QDoubleSpinBox::editingFinished, this, [this, ts, sid = s->id] {
-        double v = ts->value();
-        m_app.editAudioSource(sid, "Trim", [v](AudioSource& a) { a.trimStart = (int64_t)v; });
-    });
-    auto* te = mkSpin(0, 1e9, (double)s->trimEnd, 0, " frames");
-    te->setToolTip("0 = end of file");
-    form->addRow("Trim end (source)", te);
-    connect(te, &QDoubleSpinBox::editingFinished, this, [this, te, sid = s->id] {
-        double v = te->value();
-        m_app.editAudioSource(sid, "Trim", [v](AudioSource& a) { a.trimEnd = (int64_t)v; });
-    });
-    auto* rev = new QCheckBox("Reverse", this);
-    rev->setChecked(c->reverse);
-    form->addRow(rev);
-    connect(rev, &QCheckBox::toggled, this, [this](bool b) { m_app.editClip(m_clip, "Reverse", [b](Clip& x) { x.reverse = b; }); });
-    auto* norm = new QCheckBox("Normalize (source)", this);
-    norm->setChecked(s->normalize);
-    form->addRow(norm);
-    connect(norm, &QCheckBox::toggled, this,
-        [this, sid = s->id](bool b) { m_app.editAudioSource(sid, "Normalize", [b](AudioSource& a) { a.normalize = b; }); });
-    auto* loop = new QCheckBox("Loop when clip is longer than the audio", this);
-    loop->setChecked(c->loopSource);
-    form->addRow(loop);
-    connect(loop, &QCheckBox::toggled, this, [this](bool b) { m_app.editClip(m_clip, "Loop", [b](Clip& x) { x.loopSource = b; }); });
-    auto* mute = new QCheckBox("Mute clip", this);
-    mute->setChecked(c->muted);
-    form->addRow(mute);
-    connect(mute, &QCheckBox::toggled, this, [this](bool b) { m_app.editClip(m_clip, "Mute", [b](Clip& x) { x.muted = b; }); });
-    auto* note = new QLabel("Edits are non-destructive: the original file is never modified.", this);
-    theme::styled(note, "color:@textDim@;");
-    form->addRow(note);
+    head->addWidget(play);
+    auto* fname = new QLabel(QFileInfo(path).fileName(), this);
+    fname->setToolTip(path);
+    head->addWidget(fname, 1);
+    lay->addLayout(head);
+    auto* wave = new WaveView(this);
+    wave->asset = [this, path] { return m_app.cache().get(path); };
+    wave->reversed = [this] { return m_draft.reverse != m_draftSrc.reverse; };
+    wave->startFrac = [startSec, srcSec] { return (float)clamp(startSec() / srcSec, 0.0, 1.0); };
+    // what the clip plays, drawn over the source: gain (and normalize), fades, trims, the clip's end and mute
+    wave->envelope = [this, path, srcSec, bpm, speed, trimSec, startSec](double frac) -> float {
+        double pos = frac * srcSec;
+        if (m_draft.muted || pos < trimSec(false) || pos > trimSec(true)) return 0.f;
+        float g = m_draft.gain;
+        if (m_draftSrc.normalize)
+            if (auto a = m_app.cache().get(path); a && a->peakValue > 0) g /= a->peakValue;
+        double t = (pos - startSec()) / speed(m_draft);   // seconds into the clip
+        if (t < 0) return g;   // before the start: greyed out by the view
+        double len = ticksToSeconds(m_draft.length, bpm());
+        if (t > len) return 0.f;
+        double fi = ticksToSeconds(m_draft.fadeIn, bpm()), fo = ticksToSeconds(m_draft.fadeOut, bpm());
+        if (fi > 0 && t < fi) g *= (float)(t / fi);
+        if (fo > 0 && len - t < fo) g *= (float)((len - t) / fo);
+        return g;
+    };
+    wave->showEnvelope = [this] { return m_draft.fadeIn > 0 || m_draft.fadeOut > 0 || std::fabs(m_draft.gain - 1.f) > 1e-3f; };
+    wave->setStart = [this, srcSec, bpm, speed, trimSec](float f) {   // click / drag on the waveform sets the start offset
+        double sec = std::max(0.0, (f * srcSec - trimSec(false)) / speed(m_draft));
+        Tick off = secondsToTicks(sec, bpm());
+        m_draft.sourceOffset = off;
+        m_app.editClip(m_clip, "Start offset", [off](Clip& y) { y.sourceOffset = off; }, 0x5a11);
+    };
+    wave->caption = [] { return QString("click to set the start"); };
+    lay->addWidget(wave);
+    // commit the working copy's fields this editor owns (never position / length / track, which the playlist may change meanwhile)
+    auto commit = [this, sid](const QString& desc, bool source) {
+        if (m_lengthDirty) {   // only fitting the tempo resizes the clip; otherwise the playlist owns its length
+            Tick len = m_draft.length;
+            m_app.editClip(m_clip, desc, [len](Clip& x) { x.length = len; }, 0x5a12);
+            m_lengthDirty = false;
+        }
+        if (source) {
+            AudioSource d = m_draftSrc;
+            m_app.editAudioSource(sid, desc, [d](AudioSource& a) {
+                a.trimStart = d.trimStart;
+                a.trimEnd = d.trimEnd;
+                a.normalize = d.normalize;
+            });
+            return;
+        }
+        Clip d = m_draft;
+        m_app.editClip(m_clip, desc, [d](Clip& x) {
+            x.gain = d.gain;
+            x.fadeIn = d.fadeIn;
+            x.fadeOut = d.fadeOut;
+            x.pitch = d.pitch;
+            x.timeStretch = d.timeStretch;
+            x.sourceOffset = d.sourceOffset;
+            x.reverse = d.reverse;
+            x.loopSource = d.loopSource;
+            x.muted = d.muted;
+            x.stretchMode = d.stretchMode;
+            x.fitTempo = d.fitTempo;
+            x.sourceBpm = d.sourceBpm;
+        });
+    };
+    // knob groups on the sampler's fixed cell grid, so both editors look the same and knobs line up across rows
+    auto* grid = new QGridLayout();
+    grid->setHorizontalSpacing(14);
+    grid->setVerticalSpacing(4);
+    auto group = [&](const char* title, int row, int col) {
+        auto* box = new QVBoxLayout();
+        box->setSpacing(2);
+        auto* t = new QLabel(title, this);
+        theme::styled(t, "color:@textDim@; font-weight:bold; font-size:8pt;");
+        box->addWidget(t);
+        auto* cells = new QHBoxLayout();
+        cells->setContentsMargins(6, 6, 6, 6);   // as GenericParamPanel
+        cells->setSpacing(8);
+        box->addLayout(cells);
+        grid->addLayout(box, row, col, Qt::AlignLeft | Qt::AlignTop);
+        return cells;
+    };
+    auto cell = [this] {
+        auto* w = new QWidget(this);
+        w->setFixedSize(GenericParamPanel::kCellW, GenericParamPanel::kCellH);
+        auto* vl = new QVBoxLayout(w);
+        vl->setContentsMargins(0, 0, 0, 0);
+        vl->setSpacing(1);
+        return w;
+    };
+    // text: knob position -> label; apply: knob position -> working copy. Moving redraws, releasing commits (one undo step,
+    // and a time-stretch render only once)
+    auto knob = [&](QHBoxLayout* cells, const QString& name, float pos, float def, bool bipolar, std::function<QString(float)> text,
+                    std::function<void(float)> apply, const QString& desc, bool source) {
+        QWidget* w = cell();
+        auto* k = new Knob(w, 40);
+        k->setLabel(name);
+        k->setBipolar(bipolar);
+        k->setDefault(def);
+        k->setValue(pos);
+        k->valueText = text;
+        w->layout()->addWidget(k);
+        static_cast<QVBoxLayout*>(w->layout())->setAlignment(k, Qt::AlignHCenter);
+        auto* v = new QLabel(text(pos), w);
+        v->setAlignment(Qt::AlignCenter);
+        v->setStyleSheet("color:#d6dae0; font-size:8pt;");
+        w->layout()->addWidget(v);
+        connect(k, &Knob::valueChanged, v, [v, text, apply, wave](float x) {
+            v->setText(text(x));
+            apply(x);
+            wave->update();
+        });
+        connect(k, &Knob::dragFinished, this, [commit, desc, source] { commit(desc, source); });
+        cells->addWidget(w);
+        return k;
+    };
+    auto check = [&](QHBoxLayout* cells, const QString& name, bool on, std::function<void(bool)> apply, const QString& desc, bool source) {
+        QWidget* w = cell();
+        auto* cb = new QCheckBox(name, w);
+        cb->setChecked(on);
+        auto* vl = static_cast<QVBoxLayout*>(w->layout());
+        vl->addStretch(1);
+        vl->addWidget(cb);
+        vl->addStretch(1);
+        connect(cb, &QCheckBox::toggled, this, [apply, commit, desc, source, wave](bool b) {
+            apply(b);
+            commit(desc, source);
+            wave->update();
+        });
+        cells->addWidget(w);
+    };
+    auto num = [](double v, int dec, const char* unit) { return QString::number(v, 'f', dec) + unit; };
+    // Level
+    auto* level = group("Level", 0, 0);
+    knob(level, "Gain", (float)((gainToDb(c->gain) + 60) / 84), 60.f / 84, false, [num](float p) { return num(p * 84 - 60, 1, " dB"); },
+        [this](float p) { m_draft.gain = dbToGain(p * 84 - 60); }, "Clip gain", false);
+    check(level, "Normalize", s->normalize, [this](bool b) { m_draftSrc.normalize = b; }, "Normalize", true);
+    // Fades: quadratic so short fades get most of the knob travel
+    auto fadePos = [](Tick t) { return (float)std::sqrt(std::min(1.0, ticksToBeats(t) / 32.0)); };
+    auto fadeText = [num](float p) { return num(32.0 * p * p, 2, " beats"); };
+    auto* fades = group("Fades", 0, 1);
+    knob(fades, "Fade in", fadePos(c->fadeIn), 0.f, false, fadeText, [this](float p) { m_draft.fadeIn = beatsToTicks(32.0 * p * p); },
+        "Fade in", false);
+    knob(fades, "Fade out", fadePos(c->fadeOut), 0.f, false, fadeText, [this](float p) { m_draft.fadeOut = beatsToTicks(32.0 * p * p); },
+        "Fade out", false);
+    auto combo = [&](QHBoxLayout* cells, const QString& name, const std::vector<std::string>& items, int cur, std::function<void(int)> apply,
+                     const QString& desc) {
+        auto* w = new QWidget(this);
+        w->setFixedSize(2 * GenericParamPanel::kCellW + 8, GenericParamPanel::kCellH);   // a choice spans two cells, as in the sampler
+        auto* vl = new QVBoxLayout(w);
+        vl->setContentsMargins(0, 0, 0, 0);
+        vl->addStretch(1);
+        auto* lbl = new QLabel(name, w);
+        theme::styled(lbl, "color:@textDim@; font-size:8pt;");
+        lbl->setAlignment(Qt::AlignCenter);
+        vl->addWidget(lbl);
+        auto* cb = new QComboBox(w);
+        cb->setFixedHeight(22);
+        for (auto& i : items) cb->addItem(QString::fromStdString(i));
+        cb->setCurrentIndex(cur);
+        vl->addWidget(cb);
+        vl->addStretch(1);
+        connect(cb, &QComboBox::currentIndexChanged, this, [apply, commit, desc, wave](int i) {
+            apply(i);
+            commit(desc, false);
+            wave->update();
+        });
+        cells->addWidget(w);
+        return cb;
+    };
+    // Pitch & time
+    auto* pt = group("Pitch & Time", 0, 2);
+    combo(pt, "Mode", stretchModeNames(), clamp(c->stretchMode, 0, (int)stretchModeNames().size() - 1),
+        [this](int i) { m_draft.stretchMode = i; }, "Stretch mode")
+        ->setToolTip("Resample: pitch, stretch and tempo change the speed together, like a turntable.\n"
+                     "Stretch modes: pitch and length are independent (rendered with Rubber Band), tuned for drums, pads or vocals.");
+    knob(pt, "Pitch", (c->pitch + 24.f) / 48.f, 0.5f, true, [num](float p) { return num(p * 48 - 24, 2, " st"); },
+        [this](float p) { m_draft.pitch = p * 48 - 24; }, "Pitch", false)
+        ->snap = Knob::wholeStepSnap(-24, 24);   // lands on whole semitones
+    knob(pt, "Stretch", (float)(std::log(clamp(c->timeStretch, 0.25, 4.0) / 0.25) / std::log(16.0)), 0.5f, false,
+        [num](float p) { return num(0.25 * std::pow(16.0, p), 3, " x"); }, [this](float p) { m_draft.timeStretch = 0.25 * std::pow(16.0, p); },
+        "Time stretch", false);
+    // Region
+    auto* region = group("Region", 1, 0);
+    double lenBeats = std::max(0.01, srcSec * bpm() / 60.0);
+    knob(region, "Start offset", (float)std::min(1.0, ticksToBeats(c->sourceOffset) / lenBeats), 0.f, false,
+        [num, lenBeats](float p) { return num(p * lenBeats, 2, " beats"); },
+        [this, lenBeats](float p) { m_draft.sourceOffset = beatsToTicks(p * lenBeats); }, "Start offset", false);
+    knob(region, "Trim start", (float)s->trimStart / frames, 0.f, false, [num, srcSec](float p) { return num(p * srcSec, 2, " s"); },
+        [this, frames](float p) { m_draftSrc.trimStart = (int64_t)(p * frames); }, "Trim", true);
+    knob(region, "Trim end", s->trimEnd > 0 ? (float)s->trimEnd / frames : 1.f, 1.f, false,
+        [num, srcSec](float p) { return p >= 0.999f ? QString("end") : num(p * srcSec, 2, " s"); },
+        [this, frames](float p) { m_draftSrc.trimEnd = p >= 0.999f ? 0 : (int64_t)(p * frames); }, "Trim", true);   // 0 = end of file
+    // Tempo: follow the project tempo, treating the file as recorded at 'Source BPM' (read from names like "loop 83 bpm.wav")
+    auto* tempo = group("Tempo", 1, 2);
+    auto bpmKnob = std::make_shared<Knob*>(nullptr);   // created after the checkbox that may set it
+    auto bpmPos = [](double b) { return (float)((clamp(b, 40.0, 250.0) - 40.0) / 210.0); };
+    check(tempo, "Fit tempo", c->fitTempo, [this, path, trimSec, bpm, bpmKnob](bool b) {
+        m_draft.fitTempo = b;
+        if (!b) return;
+        if (m_draft.sourceBpm <= 0) {
+            double guess = AudioFile::bpmFromName(path);
+            m_draft.sourceBpm = guess > 0 ? guess : bpm();
+            if (*bpmKnob) (*bpmKnob)->setValue((float)((m_draft.sourceBpm - 40.0) / 210.0), true);
+        }
+        // the clip takes the fitted length of the (trimmed) audio
+        double sec = (trimSec(true) - trimSec(false)) / clipSourceSpeed(m_draft, bpm());
+        m_draft.length = std::max<Tick>(PPQ / 4, secondsToTicks(sec, bpm()));
+        m_lengthDirty = true;
+    }, "Fit tempo", false);
+    double bpm0 = c->sourceBpm > 0 ? c->sourceBpm : AudioFile::bpmFromName(path);
+    *bpmKnob = knob(tempo, "Source BPM", bpmPos(bpm0 > 0 ? bpm0 : bpm()), bpmPos(120), false,
+        [num](float p) { return num(40.0 + p * 210.0, 1, " BPM"); }, [this](float p) { m_draft.sourceBpm = 40.0 + p * 210.0; }, "Source BPM", false);
+    (*bpmKnob)->snap = Knob::wholeStepSnap(40, 250);
+    // Options
+    auto* opts = group("Options", 1, 1);
+    check(opts, "Reverse", c->reverse, [this](bool b) { m_draft.reverse = b; }, "Reverse", false);
+    check(opts, "Loop", c->loopSource, [this](bool b) { m_draft.loopSource = b; }, "Loop", false);
+    check(opts, "Mute", c->muted, [this](bool b) { m_draft.muted = b; }, "Mute", false);
+    grid->setColumnStretch(3, 1);
+    lay->addLayout(grid);
+    auto* note = new QLabel("Edits are non-destructive: the original file is never modified. Loop repeats the audio when the clip is longer.", this);
+    theme::styled(note, "color:@textDim@; font-size:8pt;");
+    lay->addWidget(note);
 }
 
 }   // namespace mt

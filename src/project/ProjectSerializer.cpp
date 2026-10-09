@@ -86,7 +86,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
             {"length", (double)c.length}, {"source", (double)c.sourceId}, {"muted", c.muted}, {"gain", c.gain},
             {"fadeIn", (double)c.fadeIn}, {"fadeOut", (double)c.fadeOut}, {"fadeInShape", c.fadeInShape}, {"fadeOutShape", c.fadeOutShape},
             {"stretch", c.timeStretch}, {"pitch", c.pitch}, {"offset", (double)c.sourceOffset}, {"reverse", c.reverse},
-            {"loop", c.loopSource}, {"name", c.name}});
+            {"loop", c.loopSource}, {"name", c.name}, {"stretchMode", c.stretchMode}, {"fitTempo", c.fitTempo}, {"sourceBpm", c.sourceBpm}});
     root["playlist"] = QJsonObject{{"tracks", tracks}, {"clips", clips}};
     QJsonArray mixer;
     for (auto& t : p.mixerTracks) {
@@ -304,6 +304,10 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         c.reverse = o["reverse"].toBool();
         c.loopSource = o["loop"].toBool(true);
         c.name = o["name"].toString();
+        // older files had no mode: a stretch ratio meant pitch-independent stretching, otherwise pitch resampled
+        c.stretchMode = o.contains("stretchMode") ? o["stretchMode"].toInt() : (std::fabs(c.timeStretch - 1.0) > 1e-4 ? 1 : 0);
+        c.fitTempo = o["fitTempo"].toBool();
+        c.sourceBpm = o["sourceBpm"].toDouble();
         p.clips.push_back(c);
     }
     for (auto mv : root["mixer"].toArray()) {

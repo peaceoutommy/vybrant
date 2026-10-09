@@ -23,7 +23,9 @@ enum class ParamUnit : uint8_t {
     Degrees,
     Choice,
     Toggle,
-    Beats
+    Beats,
+    Bpm,
+    Multiplier   // playback length factor, shown as "1.50 x"
 };
 
 struct ParamDesc {

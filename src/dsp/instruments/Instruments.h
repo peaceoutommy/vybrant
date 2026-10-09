@@ -73,7 +73,11 @@ public:
         pLoopEnd,
         pGlide,
         pEnvOn,
-        pDeclick
+        pDeclick,
+        pStretchMode,   // StretchMode: resample, or a Rubber Band stretch rendered by App (setStretched)
+        pTime,   // length factor
+        pFitTempo,
+        pSourceBpm
     };
     // Declicking modes (after FL Studio's Sampler): fade-out length when a voice is cut, fade-in length at the start; 'transient' only ramps the first few samples in
     static void declickTimes(int mode, float& inSec, float& outSec, bool& transientIn);
@@ -92,6 +96,17 @@ public:
     }
     QString samplePath() const { return m_path; }
     AudioAssetPtr sample() const { return m_sample.shared(); }
+    // UI thread: the sample rendered for the stretch modes (Tune, Time and tempo fit applied); key identifies the settings
+    void setStretched(AudioAssetPtr a, const QString& key) {
+        m_stretched.set(a);
+        m_stretchKey = key;
+    }
+    QString stretchKey() const { return m_stretchKey; }
+    // Length factor from Time and the tempo fit (an 83 BPM loop at 120 BPM: 83/120)
+    double timeRatio(double bpm) const {
+        double src = m_params.get(pSourceBpm);
+        return m_params.get(pTime) * (m_params.getBool(pFitTempo) && src > 0 && bpm > 0 ? src / bpm : 1.0);
+    }
     QString pendingPath;   // path recorded in state that still needs loading (resolved by the registry)
 protected:
     void onPrepare() override;
@@ -116,7 +131,13 @@ private:
     void cutVoice(Voice& v);   // stop a voice through the declick fade-out
     std::array<Voice, 32> m_voices;
     SwapHolder<AudioAsset> m_sample;
-    QString m_path;
+    SwapHolder<AudioAsset> m_stretched;
+    QString m_path, m_stretchKey;
+    // what the voices play: the rendered stretch when a stretch mode has one ready, otherwise the sample (resampled)
+    const AudioAsset* playAsset() const {
+        const AudioAsset* s = m_params.getInt(pStretchMode) != 0 ? m_stretched.get() : nullptr;
+        return s ? s : m_sample.get();
+    }
     void noteOn(const MidiEvent& e);
     void noteOff(const MidiEvent& e);
     int m_lastNote = -1;

@@ -33,6 +33,9 @@ public:
         updateGeometry();
     }
     std::function<QString(float)> valueText;   // normalized -> display
+    std::function<float(float)> snap;   // optional detent: raw normalized -> shown/emitted value (Shift bypasses it)
+    // gentle detent at whole steps of a linear [min, max] range: within 'width' of a whole value it lands on it, otherwise free
+    static std::function<float(float)> wholeStepSnap(float min, float max, float width = 0.12f);
     QSize sizeHint() const override;
 Q_SIGNALS:
     void valueChanged(float v);
@@ -55,6 +58,7 @@ private:
     bool m_bipolar = false, m_dragging = false, m_showLabel = true;
     QPoint m_lastPos;
     float m_dragStart = 0;
+    float m_raw = 0;   // unsnapped drag position, so a detent never traps the knob
     int m_size;
     QColor m_color;
 };

@@ -23,6 +23,7 @@ public:
     Tool tool() const { return m_tool; }
     // tests: view-local point inside track idx at tick t
     QPoint debugPoint(int idx, Tick t) const { return QPoint(tickToX(t) + 2, trackTop(idx) + trackH(idx) / 2); }
+    double debugPpt() const { return m_ppt; }
     void setSnapDivision(int d) { m_snapDiv = d; }
     void refresh();
     void uiTick();
@@ -54,6 +55,8 @@ protected:
     void mouseReleaseEvent(QMouseEvent*) override;
     void mouseDoubleClickEvent(QMouseEvent*) override;
     void wheelEvent(QWheelEvent*) override;
+    bool event(QEvent*) override;
+    void zoomTimeAt(int x, double factor);
     void keyPressEvent(QKeyEvent*) override;
     void resizeEvent(QResizeEvent*) override;
     void contextMenuEvent(QContextMenuEvent*) override;

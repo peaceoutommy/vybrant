@@ -44,6 +44,8 @@ QString IProcessor::formatValue(uint32_t id) const {
         return QString::number(i);
     }
     case ParamUnit::Toggle: return v >= 0.5f ? "On" : "Off";
+    case ParamUnit::Bpm: return QString::number(v, 'f', 1) + " BPM";
+    case ParamUnit::Multiplier: return QString::number(v, 'f', 2) + " x";
     default: return QString::number(v, 'f', d->steps ? 0 : 2);
     }
 }

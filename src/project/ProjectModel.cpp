@@ -23,6 +23,9 @@ void ProjectModel::notify(uint32_t flags) {
 }
 
 void ProjectModel::editTransport(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId) {
+    push(transportCommand(desc, std::move(fn), mergeId));
+}
+std::unique_ptr<Command> ProjectModel::transportCommand(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId) {
     struct Cmd : Command {
         ProjectModel& m;
         TransportSettings before, after;
@@ -53,7 +56,7 @@ void ProjectModel::editTransport(const QString& desc, std::function<void(Transpo
     fn(c->after);
     c->d = desc;
     c->mid = mergeId;
-    push(std::move(c));
+    return c;
 }
 
 void ProjectModel::editMeta(const QString& desc, std::function<void(Project&)> fn) {

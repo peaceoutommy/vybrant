@@ -7,6 +7,7 @@
 #include <QJsonObject>
 #include <QByteArray>
 #include <vector>
+#include <cmath>
 #include <map>
 
 namespace mt {
@@ -121,7 +122,19 @@ struct Clip {
     bool reverse = false;
     bool loopSource = true;   // repeat pattern/audio when the clip is longer than the source
     QString name;
+    int stretchMode = 0;   // audio: StretchMode (0 = resample: pitch, stretch and tempo fit all change the playback speed)
+    bool fitTempo = false;   // audio: follow the project tempo, treating the source as sourceBpm
+    double sourceBpm = 0;
 };
+// Audio clip playback. Length multiplier: the stretch knob times the tempo fit (an 83 BPM loop at 120 BPM: 83/120)
+inline double clipTimeRatio(const Clip& c, double bpm) {
+    return c.timeStretch * (c.fitTempo && c.sourceBpm > 0 && bpm > 0 ? c.sourceBpm / bpm : 1.0);
+}
+// Seconds of source audio per second of clip time. Stretch modes render pitch separately, so only the length counts.
+inline double clipSourceSpeed(const Clip& c, double bpm) {
+    double s = 1.0 / clipTimeRatio(c, bpm);
+    return c.stretchMode == 0 ? s * std::pow(2.0, c.pitch / 12.0) : s;
+}
 
 // Non-destructive editing state of an audio file reference
 struct AudioSource {

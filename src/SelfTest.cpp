@@ -5,6 +5,8 @@
 #include "dsp/effects/Effects.h"
 #include "dsp/instruments/Instruments.h"
 #include "audio/RenderEngine.h"
+#include "ui/widgets/Controls.h"
+#include <QMouseEvent>
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <cstdio>
@@ -150,6 +152,127 @@ int runSelfTest(App& app) {
         CHECK(r && frames > 44100 && ch == 2, "offline render produces a stereo file of the song length");
         auto asset = AudioFile::load(o.path, 0);
         CHECK(asset && asset->peakValue > 0.1f, "rendered audio is not silent");
+    }
+    // ---- sample modes: tempo from names, clip speed, stretch flavours, sampler tempo fit
+    {
+        CHECK(AudioFile::bpmFromName("/x/PIOTR FIGIEL ENSEMBLE - To an unfaithful girl 89 bpm.wav") == 89 &&
+                AudioFile::bpmFromName("кольхида - Криницы 83 bpm.wav") == 83 && AudioFile::bpmFromName("loop_120BPM.wav") == 120 &&
+                AudioFile::bpmFromName("kick.wav") == 0,
+            "sample tempo is read from file names");
+        Clip c;
+        c.fitTempo = true;
+        c.sourceBpm = 83;
+        c.pitch = 12;
+        CHECK(std::fabs(clipSourceSpeed(c, 120) - 2.0 * 120 / 83) < 1e-9, "resample: tempo fit and pitch both change the clip's speed");
+        c.stretchMode = StretchGeneral;
+        CHECK(std::fabs(clipSourceSpeed(c, 120) - 120.0 / 83) < 1e-9, "stretch modes: pitch leaves the clip's speed alone");
+        auto tone = std::make_shared<AudioAsset>();
+        tone->sampleRate = 44100;
+        tone->channels = 2;
+        tone->frames = 44100;
+        for (int i = 0; i < 44100; ++i) tone->left.push_back(0.5f * std::sin(i * 0.0627f) * (i % 11025 < 2000 ? 1.f : 0.3f));
+        tone->right = tone->left;
+        bool lengthsOk = true;
+        for (int m = StretchGeneral; m <= StretchVocals; ++m) {
+            auto st = AudioFile::stretch(*tone, 2.0, 0.0, m);
+            if (std::abs(st->frames - 88200) > 1800) {
+                lengthsOk = false;
+                std::printf("  stretch mode %d: %lld frames\n", m, (long long)st->frames);
+            }
+        }
+        CHECK(lengthsOk, "every stretch flavour renders the requested length");
+        // sampler: how long one note sounds (seconds) for a given setup
+        auto dc = std::make_shared<AudioAsset>();
+        dc->sampleRate = 44100;
+        dc->channels = 1;
+        dc->frames = 44100;
+        dc->left.assign(44100, 0.5f);
+        auto noteLength = [&](std::function<void(Sampler&)> setup) {
+            Sampler smp;
+            smp.prepare(44100, 512);
+            smp.setSample(dc, "dc.wav");
+            setup(smp);
+            MidiEventList ev;
+            MidiEvent on;
+            on.type = MidiEvent::NoteOn;
+            on.data1 = 60;
+            ev.add(on);
+            ProcessContext cx;
+            cx.bpm = 120;
+            std::vector<float> l(512), r(512);
+            int lastLoud = 0;
+            for (int b = 0; b < 300; ++b) {
+                std::fill(l.begin(), l.end(), 0.f);
+                std::fill(r.begin(), r.end(), 0.f);
+                smp.process(l.data(), r.data(), 512, ev, cx);
+                ev.clear();
+                for (int i = 0; i < 512; ++i)
+                    if (std::fabs(l[i]) > 0.01f) lastLoud = b * 512 + i;
+            }
+            return lastLoud / 44100.0;
+        };
+        double plain = noteLength([](Sampler&) {});
+        double fitted = noteLength([](Sampler& s) {
+            s.params().set(Sampler::pFitTempo, 1);
+            s.params().set(Sampler::pSourceBpm, 60);
+        });
+        CHECK(std::fabs(plain - 1.0) < 0.02 && std::fabs(fitted - 0.5) < 0.02,
+            QString("resample: a 60 BPM sample at 120 BPM plays twice as fast (%1 s -> %2 s)").arg(plain).arg(fitted).toUtf8().constData());
+        auto twoSec = std::make_shared<AudioAsset>(*dc);
+        twoSec->frames = 88200;
+        twoSec->left.assign(88200, 0.5f);
+        double rendered = noteLength([&](Sampler& s) {
+            s.params().set(Sampler::pStretchMode, StretchGeneral);
+            s.params().set(Sampler::pTune, 12);
+            s.setStretched(twoSec, "k");
+        });
+        CHECK(std::fabs(rendered - 2.0) < 0.02, "stretch mode plays the render as is (Tune is already in it, not applied twice)");
+    }
+    // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
+    {
+        auto& pr = app.project();
+        double bpm0 = pr.transport.bpm;
+        Clip a, f;
+        a.id = pr.newId();
+        a.type = ClipType::Audio;
+        a.length = PPQ * 4;
+        a.fadeIn = PPQ;
+        f = a;
+        f.id = pr.newId();
+        f.fitTempo = true;
+        Clip st = a;
+        st.id = pr.newId();
+        st.stretchMode = StretchGeneral;
+        pr.clips.push_back(a);
+        pr.clips.push_back(f);
+        pr.clips.push_back(st);
+        app.setBpm(bpm0 / 2);
+        CHECK(pr.clip(a.id)->length == PPQ * 2 && pr.clip(a.id)->fadeIn == PPQ / 2 && pr.clip(f.id)->length == PPQ * 4,
+            "resample: halving the tempo halves the clip's beats (same seconds); a tempo-fit clip keeps its beats");
+        CHECK(pr.clip(st.id)->length == PPQ * 4 && std::fabs(pr.clip(st.id)->timeStretch - 2.0) < 1e-9,
+            "stretch mode: halving the tempo keeps the clip's bars and stretches the audio 2x to fill them");
+        app.model().undoStack().undo();
+        CHECK(pr.transport.bpm == bpm0 && pr.clip(a.id)->length == PPQ * 4, "one undo restores the tempo and the clip");
+        std::erase_if(pr.clips, [&](const Clip& c) { return c.id == a.id || c.id == f.id || c.id == st.id; });
+    }
+    // ---- semitone knobs: gentle detent at whole semitones that a slow drag can still leave
+    {
+        auto snap = Knob::wholeStepSnap(-24, 24);
+        auto st = [](float n) { return n * 48 - 24; };
+        auto pos = [](float v) { return (v + 24) / 48; };
+        CHECK(std::fabs(st(snap(pos(1.1f))) - 1.f) < 1e-4f && std::fabs(st(snap(pos(1.2f))) - 1.2f) < 1e-4f,
+            "semitone snap lands 1.1 on 1 but leaves 1.2 alone");
+        Knob k;
+        k.snap = snap;
+        k.setValue(pos(1.f));
+        QMouseEvent pr(QEvent::MouseButtonPress, QPointF(10, 50), QPointF(10, 50), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(&k, &pr);
+        for (int y = 49; y >= 40; --y) {   // one pixel at a time
+            QMouseEvent mv(QEvent::MouseMove, QPointF(10, y), QPointF(10, y), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(&k, &mv);
+        }
+        float v = st(k.value());
+        CHECK(v > 1.2f && v < 4.f, QString("a slow drag moves past the detent (reached %1 st)").arg(v).toUtf8().constData());
     }
     // ---- mixer track names follow the routed channel unless the user renamed the track
     {

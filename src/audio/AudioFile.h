@@ -1,6 +1,7 @@
 // Audio asset loading (libsndfile), resampling (libsamplerate) and multiresolution waveform peak caches.
 // Loading happens on worker threads; the RT thread only ever reads immutable AudioAsset data.
 #pragma once
+#include <string>
 #include <QString>
 #include <QObject>
 #include <vector>
@@ -34,13 +35,23 @@ struct AudioAsset {
 };
 using AudioAssetPtr = std::shared_ptr<const AudioAsset>;
 
+// How a sample changes pitch / length (after FL Studio's time-stretch modes). Resample links them like a turntable; the
+// stretch modes keep them independent (Rubber Band, offline) with settings tuned for the material.
+enum StretchMode : int { StretchResample = 0, StretchGeneral, StretchDrums, StretchPads, StretchVocals };
+inline const std::vector<std::string>& stretchModeNames() {
+    static const std::vector<std::string> n = {"Resample", "Stretch", "Stretch: drums", "Stretch: pads", "Stretch: vocals"};
+    return n;
+}
+
 // Static helpers
 struct AudioFile {
     static std::shared_ptr<AudioAsset> load(const QString& path, double targetSampleRate, QString* error = nullptr);
     static bool write(const QString& path, const float* interleaved, int channels, int64_t frames, double sampleRate, int bitDepth,
         const QString& format /*wav|aiff|flac|ogg|mp3*/, QString* error = nullptr);
     static std::shared_ptr<AudioAsset> resample(const AudioAsset& in, double targetRate);
-    static std::shared_ptr<AudioAsset> stretch(const AudioAsset& in, double timeRatio, double pitchSemitones);   // Rubber Band offline
+    // Rubber Band offline; mode is one of the stretch modes (not StretchResample)
+    static std::shared_ptr<AudioAsset> stretch(const AudioAsset& in, double timeRatio, double pitchSemitones, int mode = StretchGeneral);
+    static double bpmFromName(const QString& path);   // "loop 83 bpm.wav" -> 83; 0 when the name carries no tempo
     static bool probe(const QString& path, double* sr, int* channels, int64_t* frames);
     static bool isAudioFile(const QString& path);
 };
@@ -56,7 +67,9 @@ public:
     // Returns the asset if already loaded, otherwise schedules a load and returns nullptr.
     AudioAssetPtr get(const QString& path);
     AudioAssetPtr getSync(const QString& path);   // blocking load (UI thread only, small files / preview)
-    AudioAssetPtr getStretched(const QString& path, double ratio, double pitch);   // async; nullptr until ready
+    // async; nullptr until ready. One render per file at a time: requests made meanwhile return nullptr and are re-made after
+    // assetLoaded, so a knob or tempo drag renders only its settled value instead of queueing a render per step
+    AudioAssetPtr getStretched(const QString& path, double ratio, double pitch, int mode = StretchGeneral);
     bool isLoading(const QString& path) const;
     void clear();
     int pendingCount() const { return m_pending.load(); }

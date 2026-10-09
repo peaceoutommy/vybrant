@@ -37,7 +37,12 @@ Sampler::Sampler() {
     p.addChoice(pDeclick, "Declicking",
         {"Out only (10 ms)", "Transient (10 ms)", "Transient bleeding (20 ms)", "Generic (20 ms)", "Smooth (100 ms)",
             "Crossfade (200 ms)"});
+    p.addChoice(pStretchMode, "Mode", stretchModeNames());
+    p.add(pTime, "Time", 0.25f, 4.f, 1.f, ParamUnit::Multiplier, true);
+    p.addToggle(pFitTempo, "Fit tempo", false);
+    p.add(pSourceBpm, "Source BPM", 40, 250, 120, ParamUnit::Bpm);
     m_holders.push_back(&m_sample);
+    m_holders.push_back(&m_stretched);
 }
 void Sampler::onPrepare() { reset(); }
 void Sampler::reset() {
@@ -91,7 +96,7 @@ void Sampler::cutVoice(Voice& v) {
     v.fadeOutPos = 0;
 }
 void Sampler::noteOn(const MidiEvent& e) {
-    const AudioAsset* a = m_sample.get();
+    const AudioAsset* a = playAsset();
     if (!a || a->frames < 2) return;
     Voice* v = nullptr;
     for (auto& vv : m_voices)
@@ -153,8 +158,12 @@ void Sampler::noteOff(const MidiEvent& e) {
 
 void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
     m_sample.rtTick();
-    const AudioAsset* a = m_sample.get();
+    m_stretched.rtTick();
+    const AudioAsset* a = playAsset();
     auto& p = m_params;
+    // a rendered stretch already carries Tune, Time and the tempo fit; resampling applies them as playback speed
+    bool rendered = a && a != m_sample.get();
+    double tune = rendered ? 0.0 : p.get(pTune), speed = rendered ? 1.0 : 1.0 / timeRatio(ctx.bpm);
     int mi = 0;
     float level = p.get(pLevel);
     float gpl, gpr;
@@ -191,8 +200,8 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
                 v.glideT += 1.f / (p.get(pGlide) * (float)m_sr);
                 glideSemi = v.glideFrom * (1.f - std::min(v.glideT, 1.f));
             }
-            double semis = (v.note - p.get(pRoot)) + p.get(pTune) + p.get(pFine) / 100.0 + m_bend + glideSemi;
-            v.inc = std::pow(2.0, semis / 12.0) * (a->sampleRate / m_sr);
+            double semis = (v.note - p.get(pRoot)) + tune + p.get(pFine) / 100.0 + m_bend + glideSemi;
+            v.inc = std::pow(2.0, semis / 12.0) * speed * (a->sampleRate / m_sr);
             int64_t ls = (int64_t)(p.get(pLoopStart) * a->frames), le = std::max<int64_t>(ls + 2, (int64_t)(p.get(pLoopEnd) * a->frames));
             float dg = 1.f;
             if (v.fadeInPos < v.fadeInLen) {

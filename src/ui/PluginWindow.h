@@ -17,8 +17,11 @@ namespace mt {
 class GenericParamPanel : public QWidget {
     Q_OBJECT
 public:
+    // cellWidth > 0: every cell gets that fixed width (choices span two cells), so panels stacked in one column line up
     GenericParamPanel(App& app, Id ownerId, IProcessor* proc, std::function<bool(const ParamDesc&)> filter = nullptr, int columns = 6,
-        QWidget* parent = nullptr);
+        QWidget* parent = nullptr, int cellWidth = 0);
+    static constexpr int kCellH = 40 + 2 * 14 + 2;   // knob 40 + name + value
+    static constexpr int kCellW = 92;   // shared by the sampler and audio clip editors so their knob grids match
     void sync();   // pull values from the processor (automation / plugin changes)
 Q_SIGNALS:
     void edited();   // the user changed a value here (knob drag, combo, checkbox)
@@ -63,7 +66,7 @@ private:
     QString m_titleText;
 };
 
-// Editor for an audio clip: trim, gain, fades, stretch, pitch, reverse, normalize, slices
+// Editor for an audio clip, laid out like the sampler editor: waveform (click sets the start), knob groups, toggles
 class AudioClipEditor : public QWidget {
     Q_OBJECT
 public:
@@ -72,6 +75,10 @@ public:
 private:
     App& m_app;
     Id m_clip;
+    bool m_previewing = false;
+    bool m_lengthDirty = false;   // the next commit also writes m_draft.length (set by Fit tempo)
+    Clip m_draft;   // working copy the knobs edit live; committed to the project on release
+    AudioSource m_draftSrc;
 };
 
 }   // namespace mt

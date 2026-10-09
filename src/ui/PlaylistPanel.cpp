@@ -1,3 +1,5 @@
+#include <cmath>
+#include <QNativeGestureEvent>
 #include "ui/PlaylistPanel.h"
 #include "dsp/DspUtils.h"
 #include <QPainterPath>
@@ -363,8 +365,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
         if (a && a->frames > 0) {
             double sr = a->sampleRate;
             double bpm = proj.transport.bpm;
-            double framesPerTick = sr * 60.0 / (bpm * PPQ) *
-                (std::fabs(c.timeStretch - 1.0) > 1e-4 ? 1.0 / c.timeStretch : std::pow(2.0, c.pitch / 12.0));
+            double framesPerTick = sr * 60.0 / (bpm * PPQ) * clipSourceSpeed(c, bpm);
             double spp = framesPerTick / m_ppt;
             const WaveformLevel& lv = a->levelFor(spp);
             int mid = body.center().y();
@@ -1278,6 +1279,25 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
         }
     }
 }
+void PlaylistView::zoomTimeAt(int x, double factor) {
+    Layout L = layout();
+    Tick anchor = xToTick(x);
+    double minPpt = (double)L.area.width() / (double)maxExtent();
+    m_ppt = clamp(m_ppt * factor, minPpt, 1.0);
+    m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround((x - L.headerW) / m_ppt));
+    updateScrollbars();
+    invalidate();
+}
+bool PlaylistView::event(QEvent* e) {
+    if (e->type() == QEvent::NativeGesture) {   // trackpad pinch
+        auto* g = static_cast<QNativeGestureEvent*>(e);
+        if (g->gestureType() == Qt::ZoomNativeGesture) {
+            zoomTimeAt(g->position().toPoint().x(), 1.0 + g->value());
+            return true;
+        }
+    }
+    return QWidget::event(e);
+}
 void PlaylistView::wheelEvent(QWheelEvent* e) {
     int dy = e->angleDelta().y();
     Layout L = layout();
@@ -1293,10 +1313,9 @@ void PlaylistView::wheelEvent(QWheelEvent* e) {
         return;
     }
     if (e->modifiers() & Qt::ControlModifier) {
-        Tick anchor = xToTick(e->position().toPoint().x());
-        double minPpt = (double)L.area.width() / (double)maxExtent();
-        m_ppt = clamp(m_ppt * (dy > 0 ? 1.15 : 1 / 1.15), minPpt, 1.0);
-        m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround((e->position().toPoint().x() - L.headerW) / m_ppt));
+        if (dy != 0) zoomTimeAt(e->position().toPoint().x(), std::pow(1.15, dy / 120.0));   // proportional: trackpads send many small deltas
+        e->accept();
+        return;
     } else if (e->modifiers() & Qt::ShiftModifier || e->angleDelta().x() != 0) {
         int d = e->angleDelta().x() != 0 ? e->angleDelta().x() : dy;
         m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(d / m_ppt * 0.5));
@@ -1679,7 +1698,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
         });
         m.addAction("Crossfade with overlapping clip", [this] { crossfadeSelected(); });
         m.addAction("Time stretch / pitch...", [this, id] { Q_EMIT openAudioClip(id); });
-        m.addAction("Fit to tempo (stretch to whole bars)", [this, id, c] {
+        m.addAction("Stretch to whole bars", [this, id, c] {
             const AudioSource* s = m_app.project().audioSource(c->sourceId);
             if (!s || s->sampleRate <= 0) return;
             double secs = s->frames / s->sampleRate;
@@ -1687,9 +1706,11 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             Tick bar = m_app.project().transport.timeSig.ticksPerBar();
             Tick target = std::max<Tick>(bar, ((nat + bar / 2) / bar) * bar);
             double ratio = (double)target / nat;
-            m_app.editClip(id, "Fit to tempo", [ratio, target](Clip& x) {
+            m_app.editClip(id, "Stretch to whole bars", [ratio, target](Clip& x) {
                 x.timeStretch = ratio;
                 x.length = target;
+                if (x.stretchMode == StretchResample) x.stretchMode = StretchGeneral;   // keep the pitch
+                x.fitTempo = false;
             });
         });
         m.addAction("Slice at transients", [this, id, c] {

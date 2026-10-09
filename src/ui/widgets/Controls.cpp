@@ -72,6 +72,7 @@ void Knob::mousePressEvent(QMouseEvent* e) {
     m_dragging = true;
     m_lastPos = e->pos();
     m_dragStart = m_value;
+    m_raw = m_value;
     Q_EMIT dragStarted();
     showTip();
 }
@@ -80,8 +81,9 @@ void Knob::mouseMoveEvent(QMouseEvent* e) {
     int dy = m_lastPos.y() - e->pos().y();
     int dx = e->pos().x() - m_lastPos.x();
     m_lastPos = e->pos();
-    float sens = (e->modifiers() & Qt::ShiftModifier) ? 0.0005f : 0.005f;
-    setValue(m_value + (dy + dx) * sens, true);
+    bool fine = e->modifiers() & Qt::ShiftModifier;
+    m_raw = std::clamp(m_raw + (dy + dx) * (fine ? 0.0005f : 0.005f), 0.f, 1.f);
+    setValue(snap && !fine ? snap(m_raw) : m_raw, true);
     showTip();
 }
 void Knob::mouseReleaseEvent(QMouseEvent*) {
@@ -96,10 +98,18 @@ void Knob::mouseDoubleClickEvent(QMouseEvent*) {
     setValue(m_default, true);
     Q_EMIT dragFinished();
 }
+std::function<float(float)> Knob::wholeStepSnap(float min, float max, float width) {
+    return [min, max, width](float n) {
+        float v = min + n * (max - min), r = std::round(v);
+        return std::fabs(v - r) < width ? (r - min) / (max - min) : n;
+    };
+}
 void Knob::wheelEvent(QWheelEvent* e) {
-    float step = (e->modifiers() & Qt::ShiftModifier) ? 0.002f : 0.02f;
+    bool fine = e->modifiers() & Qt::ShiftModifier;
+    float step = fine ? 0.002f : 0.02f;
     Q_EMIT dragStarted();
-    setValue(m_value + (e->angleDelta().y() > 0 ? step : -step), true);
+    float v = std::clamp(m_value + (e->angleDelta().y() > 0 ? step : -step), 0.f, 1.f);
+    setValue(snap && !fine ? snap(v) : v, true);
     Q_EMIT dragFinished();
     showTip();
     e->accept();

@@ -1,3 +1,4 @@
+#include <QRegularExpression>
 #include "audio/AudioFile.h"
 #include "core/Log.h"
 #include <sndfile.h>
@@ -131,16 +132,36 @@ std::shared_ptr<AudioAsset> AudioFile::resample(const AudioAsset& in, double tar
     return out;
 }
 
-std::shared_ptr<AudioAsset> AudioFile::stretch(const AudioAsset& in, double timeRatio, double pitchSemitones) {
+double AudioFile::bpmFromName(const QString& path) {
+    static const QRegularExpression re("(\\d{2,3}(?:[.,]\\d+)?)\\s*-?\\s*bpm", QRegularExpression::CaseInsensitiveOption);
+    auto m = re.match(QFileInfo(path).completeBaseName());
+    double v = m.hasMatch() ? m.captured(1).replace(',', '.').toDouble() : 0.0;
+    return v >= 40 && v <= 300 ? v : 0.0;
+}
+std::shared_ptr<AudioAsset> AudioFile::stretch(const AudioAsset& in, double timeRatio, double pitchSemitones, int mode) {
     using namespace RubberBand;
+    // threading off: renders already run on a pool thread, and the threaded R2 engine (drums / pads) hands back a stereo
+    // render short while its workers are still busy
+    RubberBandStretcher::Options opts = RubberBandStretcher::OptionProcessOffline | RubberBandStretcher::OptionPitchHighQuality |
+        RubberBandStretcher::OptionThreadingNever;
+    switch (mode) {
+    case StretchDrums:   // R2: phase reset on hits keeps attacks sharp
+        opts |= RubberBandStretcher::OptionEngineFaster | RubberBandStretcher::OptionTransientsCrisp |
+            RubberBandStretcher::OptionDetectorPercussive | RubberBandStretcher::OptionWindowShort;
+        break;
+    case StretchPads:   // R2: no phase resets, long window, smoothing - soft and smeared, no flamming on sustained sounds
+        opts |= RubberBandStretcher::OptionEngineFaster | RubberBandStretcher::OptionTransientsSmooth |
+            RubberBandStretcher::OptionWindowLong | RubberBandStretcher::OptionSmoothingOn;
+        break;
+    case StretchVocals: opts |= RubberBandStretcher::OptionEngineFiner | RubberBandStretcher::OptionFormantPreserved; break;
+    default: opts |= RubberBandStretcher::OptionEngineFiner; break;
+    }
     auto out = std::make_shared<AudioAsset>();
     out->path = in.path;
     out->sampleRate = in.sampleRate;
     out->originalSampleRate = in.originalSampleRate;
     out->channels = in.channels;
-    RubberBandStretcher rb((size_t)in.sampleRate, in.channels,
-        RubberBandStretcher::OptionProcessOffline | RubberBandStretcher::OptionEngineFiner | RubberBandStretcher::OptionPitchHighQuality,
-        timeRatio, std::pow(2.0, pitchSemitones / 12.0));
+    RubberBandStretcher rb((size_t)in.sampleRate, in.channels, opts, timeRatio, std::pow(2.0, pitchSemitones / 12.0));
     rb.setExpectedInputDuration((size_t)in.frames);
     const float* chans[2] = {in.L(), in.R()};
     rb.study(chans, (size_t)in.frames, true);
@@ -293,8 +314,8 @@ AudioAssetPtr SampleCache::getSync(const QString& path) {
     return a;
 }
 
-AudioAssetPtr SampleCache::getStretched(const QString& path, double ratio, double pitch) {
-    QString key = QString("%1|stretch|%2|%3").arg(path).arg(ratio, 0, 'f', 5).arg(pitch, 0, 'f', 3);
+AudioAssetPtr SampleCache::getStretched(const QString& path, double ratio, double pitch, int mode) {
+    QString key = QString("%1|stretch|%2|%3|%4").arg(path).arg(ratio, 0, 'f', 5).arg(pitch, 0, 'f', 3).arg(mode);
     AudioAssetPtr base;
     {
         std::lock_guard<std::mutex> lk(m_mutex);
@@ -305,12 +326,14 @@ AudioAssetPtr SampleCache::getStretched(const QString& path, double ratio, doubl
             base = nullptr;
         } else base = b->second;
         if (!base) return nullptr;
-        if (m_loading[key]) return nullptr;
+        const QString prefix = path + "|stretch|";
+        for (auto& [k, busy] : m_loading)
+            if (busy && k.startsWith(prefix)) return nullptr;   // one render per file at a time (see header)
         m_loading[key] = true;
         m_pending++;
     }
-    QThreadPool::globalInstance()->start([this, key, base, ratio, pitch, path] {
-        auto a = AudioFile::stretch(*base, ratio, pitch);
+    QThreadPool::globalInstance()->start([this, key, base, ratio, pitch, path, mode] {
+        auto a = AudioFile::stretch(*base, ratio, pitch, mode);
         {
             std::lock_guard<std::mutex> lk2(m_mutex);
             m_assets[key] = a;

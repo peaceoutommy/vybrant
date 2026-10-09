@@ -63,7 +63,10 @@ IProcessor* RuntimeRegistry::ensureInstrument(
     }
     proc->restoreState(ch.instrumentState);
     if (auto* s = dynamic_cast<Sampler*>(proc.get())) {
-        if (s->pendingPath.isEmpty()) s->pendingPath = ch.samplePath;
+        if (s->pendingPath.isEmpty() && !ch.samplePath.isEmpty()) {   // a new sampler (no saved state): tempo from names like "83 bpm"
+            s->pendingPath = ch.samplePath;
+            if (double b = AudioFile::bpmFromName(ch.samplePath); b > 0) s->params().set(Sampler::pSourceBpm, (float)b);
+        }
     }
     if (auto* d = dynamic_cast<DrumSampler*>(proc.get())) {
         if (ch.instrumentState.contains("builtin") && d->builtinName().isEmpty()) d->setBuiltin(ch.instrumentState["builtin"].toString());
@@ -469,19 +472,20 @@ void AudioEngine::rebuild(const Project& p) {
         else if (c.type == ClipType::Audio) {
             const AudioSource* src = p.audioSource(c.sourceId);
             if (!src || src->filePath.isEmpty()) continue;
-            bool stretched = std::fabs(c.timeStretch - 1.0) > 1e-4;
-            AudioAssetPtr a = stretched ? m_cache.getStretched(src->filePath, c.timeStretch, c.pitch) : m_cache.get(src->filePath);
+            double ratio = clipTimeRatio(c, p.transport.bpm);
+            bool stretched = c.stretchMode != StretchResample && (std::fabs(ratio - 1.0) > 1e-4 || std::fabs(c.pitch) > 1e-3);
+            AudioAssetPtr a = stretched ? m_cache.getStretched(src->filePath, ratio, c.pitch, c.stretchMode) : m_cache.get(src->filePath);
             if (!a && stretched) m_cache.get(src->filePath);
             rc.asset = a;
             if (a) {
-                double scale = stretched ? c.timeStretch : 1.0;
+                double scale = stretched ? ratio : 1.0;
                 rc.srcStart = (int64_t)(src->trimStart * scale);
                 rc.srcEnd = src->trimEnd > 0 ? (int64_t)(src->trimEnd * scale) : a->frames;
                 rc.srcStart = clamp<int64_t>(rc.srcStart, 0, a->frames);
                 rc.srcEnd = clamp<int64_t>(rc.srcEnd, rc.srcStart + 1, a->frames);
                 rc.gain = c.gain * src->gain * (src->normalize && a->peakValue > 0 ? 1.f / a->peakValue : 1.f);
                 rc.reverse = c.reverse != src->reverse;
-                rc.rate = stretched ? 1.0 : std::pow(2.0, c.pitch / 12.0);
+                rc.rate = stretched ? 1.0 : clipSourceSpeed(c, p.transport.bpm);   // resample: pitch, stretch and tempo fit set the speed
                 rc.fadeIn = c.fadeIn;
                 rc.fadeOut = c.fadeOut;
                 rc.fadeInShape = c.fadeInShape;
