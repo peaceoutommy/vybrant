@@ -113,6 +113,17 @@ GenericParamPanel::GenericParamPanel(
             row.value->setAlignment(Qt::AlignCenter);
             row.value->setStyleSheet("color:#d6dae0; font-size:8pt;");
             vl->addWidget(row.value);
+            makeValueEditable(row.value, [this, id, d, k = row.knob, lbl = row.value](double v) {
+                QString shown = lbl->text();   // typed in the unit on display
+                if (d.unit == ParamUnit::Percent) v /= 100.0;
+                else if (d.unit == ParamUnit::Seconds && shown.endsWith(" ms")) v /= 1000.0;
+                else if (d.unit == ParamUnit::Hertz && shown.endsWith(" kHz")) v *= 1000.0;
+                float n = d.toNormalized((float)v);
+                m_app.setProcessorParam(m_owner, id, n, true);
+                k->setValue(n);
+                lbl->setText(m_proc->formatValue(id));
+                Q_EMIT edited();
+            });
             connect(row.knob, &Knob::valueChanged, this, [this, id, lbl = row.value](float v) {
                 if (m_updating) return;
                 m_app.setProcessorParam(m_owner, id, v, false);
@@ -441,6 +452,22 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent)
             wave->update();
         });
         connect(k, &Knob::dragFinished, this, [commit, desc, source] { commit(desc, source); });
+        // typed value: every mapping here rises with the knob, so bisect the label's number for the knob position
+        makeValueEditable(v, [k, text, commit, desc, source](double target) {
+            auto valueAt = [&](float p) {
+                bool ok;
+                QString t = text(p);
+                double x = t.left(t.indexOf(' ')).toDouble(&ok);
+                return ok ? x : 1e300;   // "end" (trim end) sits at the top
+            };
+            float lo = 0.f, hi = 1.f;
+            for (int i = 0; i < 40; ++i) {
+                float mid = 0.5f * (lo + hi);
+                (valueAt(mid) < target ? lo : hi) = mid;
+            }
+            k->setValue(target >= valueAt(1.f) ? 1.f : hi, true);   // updates the label, the working copy and the waveform
+            commit(desc, source);
+        });
         cells->addWidget(w);
         return k;
     };

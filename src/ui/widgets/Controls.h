@@ -4,6 +4,8 @@
 #include <QString>
 #include <functional>
 
+class QLabel;
+
 namespace mt {
 
 class Knob : public QWidget {
@@ -192,5 +194,9 @@ private:
     bool m_checked = false;
     int m_w = 26;
 };
+
+// Double-click a knob's value label to type a number (Enter applies, Escape cancels). The first number in the typed text is
+// passed on, so "3", "+3 st" and "-1,5" all work.
+void makeValueEditable(QLabel* label, std::function<void(double)> onValue);
 
 }   // namespace mt

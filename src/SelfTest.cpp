@@ -7,6 +7,9 @@
 #include "audio/RenderEngine.h"
 #include "ui/widgets/Controls.h"
 #include <QMouseEvent>
+#include <QLabel>
+#include <QLineEdit>
+#include <QKeyEvent>
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <cstdio>
@@ -254,6 +257,32 @@ int runSelfTest(App& app) {
         app.model().undoStack().undo();
         CHECK(pr.transport.bpm == bpm0 && pr.clip(a.id)->length == PPQ * 4, "one undo restores the tempo and the clip");
         std::erase_if(pr.clips, [&](const Clip& c) { return c.id == a.id || c.id == f.id || c.id == st.id; });
+    }
+    // ---- typing a knob value: double-click the value label, type, Enter applies / Escape cancels
+    {
+        QWidget host;
+        auto* lbl = new QLabel("0.00 st", &host);
+        double got = 1e9;
+        int calls = 0;
+        makeValueEditable(lbl, [&](double v) {
+            got = v;
+            ++calls;
+        });
+        auto typeInto = [&](const QString& text, int key) {
+            QMouseEvent dbl(QEvent::MouseButtonDblClick, QPointF(2, 2), QPointF(2, 2), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(lbl, &dbl);
+            QLineEdit* ed = host.findChild<QLineEdit*>();
+            if (!ed) return false;
+            ed->setText(text);
+            QKeyEvent k(QEvent::KeyPress, key, Qt::NoModifier);
+            QCoreApplication::sendEvent(ed, &k);
+            delete ed;   // deleteLater would wait for the event loop
+            return true;
+        };
+        bool shown = typeInto("+1,2 st", Qt::Key_Return);
+        CHECK(shown && calls == 1 && std::fabs(got - 1.2) < 1e-9, "double-click a knob value and type it (\"+1,2 st\" -> 1.2)");
+        typeInto("5", Qt::Key_Escape);
+        CHECK(calls == 1, "Escape cancels a typed knob value");
     }
     // ---- semitone knobs: gentle detent at whole semitones that a slow drag can still leave
     {

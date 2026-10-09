@@ -7,6 +7,10 @@
 #include <QToolTip>
 #include <QInputDialog>
 #include <QtMath>
+#include <QLabel>
+#include <QLineEdit>
+#include <QKeyEvent>
+#include <QRegularExpression>
 
 namespace mt {
 
@@ -366,4 +370,59 @@ void LedButton::mousePressEvent(QMouseEvent* e) {
     Q_EMIT toggled(m_checked);
 }
 
+static bool firstNumber(const QString& text, double& v) {
+    static const QRegularExpression re("[-+]?\\d*[.,]?\\d+");
+    auto m = re.match(text);
+    if (!m.hasMatch()) return false;
+    v = m.captured(0).replace(',', '.').toDouble();
+    return true;
+}
+void makeValueEditable(QLabel* label, std::function<void(double)> onValue) {
+    struct Filter : QObject {
+        QLabel* label;
+        std::function<void(double)> onValue;
+        bool eventFilter(QObject*, QEvent* e) override {
+            if (e->type() != QEvent::MouseButtonDblClick) return false;
+            auto* ed = new QLineEdit(label->parentWidget());
+            double cur = 0;
+            ed->setText(firstNumber(label->text(), cur) ? QString::number(cur) : QString());
+            ed->setAlignment(Qt::AlignCenter);
+            ed->setGeometry(label->geometry().adjusted(-2, -2, 2, 2));
+            ed->show();
+            ed->selectAll();
+            ed->setFocus();
+            auto done = std::make_shared<bool>(false);
+            auto finish = [ed, done, this](bool apply) {
+                if (*done) return;
+                *done = true;
+                double v;
+                if (apply && firstNumber(ed->text(), v)) onValue(v);
+                ed->deleteLater();
+            };
+            QObject::connect(ed, &QLineEdit::returnPressed, ed, [finish] { finish(true); });
+            QObject::connect(ed, &QLineEdit::editingFinished, ed, [finish] { finish(true); });   // focus lost: keep what was typed
+            struct Esc : QObject {
+                std::function<void()> cancel;
+                bool eventFilter(QObject*, QEvent* e) override {
+                    if (e->type() == QEvent::KeyPress && static_cast<QKeyEvent*>(e)->key() == Qt::Key_Escape) {
+                        cancel();
+                        return true;
+                    }
+                    return false;
+                }
+            };
+            auto* esc = new Esc;
+            esc->setParent(ed);
+            esc->cancel = [finish] { finish(false); };
+            ed->installEventFilter(esc);
+            return true;
+        }
+    };
+    auto* f = new Filter;
+    f->setParent(label);
+    f->label = label;
+    f->onValue = std::move(onValue);
+    label->installEventFilter(f);
+    label->setToolTip("Double-click to type a value");
+}
 }   // namespace mt
