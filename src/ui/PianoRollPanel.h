@@ -23,13 +23,19 @@ public:
     // tests: view-local point of a tick/pitch cell, and the vertical scroll state
     QPoint debugPoint(Tick t, int pitch) const { return QPoint(tickToX(t) + 3, pitchToY(pitch) + m_rowH / 2); }
     QString debugScroll() const {
-        return QString("top=%1 min=%2 rowH=%3 gridH=%4 vbar=%5/%6")
+        Layout L = layout();
+        return QString("top=%1 min=%2 rowH=%3 gridH=%4 vbar=%5/%6 ppt=%7 sel=%8 rulerY=%9 velY=%10..%11")
             .arg(m_topPitch)
             .arg(minTopPitch())
             .arg(m_rowH)
             .arg(layout().grid.height())
             .arg(m_vbar->value())
-            .arg(m_vbar->maximum());
+            .arg(m_vbar->maximum())
+            .arg(m_ppt)
+            .arg(m_selected.size())
+            .arg(L.ruler.center().y())
+            .arg(L.vel.top())
+            .arg(L.vel.bottom());
     }
     static QCursor toolCursorFor(Tool t);
     Tool tool() const { return m_tool; }
@@ -90,6 +96,7 @@ public:
     QScrollBar* hbar() const { return m_hbar; }
     QScrollBar* vbar() const { return m_vbar; }
     void zoomToFit();
+    void zoomTimeAt(int x, double factor);
     static QStringList scaleNames();
     static QStringList chordNames();
 Q_SIGNALS:
@@ -182,6 +189,8 @@ private:
     QTimer m_repeatTimer, m_autoScroll;
     QPoint m_lastMouse;
     bool m_altHeld = false;
+    float m_laneLock = -1;   // Shift in the lane: value captured at the first Shift position
+    std::map<std::pair<Id, int>, float> m_laneOrig;   // (note, lane) -> value before the lane first edited it (Alt restores)
     bool m_erasedAny = false;
     int m_lane = 0;
     int m_velH = 80;

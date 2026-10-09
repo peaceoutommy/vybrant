@@ -263,6 +263,9 @@ private:
     std::atomic<int64_t> m_samplesProcessed{0};
     std::vector<float> m_outL, m_outR, m_dryL, m_dryR;
     dsp::Rng m_rng;
+    int m_nextNoteId = 0;   // VST3 note ids must be unique per sounding note (chords share a start tick)
+    MidiEventList m_liveDeferred[2];   // live note events held back to the next block (see routeLiveMidi)
+    int m_liveDeferredCur = 0;
     QTimer m_pollTimer;
     std::vector<std::pair<IProcessor*, QString>> m_waitingSamples;   // processors waiting for a sample path to load
 };

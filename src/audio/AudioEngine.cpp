@@ -819,8 +819,30 @@ void AudioEngine::routeLiveMidi(Snapshot& s, Tick t0) {
         }
         (void)fromHardware;
     };
-    while (m_midiIn.pop(e)) handle(e, true);
-    while (m_uiMidi.pop(e)) handle(e, false);
+    // Live events all land at offset 0 and sortMidi puts note-offs first, so a note-off arriving in the same block as its
+    // note-on (fast tap, stalled audio thread, back-to-back audition) would reach the instrument first and leave the note
+    // stuck. Hold such a note-off, and anything after it on that pitch, for the next block.
+    bool onNow[128] = {}, held[128] = {};
+    MidiEventList& prev = m_liveDeferred[m_liveDeferredCur];
+    m_liveDeferredCur ^= 1;
+    MidiEventList& next = m_liveDeferred[m_liveDeferredCur];
+    next.clear();
+    auto gate = [&](const MidiEvent& ev, bool fromHardware) {
+        if (ev.type == MidiEvent::NoteOn || ev.type == MidiEvent::NoteOff) {
+            int p = ev.data1 & 127;
+            if (held[p] || (ev.type == MidiEvent::NoteOff && onNow[p])) {
+                held[p] = true;
+                next.add(ev);
+                return;
+            }
+            if (ev.type == MidiEvent::NoteOn) onNow[p] = true;
+        }
+        handle(ev, fromHardware);
+    };
+    for (int i = 0; i < prev.count; ++i) gate(prev.events[i], false);
+    prev.clear();
+    while (m_midiIn.pop(e)) gate(e, true);
+    while (m_uiMidi.pop(e)) gate(e, false);
 }
 
 // ---------------------------------------------------------------- RT: sequencer
@@ -901,7 +923,8 @@ void AudioEngine::scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart
             e.finePitch = nt.finePitch;
             e.sampleOffset = off;
             e.channel = (uint8_t)nt.midiChannel;
-            e.noteId = (int)(global & 0x7fffffff);
+            e.noteId = m_nextNoteId;
+            m_nextNoteId = (m_nextNoteId + 1) & 0x7fffffff;
             if (ch.cutItself) {
                 MidiEvent cut;
                 cut.type = MidiEvent::AllNotesOff;

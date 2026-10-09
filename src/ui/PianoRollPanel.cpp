@@ -17,6 +17,8 @@
 #include <QDateTime>
 #include <QSettings>
 #include <QApplication>
+#include <QNativeGestureEvent>
+#include <cmath>
 
 namespace mt {
 
@@ -846,6 +848,7 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
         }
         beginEdit();
         m_drag = Velocity;
+        m_laneLock = -1;
         mouseMoveEvent(e);
         return;
     }
@@ -1007,6 +1010,10 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
         m_selStart = std::min(m_selAnchor, t);
         m_selEnd = std::max(m_selAnchor, t);
         m_timeSel = m_selEnd > m_selStart;
+        m_selected.clear();   // the notes starting inside the time selection are selected with it
+        if (m_timeSel && d)
+            for (auto& n : d->notes)
+                if (n.start >= m_selStart && n.start < m_selEnd) m_selected.insert(n.id);
         invalidate();
         return;
     }
@@ -1023,13 +1030,28 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     if (!d) return;
     if (m_drag == Velocity) {
         float v = clamp((float)(L.vel.bottom() - e->pos().y()) / (L.vel.height() - 6), 0.f, 1.f);
+        // Shift: every note swept gets the value at the first Shift position. Alt: swept notes go back to their original value.
+        bool shift = e->modifiers() & Qt::ShiftModifier, restore = e->modifiers() & Qt::AltModifier;
+        if (!shift) m_laneLock = -1;
+        else if (m_laneLock < 0) m_laneLock = v;
+        if (shift) v = m_laneLock;
         int hw = laneBarWidth();
+        int x0 = std::min(m_lastPos.x(), e->pos().x()), x1 = std::max(m_lastPos.x(), e->pos().x());   // no gaps on fast drags
+        m_lastPos = e->pos();
         bool any = !m_selected.empty();
         for (auto& n : d->notes) {
             int x = tickToX(n.start);
-            if (any ? m_selected.count(n.id) : (e->pos().x() >= x - 1 && e->pos().x() <= x + hw + 1)) setLaneValue(n, v);
+            if (!(any ? m_selected.count(n.id) : (x1 >= x - 1 && x0 <= x + hw + 1))) continue;
+            auto key = std::make_pair(n.id, m_lane);
+            auto it = m_laneOrig.find(key);
+            if (restore) {
+                if (it != m_laneOrig.end()) setLaneValue(n, it->second);
+                continue;
+            }
+            if (it == m_laneOrig.end()) m_laneOrig[key] = laneValue(n);
+            setLaneValue(n, v);
         }
-        if (m_lane == 0) m_lastVelocity = v;
+        if (m_lane == 0 && !restore) m_lastVelocity = v;
         invalidate();
         return;
     }
@@ -1175,7 +1197,10 @@ void PianoRollView::mouseReleaseEvent(QMouseEvent* e) {
     if (m_drag == Erasing || m_drag == Muting) setTool(m_tool);   // restore the tool cursor and toolbar state
     switch (m_drag) {
     case Moving: commitEdit(m_duplicated ? "Duplicate notes" : "Move notes"); break;
-    case Creating: commitEdit("Draw note"); break;
+    case Creating:
+        m_selected.clear();   // selected only while the draw drag moves/stretches them; a drawn note is not left selected
+        commitEdit("Draw note");
+        break;
     case Resizing: commitEdit("Resize notes"); break;
     case Velocity: commitEdit("Edit velocity"); break;
     case Erasing: commitEdit("Erase notes"); break;
@@ -1262,9 +1287,13 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
         if (e->modifiers() & Qt::ShiftModifier) {
             m_rowH = clamp(m_rowH + (dy > 0 ? 1 : -1), 5, 30);
         } else {
-            Tick anchor = xToTick(e->position().toPoint().x());
-            m_ppt = clamp(m_ppt * (dy > 0 ? 1.15 : 1 / 1.15), 0.002, 2.0);
-            m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround((e->position().toPoint().x() - L.keyW) / m_ppt));
+            if (dy == 0) {   // trackpads send horizontal-only and zero events too
+                e->accept();
+                return;
+            }
+            zoomTimeAt(e->position().toPoint().x(), std::pow(1.15, dy / 120.0));   // proportional: a trackpad sends many small deltas
+            e->accept();
+            return;
         }
         updateScrollbars();
         invalidate();
@@ -1282,7 +1311,22 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
 }
 void PianoRollView::leaveEvent(QEvent*) { update(); }
 // Arrow keys (with any modifier) are note editing while the piano roll has focus: claim them before application shortcuts (Ctrl+Up/Down = tempo) can take them
+void PianoRollView::zoomTimeAt(int x, double factor) {
+    Layout L = layout();
+    Tick anchor = xToTick(x);
+    m_ppt = clamp(m_ppt * factor, 0.002, 2.0);
+    m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround((x - L.keyW) / m_ppt));
+    updateScrollbars();
+    invalidate();
+}
 bool PianoRollView::event(QEvent* e) {
+    if (e->type() == QEvent::NativeGesture) {   // trackpad pinch
+        auto* g = static_cast<QNativeGestureEvent*>(e);
+        if (g->gestureType() == Qt::ZoomNativeGesture) {
+            zoomTimeAt(g->position().toPoint().x(), 1.0 + g->value());
+            return true;
+        }
+    }
     if (e->type() == QEvent::ShortcutOverride) {
         auto* ke = static_cast<QKeyEvent*>(e);
         int k = ke->key();

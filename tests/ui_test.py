@@ -120,6 +120,36 @@ def main():
     check(ins.send("layout").startswith("rack=top visible=1"), "top dock is restored after a restart", ins.send("layout"))
     ins.quit()
 
+    # ---- piano roll selection, velocity lane modifiers, trackpad zoom
+    cfg3 = os.path.join(tmp, "cfg3")
+    os.makedirs(cfg3)
+    ins = Instance(cfg3, sock)
+    ins.send("action view.pianoRoll")
+    ins.send("select 2")
+    ins.send("prwheel -4")
+    xs = [int(ins.send(f"prclick {t} {p}").split()[1].split(",")[0]) - 3 for t, p in [(0, 62), (480, 62), (960, 64)]]
+    info = dict(kv.split("=", 1) for kv in ins.send("prinfo").split())
+    check(info["sel"] == "0", "a drawn note is not left selected", info["sel"])
+    tx = lambda tick: int(xs[0] + tick * float(info["ppt"]))  # noqa: E731  grid x of a tick
+    ry, vt, vb = int(info["rulerY"]), int(info["velY"].split("..")[0]), int(info["velY"].split("..")[1])
+    sel = ins.send(f"prmouse {tx(0) + 1} {ry} {tx(600)} {ry} c").split()
+    check("sel=3" in sel, "Ctrl+drag on the ruler selects the notes starting inside the time selection", " ".join(sel))
+    sel = ins.send(f"prmouse {tx(0) + 1} {ry} {tx(0) + 1} {ry} c").split()
+    check("sel=0" in sel, "an empty time selection clears the note selection", " ".join(sel))
+    vel = lambda: ins.send("patdata").split(" | ")[1].split(" vel=")[1]  # noqa: E731
+    before = vel()
+    ins.send(f"prmouse {tx(0) + 1} {vt + 25} {tx(3000)} {vb - 10} s")
+    after = vel().split(",")
+    check(len(set(after)) == 1 and after[0] != "80", "Shift+drag in the velocity lane gives every swept note the first value", vel())
+    ins.send(f"prmouse {tx(0) + 1} {vt + 25} {tx(3000)} {vb - 10} a")
+    check(vel() == before, "Alt+drag in the velocity lane restores the original velocities", f"{before} -> {vel()}")
+    ins.send(f"prmouse {tx(0) + 1} {vt + 25} {tx(3000)} {vb - 10}")
+    check(len(set(vel().split(","))) > 1, "a plain velocity drag still follows the cursor", vel())
+    ppt0 = float(info["ppt"])
+    ppt1 = float(dict(kv.split("=", 1) for kv in ins.send("prpinch 0.5").split())["ppt"])
+    check(abs(ppt1 - ppt0 * 1.5) < 1e-6, "trackpad pinch zooms the piano roll", f"{ppt0} -> {ppt1}")
+    ins.quit()
+
     print("\n%s" % ("All UI checks passed" if fails == 0 else f"{fails} UI check(s) FAILED"))
     return 1 if fails else 0
 

@@ -151,6 +151,33 @@ int runSelfTest(App& app) {
         auto asset = AudioFile::load(o.path, 0);
         CHECK(asset && asset->peakValue > 0.1f, "rendered audio is not silent");
     }
+    // ---- live note-on + note-off in the same block must not leave the note stuck
+    {
+        Id prevSel = app.project().selectedChannelId;
+        Id sid = app.addChannel(ChannelType::Synth, "native.synth", "LiveTest");
+        app.selectChannel(sid);
+        app.engine().rebuild(app.project());
+        auto& eng = app.engine();
+        eng.offlineBegin(44100, 512);
+        std::vector<float> oL(512), oR(512);
+        auto blocks = [&](int k) {
+            float e = 0;
+            for (int b = 0; b < k; ++b) {
+                eng.offlineProcess(oL.data(), oR.data(), 512);
+                for (int i = 0; i < 512; ++i) e += oL[i] * oL[i];
+            }
+            return e;
+        };
+        app.noteOn(60);
+        app.noteOff(60);
+        float heard = blocks(4);
+        blocks(400);   // ~4.6 s: far longer than any release
+        float tail = blocks(4);
+        eng.offlineEnd();
+        CHECK(heard > 1e-4f && tail < 1e-6f, "live tap (note-on + note-off in one block) sounds and releases");
+        app.selectChannel(prevSel);
+        app.deleteChannel(sid);
+    }
     // ---- sample cache & waveform peaks
     {
         auto a = DrumSampler::synthesizeDrum("Kick", 44100);

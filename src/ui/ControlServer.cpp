@@ -1,3 +1,4 @@
+#include <QNativeGestureEvent>
 #include "ui/ControlServer.h"
 #include "ui/App.h"
 #include "ui/Theme.h"
@@ -287,6 +288,30 @@ QString ControlServer::handle(const QString& line) {
         }
         return v->debugScroll();
     }
+    if (c == "prmouse" && a.size() >= 5) {   // raw left drag in the piano roll: prmouse <x> <y> <toX> <toY> [mods: c s a]
+        auto* v = m_win.pianoRoll()->view();
+        QPoint p1(a[1].toInt(), a[2].toInt()), p2(a[3].toInt(), a[4].toInt());
+        QString m = a.size() > 5 ? a[5] : QString();
+        Qt::KeyboardModifiers mods = (m.contains('c') ? Qt::ControlModifier : Qt::NoModifier) |
+            (m.contains('s') ? Qt::ShiftModifier : Qt::NoModifier) | (m.contains('a') ? Qt::AltModifier : Qt::NoModifier);
+        QMouseEvent pr(QEvent::MouseButtonPress, p1, v->mapToGlobal(p1), Qt::LeftButton, Qt::LeftButton, mods);
+        QCoreApplication::sendEvent(v, &pr);
+        for (int i = 1; i <= 4; ++i) {
+            QPoint q = p1 + (p2 - p1) * i / 4;
+            QMouseEvent mv(QEvent::MouseMove, q, v->mapToGlobal(q), Qt::LeftButton, Qt::LeftButton, mods);
+            QCoreApplication::sendEvent(v, &mv);
+        }
+        QMouseEvent rl(QEvent::MouseButtonRelease, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::NoButton, mods);
+        QCoreApplication::sendEvent(v, &rl);
+        return v->debugScroll();
+    }
+    if (c == "prpinch" && a.size() >= 2) {   // trackpad pinch over the piano roll: prpinch <value>
+        auto* v = m_win.pianoRoll()->view();
+        QPointF pt(v->width() / 2.0, v->height() / 2.0);
+        QNativeGestureEvent g(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, pt, pt, v->mapToGlobal(pt), a[1].toDouble(), QPointF());
+        QCoreApplication::sendEvent(v, &g);
+        return v->debugScroll();
+    }
     if (c == "prinfo") return m_win.pianoRoll()->view()->debugScroll();
     if (c == "rackclick" && a.size() >= 3) {   // click a rack step cell: rackclick <row> <step> [right]
         auto* v = m_win.rackPanel()->view();
@@ -307,6 +332,9 @@ QString ControlServer::handle(const QString& line) {
             for (size_t i = 0; i < d.steps.size(); ++i) st += d.steps[i].enabled ? 'x' : '.';
             out += QString(" | ch%1 steps=%2 notes=").arg(d.id).arg(st);
             for (auto& n : d.notes) out += QString("(%1@%2+%3)").arg(n.pitch).arg(n.start).arg(n.duration);
+            QStringList vel;
+            for (auto& n : d.notes) vel << QString::number(qRound(n.velocity * 100));
+            if (!vel.isEmpty()) out += " vel=" + vel.join(',');
         }
         return out;
     }
