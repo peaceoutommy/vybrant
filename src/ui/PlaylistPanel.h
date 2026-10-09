@@ -21,6 +21,8 @@ public:
     void setTool(Tool t);
     static QCursor toolCursorFor(Tool t);
     Tool tool() const { return m_tool; }
+    // tests: view-local point inside track idx at tick t
+    QPoint debugPoint(int idx, Tick t) const { return QPoint(tickToX(t) + 2, trackTop(idx) + trackH(idx) / 2); }
     void setSnapDivision(int d) { m_snapDiv = d; }
     void refresh();
     void uiTick();
@@ -155,6 +157,12 @@ private:
     Tick m_loopDragStart = 0;
     bool m_erasedAny = false;
     bool m_placed = false;
+    // FL: clicking a pattern clip makes it the brush - the draw tool then places that pattern at that clip's size
+    Id m_brushPattern = 0;
+    Tick m_brushLength = 0;   // 0 = follows the pattern length
+    bool m_brushLoop = false;
+    void setBrush(const Clip& c);
+    Tick brushLength() const;
     std::set<Id> m_touched;
     qint64 m_lastEraseTime = 0;
     bool m_lastEraseWasClick = false;
@@ -165,6 +173,7 @@ class PlaylistPanel : public QWidget {
     Q_OBJECT
 public:
     explicit PlaylistPanel(App& app, QWidget* parent = nullptr);
+    PlaylistView* view() const { return m_view; }
     void refresh(uint32_t flags);
     void uiTick();
 Q_SIGNALS:

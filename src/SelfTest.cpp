@@ -151,6 +151,30 @@ int runSelfTest(App& app) {
         auto asset = AudioFile::load(o.path, 0);
         CHECK(asset && asset->peakValue > 0.1f, "rendered audio is not silent");
     }
+    // ---- mixer track names follow the routed channel unless the user renamed the track
+    {
+        Id pc = app.addChannel(ChannelType::Synth, "native.synth", "Piano");
+        Id t1 = app.addMixerTrack(), t2 = app.addMixerTrack();
+        auto name = [&](Id t) { return app.project().mixerTrack(t)->name; };
+        QString t1Default = name(t1);
+        app.setChannelMixerTrack(pc, t1);
+        CHECK(name(t1) == "Piano", "mixer track takes the name of the channel routed to it");
+        app.setChannelMixerTrack(pc, t2);
+        CHECK(name(t2) == "Piano" && name(t1) == t1Default, "moving the channel moves the name; the old track gets its default back");
+        app.editMixerTrack(t1, "Rename", [](MixerTrack& x) { x.name = "Strings bus"; x.customName = true; });
+        app.setChannelMixerTrack(pc, t1);
+        CHECK(name(t1) == "Strings bus" && name(t2) != "Piano", "a renamed track keeps its name when a channel is routed to it");
+        app.renameChannel(pc, "Grand");
+        app.setChannelMixerTrack(pc, t2);
+        CHECK(name(t2) == "Grand" && name(t1) == "Strings bus", "renaming the channel renames its unrenamed track");
+        QJsonObject j = ProjectSerializer::toJson(app.project());
+        Project p5;
+        CHECK(ProjectSerializer::fromJson(j, p5, &err) && p5.mixerTrack(t1)->customName && !p5.mixerTrack(t2)->customName,
+            "custom mixer names survive save/load");
+        app.deleteChannel(pc);
+        app.deleteMixerTrack(t2);
+        app.deleteMixerTrack(t1);
+    }
     // ---- live note-on + note-off in the same block must not leave the note stuck
     {
         Id prevSel = app.project().selectedChannelId;

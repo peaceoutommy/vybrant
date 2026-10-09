@@ -22,6 +22,12 @@
 
 namespace mt {
 
+// A typed name sticks to the track; an empty one hands it back to the routed channel's name (App::syncMixerTrackNames)
+static void renameTrack(MixerTrack& t, const QString& name) {
+    t.customName = !name.trimmed().isEmpty();
+    if (t.customName) t.name = name.trimmed();
+}
+
 // ---------------------------------------------------------------- picker
 ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
     : QDialog(parent)
@@ -308,7 +314,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
     m_name = new QLabel(this);
     m_name->setAlignment(Qt::AlignCenter);
     m_name->setStyleSheet("font-weight:bold; padding:2px; border-radius:3px;");
-    m_name->setToolTip("Double-click to rename. Click to select (then right-click another strip to route/send).");
+    m_name->setToolTip("Double-click to rename (empty name: follow the routed channel). Click to select (then right-click another strip to route/send).");
     lay->addWidget(m_name);
     m_input = new QToolButton(this);
     m_input->setText("In: -");
@@ -487,7 +493,7 @@ void MixerStrip::mouseDoubleClickEvent(QMouseEvent* e) {
         const MixerTrack* t = m_app.project().mixerTrack(m_track);
         bool ok;
         QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t ? t->name : "", &ok);
-        if (ok && !n.isEmpty()) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { x.name = n; });
+        if (ok) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { renameTrack(x, n); });
     }
 }
 void MixerStrip::showRouteMenu() {
@@ -571,7 +577,7 @@ void MixerStrip::contextMenuEvent(QContextMenuEvent* e) {
     m.addAction("Rename...", [this, t] {
         bool ok;
         QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t->name, &ok);
-        if (ok && !n.isEmpty()) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { x.name = n; });
+        if (ok) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { renameTrack(x, n); });
     });
     m.addAction("Color...", [this, t] {
         QColor c = QColorDialog::getColor(t->color, this);

@@ -1,3 +1,4 @@
+#include <QRegularExpression>
 #include "project/ProjectSerializer.h"
 #include "core/Log.h"
 #include <QJsonArray>
@@ -98,7 +99,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
                 {"sidechain", s.sidechain}});
         mixer.append(QJsonObject{{"id", (double)t.id}, {"name", t.name}, {"color", colorJ(t.color)}, {"volume", t.volume}, {"pan", t.pan},
             {"mute", t.mute}, {"solo", t.solo}, {"armed", t.armed}, {"input", t.inputChannel}, {"output", (double)t.outputTrackId},
-            {"effects", fx}, {"sends", sends}, {"master", t.isMaster}});
+            {"effects", fx}, {"sends", sends}, {"master", t.isMaster}, {"customName", t.customName}});
     }
     root["mixer"] = mixer;
     QJsonArray plugs;
@@ -319,6 +320,12 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         t.inputChannel = o["input"].toInt(-1);
         t.outputTrackId = (Id)o["output"].toDouble();
         t.isMaster = o["master"].toBool();
+        if (o.contains("customName")) t.customName = o["customName"].toBool();
+        else {   // older files: a name that is neither the default nor a channel's name was typed by the user
+            static const QRegularExpression defaultName("^Insert \\d+$");
+            t.customName = !t.isMaster && !defaultName.match(t.name).hasMatch() &&
+                std::none_of(p.channels.begin(), p.channels.end(), [&](const Channel& c) { return c.name == t.name; });
+        }
         for (auto ev : o["effects"].toArray()) {
             auto e = ev.toObject();
             EffectSlot s;

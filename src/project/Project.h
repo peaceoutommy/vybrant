@@ -167,6 +167,7 @@ struct MixerTrack {
     std::vector<EffectSlot> effects;
     std::vector<Send> sends;
     bool isMaster = false;
+    bool customName = false;   // renamed by the user; otherwise named after the first channel routed here (App::syncMixerTrackNames)
 };
 
 // ---------------- Plugins ----------------

@@ -133,7 +133,7 @@ public:
     void editTrack(Id id, const QString& desc, std::function<void(PlaylistTrack&)> fn) {
         m_model.edit<PlaylistTrack>(id, desc, std::move(fn));
     }
-    Id addPatternClip(Id trackId, Id patternId, Tick start, Tick length = 0);
+    Id addPatternClip(Id trackId, Id patternId, Tick start, Tick length = 0, bool loopSource = false);
     Id addAudioClip(Id trackId, const QString& file, Tick start);
     Id addAutomationClip(Id trackId, Id laneId, Tick start, Tick length);
     void editClip(Id id, const QString& desc, std::function<void(Clip&)> fn, int mergeId = 0) {
@@ -223,6 +223,7 @@ private:
     void addRecent(const QString& path);
     void recordAutomationPoint(const ParamTarget& t, float normalized);
     void syncTransportToEngine();
+    void syncMixerTrackNames();
 
     ProjectModel m_model;
     AudioDeviceManager m_devices;

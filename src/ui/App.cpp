@@ -87,7 +87,23 @@ void App::initialize() {
 // ---------------------------------------------------------------- model -> engine
 void App::onModelChanged(uint32_t flags) {
     if (flags & ChangeTransport) syncTransportToEngine();
+    if (flags & (ChangeChannels | ChangeMixer | ChangeStructure)) syncMixerTrackNames();
     m_engine->requestRebuild();
+}
+// Mixer tracks the user hasn't renamed carry the name of the first channel routed to them, or "Insert N" when none is.
+// Derived state, recomputed on every change (connected before any view, so they all see the new names) - undo needs nothing.
+void App::syncMixerTrackNames() {
+    auto& tracks = project().mixerTracks;
+    for (size_t i = 0; i < tracks.size(); ++i) {
+        auto& t = tracks[i];
+        if (t.isMaster || t.customName) continue;
+        t.name = QString("Insert %1").arg(i);
+        for (auto& c : project().channels)
+            if (c.mixerTrackId == t.id) {
+                t.name = c.name;
+                break;
+            }
+    }
 }
 void App::syncTransportToEngine() {
     auto& t = project().transport;
@@ -595,11 +611,6 @@ void App::setChannelMixerTrack(Id id, Id trackId) {
     if (!ch || !t) return;
     std::vector<std::unique_ptr<Command>> cmds;
     cmds.push_back(std::make_unique<EditObjectCommand<Channel>>(m_model, id, "", [trackId](Channel& c) { c.mixerTrackId = trackId; }, 0));
-    static const QRegularExpression defaultName("^Insert \\d+$");
-    if (!t->isMaster && defaultName.match(t->name).hasMatch()) {
-        QString n = ch->name;
-        cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, trackId, "", [n](MixerTrack& x) { x.name = n; }, 0));
-    }   // FL: the insert takes the channel's name
     m_model.macro("Route channel", std::move(cmds));
 }
 void App::setChannelSample(Id id, const QString& path) {
@@ -826,7 +837,7 @@ void App::deletePlaylistTrack(Id id) {
     cmds.push_back(std::make_unique<RemoveObjectCommand<PlaylistTrack>>(m_model, id, ""));
     m_model.macro("Delete track", std::move(cmds));
 }
-Id App::addPatternClip(Id trackId, Id patternId, Tick start, Tick length) {
+Id App::addPatternClip(Id trackId, Id patternId, Tick start, Tick length, bool loopSource) {
     const Pattern* p = project().pattern(patternId);
     if (!p) return 0;
     Clip c;
@@ -836,7 +847,7 @@ Id App::addPatternClip(Id trackId, Id patternId, Tick start, Tick length) {
     c.sourceId = patternId;
     c.start = std::max<Tick>(0, start);
     c.length = length > 0 ? length : 0; /* 0 = follows the pattern length */
-    c.loopSource = false;
+    c.loopSource = loopSource;
     c.name = p->name;
     m_model.insert<Clip>(c, "Add pattern clip");
     return c.id;

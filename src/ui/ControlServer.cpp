@@ -5,6 +5,7 @@
 #include "ui/MainWindow.h"
 #include "ui/MixerPanel.h"
 #include "ui/PianoRollPanel.h"
+#include "ui/PlaylistPanel.h"
 #include "ui/ChannelRackPanel.h"
 #include "audio/RenderEngine.h"
 #include <QLocalSocket>
@@ -384,6 +385,27 @@ QString ControlServer::handle(const QString& line) {
             x.gain = g;
         });
         return "ok";
+    }
+    if (c == "pldrag" && a.size() >= 5) {   // left drag in the playlist: pldrag <track> <tick> <toTrack> <toTick> [xoffset of the press]
+        auto* v = m_win.playlist()->view();
+        QPoint p1 = v->debugPoint(a[1].toInt(), a[2].toLongLong()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0), p2 = v->debugPoint(a[3].toInt(), a[4].toLongLong());
+        QMouseEvent pr(QEvent::MouseButtonPress, p1, v->mapToGlobal(p1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(v, &pr);
+        QMouseEvent mv(QEvent::MouseMove, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(v, &mv);
+        QMouseEvent rl(QEvent::MouseButtonRelease, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(v, &rl);
+        return "ok";
+    }
+    if (c == "clips") {   // clips as track:start+length(loop) in project order
+        QStringList out;
+        auto& pr = m_app.project();
+        for (auto& cl : pr.clips) {
+            int ti = 0;
+            while (ti < (int)pr.playlistTracks.size() && pr.playlistTracks[ti].id != cl.trackId) ++ti;
+            out << QString("%1:%2+%3%4").arg(ti).arg(cl.start).arg(pr.clipLength(cl)).arg(cl.loopSource ? "L" : "");
+        }
+        return out.join(' ');
     }
     if (c == "quit") {
         QTimer::singleShot(0, qApp, [] { qApp->quit(); });

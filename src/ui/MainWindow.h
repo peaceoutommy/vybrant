@@ -34,6 +34,7 @@ public:
     MixerPanel* mixer() const { return m_mixer; }
     PianoRollPanel* pianoRoll() const { return m_pianoRoll; }
     ChannelRackPanel* rackPanel() const { return m_rack; }
+    PlaylistPanel* playlist() const { return m_playlist; }
     void debugSearch(const QString& t);
     void debugLeftDock(int w) { resizeDocks({m_dBrowser}, {w}, Qt::Horizontal); }
     QString debugLeftSizes() const;

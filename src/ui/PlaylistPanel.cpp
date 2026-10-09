@@ -672,7 +672,7 @@ void PlaylistView::paintEvent(QPaintEvent*) {
         if (tr >= 0) {
             if (auto* pat = m_app.project().pattern(m_app.project().selectedPatternId)) {
                 Tick t = snap(xToTick(m_hoverPos.x()));
-                QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(pat->effectiveLength(m_app.project().transport.timeSig) * m_ppt)),
+                QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(brushLength() * m_ppt)),
                     trackH(tr) - 2);
                 p.save();
                 p.setClipRect(L.area);
@@ -890,8 +890,10 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
             if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear();
             m_selected.insert(c->id);
         }
-        if (c->type == ClipType::Pattern && e->button() == Qt::LeftButton && c->sourceId != proj.selectedPatternId)
-            m_app.selectPattern(c->sourceId);   // FL: the clicked pattern becomes the one the draw tool places
+        if (c->type == ClipType::Pattern && e->button() == Qt::LeftButton) {
+            setBrush(*c);
+            if (c->sourceId != proj.selectedPatternId) m_app.selectPattern(c->sourceId);   // FL: the clicked pattern becomes the one the draw tool places
+        }
         beginEdit();
         m_dragClip = c->id;
         m_pressTick = xToTick(e->pos().x());
@@ -930,7 +932,8 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         auto& t = proj.playlistTracks[trackIdx];
         if (t.locked) return;
         Tick at = std::max<Tick>(0, snap(xToTick(e->pos().x())));
-        Id id = m_app.addPatternClip(t.id, proj.selectedPatternId, at);
+        bool brush = m_brushPattern == proj.selectedPatternId;
+        Id id = m_app.addPatternClip(t.id, proj.selectedPatternId, at, brush ? m_brushLength : 0, brush && m_brushLoop);
         if (id) {
             m_selected = {id};
             beginEdit();
@@ -942,6 +945,17 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         }
     } else m_selected.clear();
     invalidate();
+}
+void PlaylistView::setBrush(const Clip& c) {
+    m_brushPattern = c.sourceId;
+    m_brushLength = c.length;
+    m_brushLoop = c.loopSource;
+}
+Tick PlaylistView::brushLength() const {
+    auto& proj = m_app.project();
+    if (m_brushPattern == proj.selectedPatternId && m_brushLength > 0) return m_brushLength;
+    const Pattern* p = proj.pattern(proj.selectedPatternId);
+    return p ? p->effectiveLength(proj.transport.timeSig) : 0;
 }
 void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     m_hoverPos = e->pos();
@@ -1148,7 +1162,10 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
         }
         break;
     case ResizingR:
-    case ResizingL: commitEdit("Resize clips"); break;
+    case ResizingL:
+        commitEdit("Resize clips");
+        if (const Clip* c = proj.clip(m_dragClip); c && c->type == ClipType::Pattern) setBrush(*c);   // like a resized note sets the draw length
+        break;
     case FadeIn:
     case FadeOut: commitEdit("Edit fade"); break;
     case Gain: commitEdit("Clip gain"); break;
