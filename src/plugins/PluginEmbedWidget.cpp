@@ -3,6 +3,8 @@
 #include <QLayout>
 #include <cstdio>
 #include <cmath>
+#include <QGuiApplication>
+#include <X11/Xlib.h>   // last: its macros (None, Bool...) clash with Qt headers
 
 namespace mt {
 
@@ -17,6 +19,7 @@ PluginEmbedWidget::PluginEmbedWidget(QWidget* parent)
     setMinimumSize(200, 100);
     connect(&m_idle, &QTimer::timeout, this, [this] {
         if (m_attached && onIdle) onIdle();
+        if (m_attached) reclaimKeyboard();
     });
 }
 PluginEmbedWidget::~PluginEmbedWidget() { doDetach(); }
@@ -47,6 +50,29 @@ void PluginEmbedWidget::doDetach() {
     m_idle.stop();
     if (onDetach) onDetach();
     m_attached = false;
+}
+// yabridge moves X input focus onto this window when the editor is clicked, so key presses go to the plugin and the typing
+// keyboard goes dead. Focus must not go back to any ancestor of the plugin window either: X delivers keys to the window under
+// the pointer when it lies inside the focus window. So while typing mode is on, focus goes to a 1x1 native sibling instead.
+void PluginEmbedWidget::reclaimKeyboard() {
+    if (!keepHostKeyboard) return;
+    auto* x11 = qApp->nativeInterface<QNativeInterface::QX11Application>();
+    if (!x11) return;
+    Display* d = x11->display();
+    Window focus;
+    int revert;
+    XGetInputFocus(d, &focus, &revert);
+    if (focus != (Window)winId() && focus != (Window)window()->winId()) return;
+    if (!m_keySink) {
+        m_keySink = new QWidget(window());
+        m_keySink->setAttribute(Qt::WA_NativeWindow);
+        m_keySink->setAttribute(Qt::WA_DontCreateNativeAncestors);
+        m_keySink->setGeometry(0, 0, 1, 1);
+        m_keySink->show();
+        m_keySink->lower();   // under the editor: mapped (focusable) but never visible
+    }
+    XSetInputFocus(d, (Window)m_keySink->winId(), RevertToParent, CurrentTime);
+    XFlush(d);
 }
 // Plugin sizes are physical pixels of the native X11 window; the Qt widget is laid out in logical units (device pixel ratio)
 void PluginEmbedWidget::requestResize(int w, int h) {

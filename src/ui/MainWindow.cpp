@@ -1,4 +1,5 @@
 #include "ui/MainWindow.h"
+#include "plugins/PluginEmbedWidget.h"
 #include "ui/TransportBar.h"
 #include "ui/BrowserPanel.h"
 #include "ui/ProjectSamplesPanel.h"
@@ -597,6 +598,7 @@ void MainWindow::buildMenus() {
         QToolButton* b = m_transport->typingButton();
         connect(b, &QToolButton::clicked, this, [this](bool on) { setTypingKeyboard(on); });
         m_typingKeyboard = QSettings().value("ui/typingKeyboard", false).toBool();
+        PluginEmbedWidget::keepHostKeyboard = m_typingKeyboard;
         a->setChecked(m_typingKeyboard);
         b->setChecked(m_typingKeyboard);
     }
@@ -1024,6 +1026,7 @@ void MainWindow::setTypingKeyboard(bool on) {
     if (m_typingKeyboard == on) return;
     m_typingKeyboard = on;
     QSettings().setValue("ui/typingKeyboard", on);
+    PluginEmbedWidget::keepHostKeyboard = on;
     if (!on) {
         for (int k : m_heldKeys) {
             int n = typingNote(k);

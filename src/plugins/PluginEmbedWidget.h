@@ -18,6 +18,7 @@ public:
     std::function<void()> onIdle;   // periodic idle (VST2 editors)
     void requestResize(int w, int h);   // plugin -> host
     bool attached() const { return m_attached; }
+    static inline bool keepHostKeyboard = false;   // typing keyboard on: keys must reach the app, not the plugin editor
     QSize sizeHint() const override { return m_pluginSize.isValid() ? m_pluginSize : QSize(400, 300); }
 
 protected:
@@ -29,10 +30,12 @@ protected:
 private:
     void doAttach();
     void doDetach();
+    void reclaimKeyboard();
     bool m_attached = false;
     bool m_inPluginResize = false;
     QTimer m_idle;
     QSize m_pluginSize;
+    QWidget* m_keySink = nullptr;
 };
 
 }   // namespace mt
