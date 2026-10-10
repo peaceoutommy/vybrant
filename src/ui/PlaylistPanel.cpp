@@ -958,6 +958,28 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
     } else m_selected.clear();
     invalidate();
 }
+void PlaylistView::revealClips(const std::vector<Id>& ids) {
+    auto& proj = m_app.project();
+    m_selected = std::set<Id>(ids.begin(), ids.end());
+    const Clip* first = nullptr;
+    for (Id id : ids)
+        if (const Clip* c = proj.clip(id); c && (!first || c->start < first->start)) first = c;
+    if (first) {
+        int ti = 0;
+        while (ti < (int)proj.playlistTracks.size() && proj.playlistTracks[ti].id != first->trackId) ++ti;
+        Layout L = layout();
+        Tick view = (Tick)((L.area.width()) / m_ppt);
+        if (first->start < m_scrollTick || first->start > m_scrollTick + view * 9 / 10)
+            m_scrollTick = std::max<Tick>(0, first->start - proj.transport.timeSig.ticksPerBar());   // a bar of context before it
+        if (ti < (int)proj.playlistTracks.size()) {
+            int top = trackTop(ti) + m_scrollY - L.rulerH;   // unscrolled offset of the track
+            if (trackTop(ti) < L.rulerH || trackTop(ti) + trackH(ti) > height()) m_scrollY = std::max(0, top - trackH(ti));
+        }
+        updateScrollbars();
+    }
+    setFocus();
+    invalidate();
+}
 void PlaylistView::setBrush(const Clip& c) {
     m_brush = c;
     m_brushClip = c.id;

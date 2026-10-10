@@ -11,6 +11,10 @@
 #include <QLineEdit>
 #include <QKeyEvent>
 #include <QRegularExpression>
+#include <QPropertyAnimation>
+#include <QTimer>
+#include <QScreen>
+#include <QGuiApplication>
 
 namespace mt {
 
@@ -424,5 +428,29 @@ void makeValueEditable(QLabel* label, std::function<void(double)> onValue) {
     f->onValue = std::move(onValue);
     label->installEventFilter(f);
     label->setToolTip("Double-click to type a value");
+}
+void showToast(const QString& text, const QPoint& globalPos) {
+    auto* t = new QLabel(text);
+    t->setWindowFlags(Qt::ToolTip | Qt::FramelessWindowHint);
+    t->setAttribute(Qt::WA_ShowWithoutActivating);
+    t->setAttribute(Qt::WA_TransparentForMouseEvents);
+    t->setAttribute(Qt::WA_TranslucentBackground);   // rounded corners
+    t->setAttribute(Qt::WA_DeleteOnClose);
+    theme::styled(t, "QLabel { background:@accent@; color:#14161a; font-weight:bold; padding:5px 10px; border-radius:5px; }");
+    t->adjustSize();
+    QPoint at = globalPos + QPoint(16, -t->height() - 4);   // just above-right of the pointer, clear of what was clicked
+    if (QScreen* sc = QGuiApplication::screenAt(globalPos)) {
+        QRect g = sc->availableGeometry();
+        at.setX(std::clamp(at.x(), g.left(), g.right() - t->width()));
+        at.setY(std::clamp(at.y(), g.top(), g.bottom() - t->height()));
+    }
+    t->move(at);
+    t->show();
+    auto* fade = new QPropertyAnimation(t, "windowOpacity", t);
+    fade->setDuration(450);
+    fade->setStartValue(1.0);
+    fade->setEndValue(0.0);
+    QObject::connect(fade, &QPropertyAnimation::finished, t, &QWidget::close);
+    QTimer::singleShot(1100, t, [fade] { fade->start(); });
 }
 }   // namespace mt

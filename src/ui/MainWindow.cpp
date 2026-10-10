@@ -420,6 +420,16 @@ void MainWindow::buildDocks() {
         auto* e = new AudioClipEditor(m_app, id, this);
         e->show();
     });
+    // project panel: a sample's details are the playlist's clip editor (or the sample alone / its channel), and it can point
+    // out where the sample sits in the playlist
+    connect(m_samples, &ProjectSamplesPanel::openAudioClip, this, [this](Id id) { (new AudioClipEditor(m_app, id, this))->show(); });
+    connect(m_samples, &ProjectSamplesPanel::openSample, this, [this](Id sid) { (new AudioClipEditor(m_app, 0, this, sid))->show(); });
+    connect(m_samples, &ProjectSamplesPanel::openEditor, this, [this](Id ch) { openEditor(ch); });
+    connect(m_samples, &ProjectSamplesPanel::showOnPlaylist, this, [this](const std::vector<Id>& ids) {
+        if (m_pages->currentWidget() != m_workspace) showMixerPage(false);
+        showWorkspaceDock(m_dPlaylist);
+        m_playlist->view()->revealClips(ids);
+    });
 }
 
 void MainWindow::buildMenus() {

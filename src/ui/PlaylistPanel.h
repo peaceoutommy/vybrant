@@ -24,6 +24,8 @@ public:
     // tests: view-local point inside track idx at tick t
     QPoint debugPoint(int idx, Tick t) const { return QPoint(tickToX(t) + 2, trackTop(idx) + trackH(idx) / 2); }
     double debugPpt() const { return m_ppt; }
+    void revealClips(const std::vector<Id>& ids);   // select these clips and scroll the earliest into view
+    std::set<Id> debugSelection() const { return m_selected; }
     void setSnapDivision(int d) { m_snapDiv = d; }
     void refresh();
     void uiTick();

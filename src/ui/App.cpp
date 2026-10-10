@@ -928,6 +928,12 @@ Id App::addAudioClip(Id trackId, const QString& file, Tick start) {
     c.length = len;
     c.name = a->name;
     c.loopSource = false;
+    if (a->hasPlaceDefaults) {   // settings made in the project panel before the sample was placed
+        copyClipSettings(a->placeDefaults, c);
+        double trimmed = (a->trimEnd > 0 ? a->trimEnd : a->frames) - a->trimStart;
+        if (a->sampleRate > 0)
+            c.length = std::max<Tick>(PPQ / 4, secondsToTicks(trimmed / a->sampleRate / clipSourceSpeed(c, project().transport.bpm), project().transport.bpm));
+    }
     m_model.insert<Clip>(c, "Add audio clip");
     return c.id;
 }

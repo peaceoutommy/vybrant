@@ -231,6 +231,30 @@ int runSelfTest(App& app) {
         });
         CHECK(std::fabs(rendered - 2.0) < 0.02, "stretch mode plays the render as is (Tune is already in it, not applied twice)");
     }
+    // ---- a sample's placement settings (edited in the project panel before placing) carry over to new clips and saves
+    {
+        auto& pr = app.project();
+        AudioSource src;
+        src.id = pr.newId();
+        src.filePath = "/nonexistent/placed_later.wav";
+        src.sampleRate = 44100;
+        src.frames = 44100;
+        src.hasPlaceDefaults = true;
+        src.placeDefaults.gain = 0.5f;
+        src.placeDefaults.pitch = 3;
+        src.placeDefaults.stretchMode = StretchVocals;
+        pr.audioSources.push_back(src);
+        Id track = pr.playlistTracks.empty() ? app.addPlaylistTrack() : pr.playlistTracks.front().id;
+        Id cid = app.addAudioClip(track, src.filePath, 0);
+        const Clip* c = pr.clip(cid);
+        CHECK(c && c->gain == 0.5f && c->pitch == 3 && c->stretchMode == StretchVocals, "a new clip starts from its sample's placement settings");
+        Project p6;
+        CHECK(ProjectSerializer::fromJson(ProjectSerializer::toJson(pr), p6, &err) && p6.audioSource(src.id) &&
+                p6.audioSource(src.id)->hasPlaceDefaults && p6.audioSource(src.id)->placeDefaults.pitch == 3,
+            "placement settings survive save/load");
+        std::erase_if(pr.clips, [&](const Clip& x) { return x.id == cid; });
+        std::erase_if(pr.audioSources, [&](const AudioSource& x) { return x.id == src.id; });
+    }
     // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
     {
         auto& pr = app.project();

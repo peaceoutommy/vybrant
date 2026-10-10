@@ -76,6 +76,8 @@ class AudioClipEditor : public QWidget {
     Q_OBJECT
 public:
     AudioClipEditor(App& app, Id clipId, QWidget* parent = nullptr);
+    // sample-only details (waveform, play, normalize, trims) for a project sample no clip uses yet
+    AudioClipEditor(App& app, Id clipId, QWidget* parent, Id sourceId);
 
 private:
     App& m_app;

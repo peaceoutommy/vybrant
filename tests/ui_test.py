@@ -168,6 +168,44 @@ def main():
     check(lens == ["240"] * 5, "dragging a just-placed note keeps its 1-unit length", str(lens))
     ins.quit()
 
+    # ---- the '+' on a browser sample row adds it to the channel rack
+    import wave
+    lib = os.path.join(tmp, "lib")
+    os.makedirs(lib)
+    with wave.open(os.path.join(lib, "snare_hit.wav"), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 4410)
+    cfg7 = os.path.join(tmp, "cfg7")
+    os.makedirs(os.path.join(cfg7, "MusicThingy"))
+    with open(os.path.join(cfg7, "MusicThingy", "MusicThingy.conf"), "w") as f:
+        f.write(f"[browser]\ndirs={lib}\n")
+    ins = Instance(cfg7, sock)
+    before = len(ins.send("channels").split(" | "))
+    r = "err"
+    for _ in range(20):   # the library is indexed in the background
+        r = ins.send("browserplus snare_hit")
+        if r.startswith("channels="):
+            break
+        time.sleep(0.25)
+    check(r.startswith(f"channels={before + 1} "), "the '+' on a browser sample adds it to the channel rack", f"{before} -> {r}")
+    check("toast=Added" in r and "snare_hit" in r and "Channel Rack" in r, "adding it shows a toast by the cursor", r)
+    ins.quit()
+
+    # ---- project samples panel: browser drops save a sample unplaced, double-click opens its details, 'Show on playlist'
+    cfg8 = os.path.join(tmp, "cfg8")
+    os.makedirs(cfg8)
+    ins = Instance(cfg8, sock)
+    kept = os.path.join(lib, "snare_hit.wav")
+    r = ins.send(f"samples drop {kept}")
+    clips0 = len([x for x in ins.send("clips").split() if x])
+    check(r == "sources=1" and clips0 == 1, "a sample dropped on the project panel is saved without being placed", f"{r} clips={clips0}")
+    r = ins.send("samples open")
+    check(r == f"clipEditors=1 clips={clips0}", "double-click opens the sample's details and places nothing", r)
+    ins.send(f"audioclip {kept}")
+    ins.send(f"audioclip {kept}")
+    r = ins.send("samples show")
+    check(r == "selected=2", "'Show on playlist' selects every clip of that sample", r)
+    ins.quit()
+
     # ---- clicking the workspace puts away an open editor window; reopening the editor brings it back
     cfg6 = os.path.join(tmp, "cfg6")
     os.makedirs(cfg6)

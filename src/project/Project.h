@@ -149,7 +149,26 @@ struct AudioSource {
     float gain = 1.f;
     std::vector<int64_t> slices;   // frames
     bool missing = false;
+    // clip settings (gain, fades, pitch, mode, tempo...) a new clip of this sample starts with; edited from the project panel
+    // while the sample is not on the playlist
+    bool hasPlaceDefaults = false;
+    Clip placeDefaults;
 };
+// the clip-level settings the audio clip editor edits, copied between clips and a sample's placement defaults
+inline void copyClipSettings(const Clip& from, Clip& to) {
+    to.gain = from.gain;
+    to.fadeIn = from.fadeIn;
+    to.fadeOut = from.fadeOut;
+    to.pitch = from.pitch;
+    to.timeStretch = from.timeStretch;
+    to.sourceOffset = from.sourceOffset;
+    to.reverse = from.reverse;
+    to.loopSource = from.loopSource;
+    to.muted = from.muted;
+    to.stretchMode = from.stretchMode;
+    to.fitTempo = from.fitTempo;
+    to.sourceBpm = from.sourceBpm;
+}
 
 // ---------------- Mixer ----------------
 struct EffectSlot {

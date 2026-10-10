@@ -28,6 +28,10 @@
 #include <QDateTime>
 #include <QApplication>
 #include <thread>
+#include <QStyledItemDelegate>
+#include <QToolTip>
+#include <QHelpEvent>
+#include "ui/widgets/Controls.h"
 
 namespace mt {
 
@@ -486,6 +490,30 @@ void BrowserTree::startDrag(Qt::DropActions) {
 }
 
 // ---------------------------------------------------------------- panel
+// '+' at the right end of a hovered sample row: one click adds the sample to the channel rack
+static QRect browserAddButtonRect(const QRect& row) { return QRect(row.right() - 21, row.center().y() - 8, 18, 17); }
+class BrowserRowDelegate : public QStyledItemDelegate {
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    void paint(QPainter* p, const QStyleOptionViewItem& opt, const QModelIndex& idx) const override {
+        QStyledItemDelegate::paint(p, opt, idx);
+        if (idx.data(BrowserModel::KindRole).toInt() != BrowserModel::AudioFile || !(opt.state & QStyle::State_MouseOver)) return;
+        QRect r = browserAddButtonRect(opt.rect);
+        bool hot = false;
+        if (auto* v = qobject_cast<const QAbstractItemView*>(opt.widget)) hot = r.contains(v->viewport()->mapFromGlobal(QCursor::pos()));
+        p->save();
+        p->setRenderHint(QPainter::Antialiasing);
+        p->setPen(Qt::NoPen);
+        p->setBrush(hot ? theme::accent() : theme::withAlpha(theme::accent(), 150));
+        p->drawRoundedRect(QRectF(r), 3, 3);
+        p->setPen(QPen(QColor(0x14, 0x16, 0x1a), 2));
+        QPointF c = QRectF(r).center();
+        p->drawLine(QPointF(c.x() - 4, c.y()), QPointF(c.x() + 4, c.y()));
+        p->drawLine(QPointF(c.x(), c.y() - 4), QPointF(c.x(), c.y() + 4));
+        p->restore();
+    }
+};
+
 BrowserPanel::BrowserPanel(App& app, QWidget* parent)
     : QWidget(parent)
     , m_app(app) {
@@ -513,6 +541,10 @@ BrowserPanel::BrowserPanel(App& app, QWidget* parent)
     m_tree->setAlternatingRowColors(true);
     m_tree->setExpandsOnDoubleClick(false);
     m_tree->installEventFilter(this);
+    m_tree->setItemDelegate(new BrowserRowDelegate(m_tree));
+    m_tree->setMouseTracking(true);   // hover state for the '+' button
+    m_tree->viewport()->setAttribute(Qt::WA_Hover);
+    m_tree->viewport()->installEventFilter(this);
     lay->addWidget(m_tree);
     m_previewBar = new PreviewBar(app, this);
     lay->addWidget(m_previewBar);
@@ -621,6 +653,27 @@ void BrowserPanel::refresh(uint32_t flags) {
 }
 // Enter = the double-click action for the current item (FL: Enter loads the browser item)
 bool BrowserPanel::eventFilter(QObject* o, QEvent* e) {
+    if (o == m_tree->viewport() && (e->type() == QEvent::MouseMove || e->type() == QEvent::ToolTip)) {
+        QPoint pos = e->type() == QEvent::MouseMove ? static_cast<QMouseEvent*>(e)->pos() : static_cast<QHelpEvent*>(e)->pos();
+        QModelIndex idx = m_tree->indexAt(pos);
+        bool sample = idx.data(BrowserModel::KindRole).toInt() == BrowserModel::AudioFile;
+        if (e->type() == QEvent::MouseMove) {
+            if (sample) m_tree->viewport()->update(m_tree->visualRect(idx));   // light the '+' when the pointer is on it
+        } else if (sample && browserAddButtonRect(m_tree->visualRect(idx)).contains(pos)) {
+            QToolTip::showText(static_cast<QHelpEvent*>(e)->globalPos(), "Add to the Channel Rack", m_tree);
+            return true;
+        }
+    }
+    // the '+' on a hovered sample row adds it to the channel rack: no preview, selection or drag from that press
+    if (o == m_tree->viewport() && (e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonDblClick)) {
+        auto* me = static_cast<QMouseEvent*>(e);
+        QModelIndex idx = m_tree->indexAt(me->pos());
+        if (me->button() == Qt::LeftButton && idx.data(BrowserModel::KindRole).toInt() == BrowserModel::AudioFile &&
+            browserAddButtonRect(m_tree->visualRect(idx)).contains(me->pos())) {
+            if (e->type() == QEvent::MouseButtonPress) addSampleChannel(idx.data(BrowserModel::PathRole).toString(), me->globalPosition().toPoint());
+            return true;
+        }
+    }
     if (o == m_tree && e->type() == QEvent::KeyPress) {
         auto* ke = static_cast<QKeyEvent*>(e);
         if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) && m_tree->currentIndex().isValid()) {
@@ -673,11 +726,30 @@ void BrowserPanel::onClicked(const QModelIndex& idx) {
     if (kind == BrowserModel::AudioFile && QDateTime::currentMSecsSinceEpoch() - m_lastAutoPreview > 250)
         m_app.previewFile(idx.data(BrowserModel::PathRole).toString());   // re-click restarts the preview
 }
+QWidget* BrowserPanel::debugViewport() const { return m_tree->viewport(); }
+QPoint BrowserPanel::debugAddButton() const {
+    std::function<QModelIndex(const QModelIndex&)> find = [&](const QModelIndex& parent) -> QModelIndex {
+        for (int r = 0; r < m_model->rowCount(parent); ++r) {
+            QModelIndex i = m_model->index(r, 0, parent);
+            if (i.data(BrowserModel::KindRole).toInt() == BrowserModel::AudioFile) return i;
+            if (QModelIndex f = find(i); f.isValid()) return f;
+        }
+        return {};
+    };
+    QModelIndex i = find(QModelIndex());
+    if (!i.isValid()) return {-1, -1};
+    m_tree->scrollTo(i);
+    return browserAddButtonRect(m_tree->visualRect(i)).center();
+}
+void BrowserPanel::addSampleChannel(const QString& path, const QPoint& globalPos) {
+    if (m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), path))
+        showToast(QString("Added \u201c%1\u201d to the Channel Rack").arg(QFileInfo(path).completeBaseName()), globalPos);
+}
 void BrowserPanel::onDoubleClicked(const QModelIndex& idx) {
     int kind = idx.data(BrowserModel::KindRole).toInt();
     QString path = idx.data(BrowserModel::PathRole).toString();
     switch (kind) {
-    case BrowserModel::AudioFile: m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), path); break;
+    case BrowserModel::AudioFile: addSampleChannel(path, QCursor::pos()); break;
     case BrowserModel::NativeInstrument:
         m_app.addChannel(path == "native.drumsampler" ? ChannelType::DrumSampler
                 : path == "native.midiout"            ? ChannelType::MidiOut
@@ -729,8 +801,7 @@ void BrowserPanel::onContext(const QPoint& pos) {
         QString path = idx.data(BrowserModel::PathRole).toString();
         if (kind == BrowserModel::AudioFile) {
             menu.addAction("Preview", [this, path] { m_app.previewFile(path); });
-            menu.addAction(
-                "Add as sampler channel", [this, path] { m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), path); });
+            menu.addAction("Add as sampler channel", [this, path] { addSampleChannel(path, QCursor::pos()); });
             menu.addAction(
                 "Add as drum channel", [this, path] { m_app.addChannel(ChannelType::DrumSampler, "native.drumsampler", QString(), path); });
             menu.addAction("Add to playlist at playhead", [this, path] {

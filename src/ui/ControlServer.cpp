@@ -6,6 +6,8 @@
 #include "ui/MixerPanel.h"
 #include "ui/PianoRollPanel.h"
 #include "ui/PlaylistPanel.h"
+#include "ui/ProjectSamplesPanel.h"
+#include "ui/BrowserPanel.h"
 #include "ui/PluginWindow.h"
 #include "ui/ChannelRackPanel.h"
 #include "audio/RenderEngine.h"
@@ -417,6 +419,45 @@ QString ControlServer::handle(const QString& line) {
                 if ((int)c.steps.size() < n) c.steps.resize(n);
         });
         return "ok";
+    }
+    if (c == "browserplus" && a.size() >= 2) {   // search the browser and click the '+' on the first sample: "channels=<n>"
+        auto* b = m_win.browser();
+        b->debugSearch(a[1]);
+        QPoint pt = b->debugAddButton();
+        if (pt.x() < 0) return "err no sample";
+        QWidget* vp = b->debugViewport();
+        QMouseEvent pr(QEvent::MouseButtonPress, pt, vp->mapToGlobal(pt), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(vp, &pr);
+        QMouseEvent rl(QEvent::MouseButtonRelease, pt, vp->mapToGlobal(pt), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+        QCoreApplication::sendEvent(vp, &rl);
+        QString toast;
+        for (auto* w : QApplication::topLevelWidgets())
+            if (auto* l = qobject_cast<QLabel*>(w); l && l->isVisible() && (l->windowFlags() & Qt::ToolTip) == Qt::ToolTip) toast = l->text();
+        return QString("channels=%1 toast=%2").arg(m_app.project().channels.size()).arg(toast);
+    }
+    if (c == "samples" && a.size() >= 2) {   // project panel: samples drop <path> | samples open | samples show
+        auto* sp = m_win.samplesPanel();
+        if (a[1] == "drop" && a.size() >= 3) return sp->debugDropFile(a[2]) ? QString("sources=%1").arg(m_app.project().audioSources.size()) : "err";
+        if (a[1] == "open") {
+            sp->setTab(ProjectSamplesPanel::Samples);
+            sp->debugDoubleClickFirst();
+            int n = 0;
+            for (auto* e : m_win.findChildren<AudioClipEditor*>())
+                if (e->isVisible()) {
+                    ++n;
+                    if (a.size() >= 3) {   // samples open <png>: screenshot of the details window
+                        QCoreApplication::processEvents();
+                        e->grab().save(a[2]);
+                    }
+                }
+            return QString("clipEditors=%1 clips=%2").arg(n).arg(m_app.project().clips.size());
+        }
+        if (a[1] == "show") {
+            sp->setTab(ProjectSamplesPanel::Samples);
+            sp->debugShowFirst();
+            return QString("selected=%1").arg(m_win.playlist()->view()->debugSelection().size());
+        }
+        return "err";
     }
     if (c == "editors") {   // visible plugin / instrument editor windows
         int n = 0;

@@ -17,6 +17,7 @@ class ProjectItemList : public QListWidget {
 public:
     using QListWidget::QListWidget;
     std::function<void()> onDelete;   // Delete key: remove the selection (the panel decides what that means per tab)
+    std::function<bool(const QMimeData*)> onDrop;   // something dragged in from elsewhere (the browser); true = taken
     enum { PayloadRole = Qt::UserRole, PathRole = Qt::UserRole + 1, IdRole = Qt::UserRole + 2 };
 
 protected:
@@ -51,7 +52,12 @@ protected:
         QListWidget::mouseReleaseEvent(e);
     }
     bool m_emptyPress = false;
+    bool m_draggingOut = false;
     void startDrag(Qt::DropActions) override;
+    // drops from the browser save samples to the project; our own rows dragged back onto the list are ignored
+    void dragEnterEvent(QDragEnterEvent* e) override;
+    void dragMoveEvent(QDragMoveEvent* e) override;
+    void dropEvent(QDropEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override {
         if ((e->key() == Qt::Key_Delete || e->key() == Qt::Key_Backspace) && onDelete) {
             onDelete();
@@ -69,10 +75,21 @@ public:
     void refresh(uint32_t flags);
     void setTab(int t);
     QSize sizeHint() const override { return {170, 600}; }
+    void debugDoubleClickFirst();   // tests: double-click the first row of the current tab
+    bool debugDropFile(const QString& path);   // tests: a browser drop of a file onto the list
+    void debugShowFirst();   // tests: 'Show on playlist' on the first row
+Q_SIGNALS:
+    void openAudioClip(Id clipId);
+    void openSample(Id sourceId);   // a project sample no clip uses: sample-only details
+    void openEditor(Id channelId);   // a sample that only lives on a channel: that channel's editor
+    void showOnPlaylist(const std::vector<Id>& clipIds);
 
 private:
     void rebuild();
     void onContext(const QPoint& pos);
+    void openDetails(const QString& path);
+    std::vector<Id> clipsOf(const QString& path) const;   // playlist clips playing this sample, earliest first
+    bool takeDrop(const QMimeData* md);
     QListWidgetItem* addItem(const QString& text, const QColor& dot, const QString& tip);
     App& m_app;
     ProjectItemList* m_list;

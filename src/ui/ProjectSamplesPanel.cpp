@@ -18,6 +18,10 @@
 #include <QFileInfo>
 #include <QToolButton>
 #include <QHBoxLayout>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QCursor>
+#include "ui/widgets/Controls.h"
 
 namespace mt {
 
@@ -34,7 +38,9 @@ void ProjectItemList::startDrag(Qt::DropActions) {
     }
     if (!urls.isEmpty()) md->setUrls(urls);
     md->setData("application/x-musicthingy-item", items.first()->data(PayloadRole).toString().toUtf8());
+    m_draggingOut = true;   // in-app drag events carry no source: this is how our own rows are told apart from browser drops
     runInAppDrag(this, std::move(md), items.size() == 1 ? items.first()->text() : QString("%1 items").arg(items.size()));
+    m_draggingOut = false;
     setState(NoState);
 }
 
@@ -90,24 +96,27 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
     m_list->setWordWrap(false);
     bl->addWidget(m_list, 1);
     lay->addWidget(box, 1);
-    // click: preview a sample / select a pattern; double-click: place at the playhead / rename
+    // click: select a pattern (samples stay silent - right-click > Preview plays one); double-click: place at the playhead
     auto activate = [this](QListWidgetItem* it) {
-        if (!it) return;
-        if (m_tab == Samples) m_app.previewFile(it->data(ProjectItemList::PathRole).toString());
-        else if (m_tab == Patterns) m_app.selectPattern(it->data(ProjectItemList::IdRole).toULongLong());
+        if (it && m_tab == Patterns) m_app.selectPattern(it->data(ProjectItemList::IdRole).toULongLong());
     };
     connect(m_list, &QListWidget::itemClicked, this, activate);
     connect(m_list, &QListWidget::currentItemChanged, this, [this, activate](QListWidgetItem* it, QListWidgetItem*) {
         if (it && m_list->hasFocus()) activate(it);
     });
     connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem* it) {
+        if (m_tab == Samples) {   // a sample opens its details, as from the playlist; it is not placed
+            openDetails(it->data(ProjectItemList::PathRole).toString());
+            return;
+        }
         Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
         Tick at = (Tick)m_app.engine().positionTicks();
-        if (m_tab == Samples) m_app.addAudioClip(track, it->data(ProjectItemList::PathRole).toString(), at);
-        else if (m_tab == Patterns) m_app.addPatternClip(track, it->data(ProjectItemList::IdRole).toULongLong(), at);
+        if (m_tab == Patterns) m_app.addPatternClip(track, it->data(ProjectItemList::IdRole).toULongLong(), at);
         else m_app.addAutomationClip(track, it->data(ProjectItemList::IdRole).toULongLong(), at, 0);
     });
     connect(m_list, &QListWidget::customContextMenuRequested, this, &ProjectSamplesPanel::onContext);
+    m_list->setAcceptDrops(true);
+    m_list->onDrop = [this](const QMimeData* md) { return takeDrop(md); };
     m_list->onDelete = [this] {   // Delete key: like the rack, more than one item asks first
         std::vector<Id> ids;
         QStringList paths;
@@ -369,6 +378,11 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
         return;
     }
     QString path = paths.first();
+    m.addAction("Open details", [this, path] { openDetails(path); });
+    auto onPlaylist = clipsOf(path);
+    m.addAction(onPlaylist.empty() ? "Show on playlist (not placed)" : QString("Show on playlist (%1)").arg(onPlaylist.size()),
+        [this, onPlaylist] { Q_EMIT showOnPlaylist(onPlaylist); })
+        ->setEnabled(!onPlaylist.empty());
     m.addAction("Preview", [this, path] { m_app.previewFile(path); });
     m.addAction("Add to playlist at playhead", [this, path] {
         Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
@@ -407,4 +421,80 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
     m.exec(m_list->viewport()->mapToGlobal(pos));
 }
 
+std::vector<Id> ProjectSamplesPanel::clipsOf(const QString& path) const {
+    auto& proj = m_app.project();
+    std::vector<const Clip*> v;
+    for (auto& c : proj.clips)
+        if (c.type == ClipType::Audio)
+            if (const AudioSource* a = proj.audioSource(c.sourceId); a && a->filePath == path) v.push_back(&c);
+    std::sort(v.begin(), v.end(), [](const Clip* a, const Clip* b) { return a->start < b->start; });
+    std::vector<Id> ids;
+    for (auto* c : v) ids.push_back(c->id);
+    return ids;
+}
+void ProjectSamplesPanel::openDetails(const QString& path) {
+    if (auto clips = clipsOf(path); !clips.empty()) {
+        Q_EMIT openAudioClip(clips.front());
+        return;
+    }
+    for (auto& a : m_app.project().audioSources)
+        if (a.filePath == path) {
+            Q_EMIT openSample(a.id);
+            return;
+        }
+    for (auto& ch : m_app.project().channels)
+        if (ch.samplePath == path) {
+            Q_EMIT openEditor(ch.id);
+            return;
+        }
+}
+// Samples dragged in from the browser are saved to the project without being placed (they show as 'not in the playlist')
+bool ProjectSamplesPanel::takeDrop(const QMimeData* md) {
+    QStringList paths;
+    for (auto& u : md->urls())
+        if (u.isLocalFile() && AudioFile::isAudioFile(u.toLocalFile())) paths << u.toLocalFile();
+    if (paths.isEmpty() && md->hasFormat("application/x-musicthingy-item")) {
+        QString item = QString::fromUtf8(md->data("application/x-musicthingy-item"));
+        if (item.startsWith("audio|")) paths << item.mid(6);
+    }
+    if (paths.isEmpty()) return false;
+    for (auto& p : paths) m_app.ensureAudioSource(p);
+    setTab(Samples);
+    showToast(paths.size() == 1 ? QString("Saved \u201c%1\u201d to the project").arg(QFileInfo(paths.first()).completeBaseName())
+                                : QString("Saved %1 samples to the project").arg(paths.size()),
+        QCursor::pos());
+    return true;
+}
+void ProjectSamplesPanel::debugShowFirst() {
+    if (m_list->count()) Q_EMIT showOnPlaylist(clipsOf(m_list->item(0)->data(ProjectItemList::PathRole).toString()));
+}
+void ProjectSamplesPanel::debugDoubleClickFirst() {
+    if (m_list->count()) Q_EMIT m_list->itemDoubleClicked(m_list->item(0));
+}
+bool ProjectSamplesPanel::debugDropFile(const QString& path) {
+    QMimeData md;
+    md.setUrls({QUrl::fromLocalFile(path)});
+    md.setData("application/x-musicthingy-item", ("audio|" + path).toUtf8());
+    return takeDrop(&md);
+}
+void ProjectItemList::dragEnterEvent(QDragEnterEvent* e) {
+    if (!m_draggingOut && e->source() != this && onDrop && (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item"))) {
+        e->setDropAction(Qt::CopyAction);
+        e->accept();
+    } else QListWidget::dragEnterEvent(e);
+}
+void ProjectItemList::dragMoveEvent(QDragMoveEvent* e) {
+    if (!m_draggingOut && e->source() != this && onDrop) {
+        e->setDropAction(Qt::CopyAction);
+        e->accept();
+    } else QListWidget::dragMoveEvent(e);
+}
+void ProjectItemList::dropEvent(QDropEvent* e) {
+    if (!m_draggingOut && e->source() != this && onDrop && onDrop(e->mimeData())) {
+        e->setDropAction(Qt::CopyAction);
+        e->accept();
+        return;
+    }
+    QListWidget::dropEvent(e);
+}
 }   // namespace mt

@@ -128,6 +128,14 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
         audio.append(QJsonObject{{"id", (double)a.id}, {"path", relPath(a.filePath, dir)}, {"name", a.name}, {"sampleRate", a.sampleRate},
             {"channels", a.channels}, {"frames", (double)a.frames}, {"reverse", a.reverse}, {"normalize", a.normalize}, {"loop", a.loop},
             {"trimStart", (double)a.trimStart}, {"trimEnd", (double)a.trimEnd}, {"gain", a.gain}, {"slices", sl}});
+        if (a.hasPlaceDefaults) {
+            const Clip& d = a.placeDefaults;
+            QJsonObject o = audio.last().toObject();
+            o["clipDefaults"] = QJsonObject{{"gain", d.gain}, {"fadeIn", (double)d.fadeIn}, {"fadeOut", (double)d.fadeOut}, {"pitch", d.pitch},
+                {"stretch", d.timeStretch}, {"offset", (double)d.sourceOffset}, {"reverse", d.reverse}, {"loop", d.loopSource},
+                {"muted", d.muted}, {"stretchMode", d.stretchMode}, {"fitTempo", d.fitTempo}, {"sourceBpm", d.sourceBpm}};
+            audio[audio.size() - 1] = o;
+        }
     }
     root["audioReferences"] = audio;
     QJsonArray markers;
@@ -408,6 +416,23 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         a.trimEnd = (int64_t)o["trimEnd"].toDouble();
         a.gain = (float)o["gain"].toDouble(1);
         for (auto sv : o["slices"].toArray()) a.slices.push_back((int64_t)sv.toDouble());
+        if (o.contains("clipDefaults")) {
+            auto d = o["clipDefaults"].toObject();
+            Clip& c = a.placeDefaults;
+            a.hasPlaceDefaults = true;
+            c.gain = (float)d["gain"].toDouble(1);
+            c.fadeIn = (Tick)d["fadeIn"].toDouble();
+            c.fadeOut = (Tick)d["fadeOut"].toDouble();
+            c.pitch = (float)d["pitch"].toDouble();
+            c.timeStretch = d["stretch"].toDouble(1);
+            c.sourceOffset = (Tick)d["offset"].toDouble();
+            c.reverse = d["reverse"].toBool();
+            c.loopSource = d["loop"].toBool();
+            c.muted = d["muted"].toBool();
+            c.stretchMode = d["stretchMode"].toInt();
+            c.fitTempo = d["fitTempo"].toBool();
+            c.sourceBpm = d["sourceBpm"].toDouble();
+        }
         a.missing = !a.filePath.isEmpty() && !QFileInfo::exists(a.filePath);
         p.audioSources.push_back(a);
     }

@@ -131,6 +131,9 @@ public:
     explicit BrowserPanel(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags);
     void uiTick();
+    // tests: viewport point of the '+' on the first sample row (after debugSearch); (-1,-1) when there is none
+    QPoint debugAddButton() const;
+    QWidget* debugViewport() const;
     void debugSearch(const QString& t) {
         m_search->setText(t);
         m_searchTimer.stop();
@@ -141,6 +144,7 @@ Q_SIGNALS:
 
 private:
     void onClicked(const QModelIndex& idx);
+    void addSampleChannel(const QString& path, const QPoint& globalPos);   // adds a sampler channel and toasts at globalPos
     void onDoubleClicked(const QModelIndex& idx);
     void onContext(const QPoint& pos);
     void onExpanded(const QModelIndex& idx);

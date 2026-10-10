@@ -298,20 +298,35 @@ void PluginWindow::closeEvent(QCloseEvent* e) {
 
 // ---------------------------------------------------------------- audio clip editor
 AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent)
+    : AudioClipEditor(app, clipId, parent, 0) {}
+AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id sourceId)
     : QWidget(parent, Qt::Tool)
     , m_app(app)
     , m_clip(clipId) {
     setAttribute(Qt::WA_DeleteOnClose);
-    const Clip* c = app.project().clip(clipId);
-    const AudioSource* s = c ? app.project().audioSource(c->sourceId) : nullptr;
-    if (!c || !s) {
+    const Clip* liveClip = app.project().clip(clipId);
+    const AudioSource* s = app.project().audioSource(liveClip ? liveClip->sourceId : sourceId);
+    if (!s) {
         deleteLater();
         return;
     }
+    // no clip (a project sample not placed yet): the same window edits the settings its clips will start with
+    const bool sampleOnly = !liveClip;
+    Clip c0;
+    if (liveClip) c0 = *liveClip;
+    else {
+        c0.type = ClipType::Audio;
+        c0.sourceId = s->id;
+        c0.loopSource = false;   // as App::addAudioClip
+        if (s->hasPlaceDefaults) copyClipSettings(s->placeDefaults, c0);
+        c0.length = secondsToTicks(4.0 * (s->sampleRate > 0 ? s->frames / s->sampleRate : 1.0), app.project().transport.bpm);   // never cuts the drawing
+        m_clip = 0;
+    }
+    const Clip* c = &c0;
     // Knobs edit this working copy and the waveform draws it, so every movement shows at once; releasing commits it
     m_draft = *c;
     m_draftSrc = *s;
-    setWindowTitle(c->name);
+    setWindowTitle(sampleOnly ? s->name : c->name);
     const QString path = s->filePath;
     const Id sid = s->id;
     const int64_t frames = std::max<int64_t>(1, s->frames);
@@ -345,6 +360,7 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent)
     lay->addLayout(head);
     auto* wave = new WaveView(this);
     wave->asset = [this, path] { return m_app.cache().get(path); };
+    connect(&app.cache(), &SampleCache::assetLoaded, wave, [wave] { wave->update(); });   // opened while the file was still loading
     wave->reversed = [this] { return m_draft.reverse != m_draftSrc.reverse; };
     wave->startFrac = [startSec, srcSec] { return (float)clamp(startSec() / srcSec, 0.0, 1.0); };
     // what the clip plays, drawn over the source: gain (and normalize), fades, trims, the clip's end and mute
@@ -364,17 +380,32 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent)
         return g;
     };
     wave->showEnvelope = [this] { return m_draft.fadeIn > 0 || m_draft.fadeOut > 0 || std::fabs(m_draft.gain - 1.f) > 1e-3f; };
-    wave->setStart = [this, srcSec, bpm, speed, trimSec](float f) {   // click / drag on the waveform sets the start offset
+    wave->setStart = [this, srcSec, bpm, speed, trimSec, sid](float f) {   // click / drag on the waveform sets the start offset
         double sec = std::max(0.0, (f * srcSec - trimSec(false)) / speed(m_draft));
         Tick off = secondsToTicks(sec, bpm());
         m_draft.sourceOffset = off;
-        m_app.editClip(m_clip, "Start offset", [off](Clip& y) { y.sourceOffset = off; }, 0x5a11);
+        if (m_clip) m_app.editClip(m_clip, "Start offset", [off](Clip& y) { y.sourceOffset = off; }, 0x5a11);
+        else
+            m_app.editAudioSource(sid, "Start offset", [d = m_draft](AudioSource& a) {
+                a.hasPlaceDefaults = true;
+                copyClipSettings(d, a.placeDefaults);
+            });
     };
-    wave->caption = [] { return QString("click to set the start"); };
+    wave->caption = [sampleOnly] { return QString(sampleOnly ? "not on the playlist yet: settings apply when placed" : "click to set the start"); };
     lay->addWidget(wave);
     // commit the working copy's fields this editor owns (never position / length / track, which the playlist may change meanwhile)
     auto commit = [this, sid](const QString& desc, bool source) {
-        if (m_lengthDirty) {   // only fitting the tempo resizes the clip; otherwise the playlist owns its length
+        if (!m_clip) {   // not placed: the clip settings are the sample's placement defaults
+            if (!source) {
+                Clip d = m_draft;
+                m_app.editAudioSource(sid, desc, [d](AudioSource& a) {
+                    a.hasPlaceDefaults = true;
+                    copyClipSettings(d, a.placeDefaults);
+                });
+                m_lengthDirty = false;
+                return;
+            }
+        } else if (m_lengthDirty) {   // only fitting the tempo resizes the clip; otherwise the playlist owns its length
             Tick len = m_draft.length;
             m_app.editClip(m_clip, desc, [len](Clip& x) { x.length = len; }, 0x5a12);
             m_lengthDirty = false;
@@ -389,20 +420,7 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent)
             return;
         }
         Clip d = m_draft;
-        m_app.editClip(m_clip, desc, [d](Clip& x) {
-            x.gain = d.gain;
-            x.fadeIn = d.fadeIn;
-            x.fadeOut = d.fadeOut;
-            x.pitch = d.pitch;
-            x.timeStretch = d.timeStretch;
-            x.sourceOffset = d.sourceOffset;
-            x.reverse = d.reverse;
-            x.loopSource = d.loopSource;
-            x.muted = d.muted;
-            x.stretchMode = d.stretchMode;
-            x.fitTempo = d.fitTempo;
-            x.sourceBpm = d.sourceBpm;
-        });
+        m_app.editClip(m_clip, desc, [d](Clip& x) { copyClipSettings(d, x); });
     };
     // knob groups on the sampler's fixed cell grid, so both editors look the same and knobs line up across rows
     auto* grid = new QGridLayout();

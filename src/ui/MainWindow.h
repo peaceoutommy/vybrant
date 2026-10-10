@@ -35,6 +35,8 @@ public:
     PianoRollPanel* pianoRoll() const { return m_pianoRoll; }
     ChannelRackPanel* rackPanel() const { return m_rack; }
     PlaylistPanel* playlist() const { return m_playlist; }
+    BrowserPanel* browser() const { return m_browser; }
+    ProjectSamplesPanel* samplesPanel() const { return m_samples; }
     void debugSearch(const QString& t);
     void debugLeftDock(int w) { resizeDocks({m_dBrowser}, {w}, Qt::Horizontal); }
     QString debugLeftSizes() const;
