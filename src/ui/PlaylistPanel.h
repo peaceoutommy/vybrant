@@ -160,11 +160,14 @@ private:
     Tick m_loopDragStart = 0;
     bool m_erasedAny = false;
     bool m_placed = false;
-    // FL: clicking a pattern clip makes it the brush - the draw tool then places that pattern at that clip's size
-    Id m_brushPattern = 0;
-    Tick m_brushLength = 0;   // 0 = follows the pattern length
-    bool m_brushLoop = false;
+    // FL: the last clicked (or resized) clip is the brush - the draw tool places a copy of it: the same pattern / sample /
+    // automation, at its size and with its settings. Choosing another pattern elsewhere goes back to placing that pattern.
+    Id m_brushClip = 0;
+    Clip m_brush;   // kept in case that clip is deleted
+    Id m_brushPatSel = 0;   // selected pattern when the brush was set
+    bool m_hasBrush = false;
     void setBrush(const Clip& c);
+    const Clip* brush() const;   // nullptr: place the selected pattern
     Tick brushLength() const;
     std::set<Id> m_touched;
     qint64 m_lastEraseTime = 0;

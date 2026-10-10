@@ -671,15 +671,18 @@ void PlaylistView::paintEvent(QPaintEvent*) {
     if (m_tool == Draw && m_drag == NoDrag && L.area.contains(m_hoverPos) && underMouse() && !clipAt(m_hoverPos)) {
         int tr = trackAtY(m_hoverPos.y());
         if (tr >= 0) {
-            if (auto* pat = m_app.project().pattern(m_app.project().selectedPatternId)) {
+            const Clip* b = brush();
+            const Pattern* pat = m_app.project().pattern(m_app.project().selectedPatternId);
+            if (b || pat) {
+                QColor pc = b && b->type != ClipType::Pattern ? theme::accent() : pat ? pat->color : theme::accent();
                 Tick t = snap(xToTick(m_hoverPos.x()));
                 QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(brushLength() * m_ppt)),
                     trackH(tr) - 2);
                 p.save();
                 p.setClipRect(L.area);
                 p.setRenderHint(QPainter::Antialiasing, false);
-                p.setPen(QPen(theme::withAlpha(pat->color, 200), 1));
-                p.setBrush(theme::withAlpha(pat->color, 40));
+                p.setPen(QPen(theme::withAlpha(pc, 200), 1));
+                p.setBrush(theme::withAlpha(pc, 40));
                 p.drawRect(r);
                 p.restore();
             }
@@ -891,9 +894,9 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
             if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear();
             m_selected.insert(c->id);
         }
-        if (c->type == ClipType::Pattern && e->button() == Qt::LeftButton) {
-            setBrush(*c);
-            if (c->sourceId != proj.selectedPatternId) m_app.selectPattern(c->sourceId);   // FL: the clicked pattern becomes the one the draw tool places
+        if (e->button() == Qt::LeftButton) {
+            setBrush(*c);   // FL: the clicked clip is what the draw tool places next
+            if (c->type == ClipType::Pattern && c->sourceId != proj.selectedPatternId) m_app.selectPattern(c->sourceId);
         }
         beginEdit();
         m_dragClip = c->id;
@@ -928,13 +931,21 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         invalidate();
         return;
     }
-    // draw tool on empty: place the selected pattern
+    // draw tool on empty: place the brush (last clicked clip), or the selected pattern
     if (trackIdx >= 0) {
         auto& t = proj.playlistTracks[trackIdx];
         if (t.locked) return;
         Tick at = std::max<Tick>(0, snap(xToTick(e->pos().x())));
-        bool brush = m_brushPattern == proj.selectedPatternId;
-        Id id = m_app.addPatternClip(t.id, proj.selectedPatternId, at, brush ? m_brushLength : 0, brush && m_brushLoop);
+        const Clip* b = brush();
+        Id id = 0;
+        if (b && b->type != ClipType::Pattern) {
+            Clip n = *b;   // copy first: inserting may move the clip list
+            n.id = proj.newId();
+            n.trackId = t.id;
+            n.start = at;
+            m_app.model().insert<Clip>(n, "Add clip");
+            id = n.id;
+        } else id = m_app.addPatternClip(t.id, proj.selectedPatternId, at, b ? b->length : 0, b && b->loopSource);
         if (id) {
             m_selected = {id};
             beginEdit();
@@ -948,13 +959,23 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
     invalidate();
 }
 void PlaylistView::setBrush(const Clip& c) {
-    m_brushPattern = c.sourceId;
-    m_brushLength = c.length;
-    m_brushLoop = c.loopSource;
+    m_brush = c;
+    m_brushClip = c.id;
+    m_hasBrush = true;
+    m_brushPatSel = c.type == ClipType::Pattern ? c.sourceId : m_app.project().selectedPatternId;
+}
+const Clip* PlaylistView::brush() const {
+    auto& proj = m_app.project();
+    if (!m_hasBrush || proj.selectedPatternId != m_brushPatSel) return nullptr;
+    if (const Clip* live = proj.clip(m_brushClip)) return live;   // current size / settings (tempo changes, edits since)
+    bool sourceOk = m_brush.type == ClipType::Pattern ? proj.pattern(m_brush.sourceId) != nullptr
+        : m_brush.type == ClipType::Audio             ? proj.audioSource(m_brush.sourceId) != nullptr
+                                                      : proj.lane(m_brush.sourceId) != nullptr;
+    return sourceOk ? &m_brush : nullptr;
 }
 Tick PlaylistView::brushLength() const {
     auto& proj = m_app.project();
-    if (m_brushPattern == proj.selectedPatternId && m_brushLength > 0) return m_brushLength;
+    if (const Clip* b = brush()) return proj.clipLength(*b);
     const Pattern* p = proj.pattern(proj.selectedPatternId);
     return p ? p->effectiveLength(proj.transport.timeSig) : 0;
 }
@@ -1165,7 +1186,7 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
     case ResizingR:
     case ResizingL:
         commitEdit("Resize clips");
-        if (const Clip* c = proj.clip(m_dragClip); c && c->type == ClipType::Pattern) setBrush(*c);   // like a resized note sets the draw length
+        if (const Clip* c = proj.clip(m_dragClip)) setBrush(*c);   // like a resized note sets the draw length
         break;
     case FadeIn:
     case FadeOut: commitEdit("Edit fade"); break;

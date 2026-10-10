@@ -418,13 +418,18 @@ QString ControlServer::handle(const QString& line) {
         });
         return "ok";
     }
-    if (c == "clips") {   // clips as track:start+length(loop) in project order
+    if (c == "editors") {   // visible plugin / instrument editor windows
+        int n = 0;
+        for (auto* pw : m_win.findChildren<PluginWindow*>()) n += pw->isVisible();
+        return QString::number(n);
+    }
+    if (c == "clips") {   // clips as track:start+length, then L = loops, A = audio; in project order
         QStringList out;
         auto& pr = m_app.project();
         for (auto& cl : pr.clips) {
             int ti = 0;
             while (ti < (int)pr.playlistTracks.size() && pr.playlistTracks[ti].id != cl.trackId) ++ti;
-            out << QString("%1:%2+%3%4").arg(ti).arg(cl.start).arg(pr.clipLength(cl)).arg(cl.loopSource ? "L" : "");
+            out << QString("%1:%2+%3%4").arg(ti).arg(cl.start).arg(pr.clipLength(cl)).arg(QString(cl.loopSource ? "L" : "") + (cl.type == ClipType::Audio ? "A" : ""));
         }
         return out.join(' ');
     }

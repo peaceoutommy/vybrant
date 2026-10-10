@@ -157,6 +157,31 @@ def main():
     ppt0 = float(info["ppt"])
     ppt1 = float(dict(kv.split("=", 1) for kv in ins.send("prpinch 0.5").split())["ppt"])
     check(abs(ppt1 - ppt0 * 1.5) < 1e-6, "trackpad pinch zooms the piano roll", f"{ppt0} -> {ppt1}")
+    # dragging a just-placed note moves it and never changes its length (it used to flip between 1 and 2 grid units)
+    lens = []
+    for i, (off, cells) in enumerate([(2, 3), (15, 2), (9, 4), (16, 1), (1, 5)]):
+        t0, pitch = 3840, 65 + i   # same start, own row: stays in view and never lands on an earlier note
+        before = set(ins.send("patdata").split(" | ")[1].split(" notes=")[1].split(" vel=")[0].replace(")(", ") (").split())
+        ins.send(f"prdrag {t0} {pitch} {t0 + cells * 240} {pitch} {off}")
+        after = set(ins.send("patdata").split(" | ")[1].split(" notes=")[1].split(" vel=")[0].replace(")(", ") (").split())
+        lens += [n.split("+")[1].rstrip(")") for n in after - before]
+    check(lens == ["240"] * 5, "dragging a just-placed note keeps its 1-unit length", str(lens))
+    ins.quit()
+
+    # ---- clicking the workspace puts away an open editor window; reopening the editor brings it back
+    cfg6 = os.path.join(tmp, "cfg6")
+    os.makedirs(cfg6)
+    ins = Instance(cfg6, sock)
+    ins.send("action view.pianoRoll")
+    ins.send("editor 0")
+    time.sleep(0.5)
+    opened = ins.send("editors")
+    ins.send("prclick 0 40 right")   # a click in the piano roll (right button on an empty cell: changes nothing)
+    hidden = ins.send("editors")
+    ins.send("editor 0")
+    time.sleep(0.5)
+    check((opened, hidden, ins.send("editors")) == ("1", "0", "1"), "a workspace click hides the editor; reopening shows it",
+          f"{opened} {hidden} {ins.send('editors')}")
     ins.quit()
 
     # ---- playlist: a clicked / resized pattern clip is the brush the draw tool places (pattern and size)
@@ -171,6 +196,18 @@ def main():
     ins.send("pldrag 0 960 0 960")
     ins.send("pldrag 2 7680 2 7680")
     check(ins.send("clips").split()[-1] == "2:7680+7680", "clicking a clip keeps its size as the brush", ins.send("clips"))
+    # clicking a sample on the playlist makes the next placed clip that sample (not the selected pattern)
+    import wave
+    wav = os.path.join(tmp, "hat.wav")
+    with wave.open(wav, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 11025)
+    ins.send(f"audioclip {wav}")   # track 0 at 0: a quarter-second sample
+    hat = ins.send("clips").split()[-1]
+    ins.send("pldrag 0 10 0 10")   # click it
+    ins.send("pldrag 3 3840 3 3840")
+    placed = ins.send("clips").split()[-1]
+    check(hat.endswith("A") and placed == "3:3840+" + hat.split("+")[1], "clicking a sample makes the draw tool place that sample",
+          f"{hat} -> {placed}")
     b, z = map(float, ins.send("plpinch 0.5").split())
     check(abs(z - b * 1.5) < 1e-6, "trackpad pinch zooms the playlist", f"{b} -> {z}")
     ins.quit()

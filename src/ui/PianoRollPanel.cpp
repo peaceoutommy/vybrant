@@ -1150,17 +1150,8 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
                 previewNote(np, true);
             }
         }
-        if (m_drag == Creating) {
-            for (auto& n : d->notes)
-                if (n.id == m_dragNote) {
-                    Tick len = snap(xToTick(e->pos().x()) + snapTicks(), true) - n.start;
-                    if (e->pos().x() > m_pressPos.x() + 8 && len > 0) {
-                        for (auto& m : d->notes)
-                            if (m_selected.count(m.id)) m.duration = std::max<Tick>(len, snapTicks() > 1 ? snapTicks() : PPQ / 32);
-                        m_lastLength = len;
-                    }
-                }
-        }
+        // a just-drawn note only moves with the drag (FL); its length changes by its right edge. Stretching it here as well made
+        // the length flicker between 1 and 2 grid units, since its start snaps to the nearest line and the cursor cell rounds down
         invalidate();
         return;
     }

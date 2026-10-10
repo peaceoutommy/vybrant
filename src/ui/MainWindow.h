@@ -76,6 +76,7 @@ private:
     bool m_layoutReady = false;
     void setTypingKeyboard(bool on);
     bool typingKeyEvent(QObject* o, QEvent* e);
+    void hideEditorsOnWorkspaceClick(QObject* o, QEvent* e);
     void showDockIndicator(Qt::DockWidgetArea area);
     void hideDockIndicator();
     void showWorkspaceDock(QDockWidget* d);

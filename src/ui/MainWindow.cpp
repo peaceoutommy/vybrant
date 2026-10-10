@@ -1090,8 +1090,27 @@ bool MainWindow::typingKeyEvent(QObject* o, QEvent* e) {
 }
 
 // FL behaviour: clicking in the main workspace (playlist / piano roll / mixer) closes the floating Channel Rack; the Browser is exempt so you can browse sounds while the rack stays open.
+// Clicking the workspace (playlist, piano roll, rack, mixer - the main window or its floating panels) puts away the editor
+// windows: plugin / instrument windows are hidden (reopening the channel's editor shows them again as they were) and clip
+// editors close (their edits are already committed). Runs before the clicked widget, so a click that opens an editor still does.
+void MainWindow::hideEditorsOnWorkspaceClick(QObject* o, QEvent* e) {
+    if (e->type() != QEvent::MouseButtonPress) return;
+    auto* w = qobject_cast<QWidget*>(o);
+    QWidget* win = w ? w->window() : nullptr;
+    if (!win || qobject_cast<PluginWindow*>(win) || qobject_cast<AudioClipEditor*>(win) || qobject_cast<QDialog*>(win) ||
+        qobject_cast<QMenu*>(win))
+        return;
+    bool ours = win == this;
+    for (QWidget* p = win->parentWidget(); p && !ours; p = p->parentWidget()) ours = p == this;
+    if (!ours) return;
+    for (auto* pw : findChildren<PluginWindow*>())
+        if (pw->isVisible()) pw->hide();
+    for (auto* ce : findChildren<AudioClipEditor*>())
+        if (ce->isVisible()) ce->close();
+}
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
     if (typingKeyEvent(o, e)) return true;
+    hideEditorsOnWorkspaceClick(o, e);
     // Dock the floating rack by its *own* edges. On X11 floating docks have native window-manager decorations, so the
     // drag itself is done by the WM: Qt only sees non-client-area press/move/release events and the resulting
     // QEvent::Move. We track the drag through those, show an indicator while an edge is touched and dock on release.

@@ -49,6 +49,11 @@ public:
 
 protected:
     void closeEvent(QCloseEvent*) override;
+    // hidden by a workspace click: no UI sync (each one can be a plugin IPC round trip) until shown again
+    void hideEvent(QHideEvent*) override { m_timer.stop(); }
+    void showEvent(QShowEvent*) override {
+        if (!m_timer.isActive()) m_timer.start(33);
+    }
 
 private:
     void build();
