@@ -97,21 +97,7 @@ void Sampler::cutVoice(Voice& v) {
 void Sampler::noteOn(const MidiEvent& e) {
     const AudioAsset* a = playAsset();
     if (!a || a->frames < 2) return;
-    Voice* v = nullptr;
-    for (auto& vv : m_voices)
-        if (!vv.active) {
-            v = &vv;
-            break;
-        }
-    if (!v) {
-        v = &m_voices[0];
-        float best = 2;
-        for (auto& vv : m_voices)
-            if (vv.env.value < best) {
-                best = vv.env.value;
-                v = &vv;
-            }
-    }
+    Voice* v = pickVoice(m_voices, [](const Voice& a, const Voice& b) { return a.env.value < b.env.value; });   // steal the quietest
     auto& p = m_params;
     {
         float in, out;
@@ -173,8 +159,7 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
     int loopMode = p.getInt(pLoopMode);
     float bendRange = p.get(pPitchBendRange);
     for (int i = 0; i < n; ++i) {
-        while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
-            const auto& e = midi.events[mi++];
+        eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) noteOn(e);
             else if (e.type == MidiEvent::NoteOff) noteOff(e);
             else if (e.type == MidiEvent::AllNotesOff) {
@@ -184,7 +169,7 @@ void Sampler::process(float* L, float* R, int n, const MidiEventList& midi, cons
                 }
             } else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
             else if (e.type == MidiEvent::CC && e.data1 == 1) m_modWheel = e.data2 / 127.f;
-        }
+        });
         if (!a) continue;
         float sl = 0, sr = 0;
         for (auto& v : m_voices) {
@@ -377,17 +362,7 @@ void DrumSampler::trigger(const MidiEvent& e) {
     if (choke > 0)
         for (auto& v : m_voices)
             if (v.active && v.pad >= 0 && p.getInt(padParam(v.pad, 4)) == choke) v.env.noteOff();
-    Voice* v = nullptr;
-    for (auto& vv : m_voices)
-        if (!vv.active) {
-            v = &vv;
-            break;
-        }
-    if (!v) {
-        v = &m_voices[0];
-        for (auto& vv : m_voices)
-            if (vv.pos > v->pos) v = &vv;
-    }
+    Voice* v = pickVoice(m_voices, [](const Voice& a, const Voice& b) { return a.pos > b.pos; });   // steal the one furthest along
     v->active = true;
     v->pad = pad;
     v->note = e.data1;
@@ -415,15 +390,14 @@ void DrumSampler::process(float* L, float* R, int n, const MidiEventList& midi, 
     panGains(p.get(pPan), gpl, gpr);
     bool filt = p.get(pCutoff) < 19000.f;
     for (int i = 0; i < n; ++i) {
-        while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
-            const auto& e = midi.events[mi++];
+        eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) trigger(e);
             else if (e.type == MidiEvent::AllNotesOff)
                 for (auto& v : m_voices) {
                     if (e.data1 == 1) v.env.r = 0.006f;
                     v.env.noteOff();
                 }
-        }
+        });
         float sl = 0, sr = 0;
         for (auto& v : m_voices) {
             if (!v.active) continue;
@@ -592,8 +566,7 @@ void Synth::process(float* L, float* R, int n, const MidiEventList& midi, const 
     float lfoPitch = p.get(pLfoPitch), lfoFilt = p.get(pLfoFilter);
     float level = p.get(pLevel), drive = p.get(pDrive), bendRange = p.get(pBendRange), glide = p.get(pGlide);
     for (int i = 0; i < n; ++i) {
-        while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
-            const auto& e = midi.events[mi++];
+        eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) noteOn(e);
             else if (e.type == MidiEvent::NoteOff) noteOff(e);
             else if (e.type == MidiEvent::AllNotesOff)
@@ -604,7 +577,7 @@ void Synth::process(float* L, float* R, int n, const MidiEventList& midi, const 
                 }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
             else if (e.type == MidiEvent::CC && e.data1 == 1) m_modWheel = e.data2 / 127.f;
-        }
+        });
         float lfo = m_lfo.next(lfoRate, m_sr, lfoShape);
         float sl = 0, sr = 0;
         for (auto& v : m_voices) {
@@ -773,20 +746,9 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
     int lfoShape = p.getInt(pLfoShape);
     float level = p.get(pLevel), glide = p.get(pGlide);
     for (int i = 0; i < n; ++i) {
-        while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
-            const auto& e = midi.events[mi++];
+        eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) {
-                Voice* v = nullptr;
-                for (auto& vv : m_voices)
-                    if (!vv.active) {
-                        v = &vv;
-                        break;
-                    }
-                if (!v) {
-                    v = &m_voices[0];
-                    for (auto& vv : m_voices)
-                        if (vv.age < v->age) v = &vv;
-                }
+                Voice* v = pickVoice(m_voices, [](const Voice& a, const Voice& b) { return a.age < b.age; });   // steal the oldest
                 float target = midiToHz(e.data1);
                 v->glideFrom = (glide > 0 && m_lastNote >= 0) ? midiToHz(m_lastNote) : target;
                 v->glideT = glide > 0 ? 0.f : 1.f;
@@ -816,7 +778,7 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
                     v.fenv.noteOff();
                 }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * 2.f;
-        }
+        });
         float lfo = m_lfo.next(lfoRate, m_sr, lfoShape);
         float sl = 0, sr = 0;
         for (auto& v : m_voices) {
@@ -913,20 +875,9 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
         fixed[o] = p.getBool(opParam(o, 7));
     }
     for (int i = 0; i < n; ++i) {
-        while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
-            const auto& e = midi.events[mi++];
+        eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) {
-                Voice* v = nullptr;
-                for (auto& vv : m_voices)
-                    if (!vv.active) {
-                        v = &vv;
-                        break;
-                    }
-                if (!v) {
-                    v = &m_voices[0];
-                    for (auto& vv : m_voices)
-                        if (vv.age < v->age) v = &vv;
-                }
+                Voice* v = pickVoice(m_voices, [](const Voice& a, const Voice& b) { return a.age < b.age; });   // steal the oldest
                 v->active = true;
                 v->note = e.data1;
                 v->vel = e.velocity;
@@ -953,7 +904,7 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
                     for (auto& en : v.env) en.noteOff();
                 }
             else if (e.type == MidiEvent::PitchBend) m_bend = e.pitchBend / 8192.f * bendRange;
-        }
+        });
         float lfo = m_lfo.next(lfoRate, m_sr, 0);
         float s = 0;
         for (auto& v : m_voices) {
@@ -1060,8 +1011,7 @@ void ToneGenerator::process(float* L, float* R, int n, const MidiEventList& midi
     bool always = p.getBool(pGate);
     m_env.set(m_sr, p.get(pAttack), 0.01f, 1.f, p.get(pRelease));
     for (int i = 0; i < n; ++i) {
-        while (mi < midi.count && midi.events[mi].sampleOffset <= i) {
-            const auto& e = midi.events[mi++];
+        eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) {
                 m_held++;
                 m_freqOverride = midiToHz(e.data1);
@@ -1073,7 +1023,7 @@ void ToneGenerator::process(float* L, float* R, int n, const MidiEventList& midi
                 m_held = 0;
                 m_env.noteOff();
             }
-        }
+        });
         if (always && !m_env.active()) m_env.noteOn();
         if (always && m_env.stage == ADSR::Release) m_env.noteOn();
         float env = m_env.next();

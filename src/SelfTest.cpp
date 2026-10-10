@@ -17,6 +17,7 @@
 #include <QJsonDocument>
 #include <QTemporaryDir>
 #include <cstdio>
+#include <cstring>
 
 namespace mt {
 

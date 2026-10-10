@@ -48,8 +48,7 @@ static QWidget* choiceCell(QWidget* parent, const QString& name, const std::vect
     QVBoxLayout* vl;
     QWidget* w = paramCell(parent, vl);
     vl->addStretch(1);
-    auto* lbl = new QLabel(name, w);
-    theme::styled(lbl, "color:@textDim@; font-size:8pt;");
+    auto* lbl = theme::dimLabel(name, w, "font-size:8pt;");
     lbl->setAlignment(Qt::AlignCenter);
     vl->addWidget(lbl);
     combo = new QComboBox(w);
@@ -452,8 +451,7 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
     auto group = [&](const char* title, int row, int col) {
         auto* box = new QVBoxLayout();
         box->setSpacing(2);
-        auto* t = new QLabel(title, this);
-        theme::styled(t, "color:@textDim@; font-weight:bold; font-size:8pt;");
+        auto* t = theme::dimLabel(title, this, "font-weight:bold; font-size:8pt;");
         box->addWidget(t);
         auto* cells = new QHBoxLayout();
         cells->setContentsMargins(6, 6, 6, 6);   // as GenericParamPanel
@@ -586,8 +584,7 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
     check(opts, "Mute", c->muted, [this](bool b) { m_draft.muted = b; }, "Mute", false);
     grid->setColumnStretch(3, 1);
     lay->addLayout(grid);
-    auto* note = new QLabel("Edits are non-destructive: the original file is never modified. Loop repeats the audio when the clip is longer.", this);
-    theme::styled(note, "color:@textDim@; font-size:8pt;");
+    auto* note = theme::dimLabel("Edits are non-destructive: the original file is never modified. Loop repeats the audio when the clip is longer.", this, "font-size:8pt;");
     lay->addWidget(note);
 }
 

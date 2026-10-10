@@ -183,10 +183,9 @@ MidiSettingsDialog::MidiSettingsDialog(App& app, QWidget* parent)
             rebuildMappings();
         }
     });
-    auto* hint = new QLabel(
+    auto* hint = theme::dimLabel(
         "Hardware ports appear here when connected (ALSA sequencer). Live input plays the channel selected in the Channel Rack.", this);
     hint->setWordWrap(true);
-    theme::styled(hint, "color:@textDim@;");
     lay->addWidget(hint);
     auto* bb = new QDialogButtonBox(QDialogButtonBox::Close, this);
     lay->addWidget(bb);
@@ -660,11 +659,10 @@ AutosaveDialog::AutosaveDialog(App& app, QWidget* parent)
     copies->setRange(1, 200);
     copies->setValue(a.maxCopies);
     form->addRow("Keep the newest", copies);
-    auto* info = new QLabel(
+    auto* info = theme::dimLabel(
         "Backups are written to a <b>Backup</b> folder next to the project file (name_date_time.mtp) whenever the project has unsaved changes; the oldest copies are recycled once the limit is reached. Ctrl+S always saves over the project itself. Unsaved (untitled) projects get a crash-recovery copy instead.",
         this);
     info->setWordWrap(true);
-    theme::styled(info, "color:@textDim@;");
     form->addRow(info);
     auto* now = new QPushButton("Write a backup now", this);
     form->addRow(now);

@@ -163,8 +163,7 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
         auto& g = groups[i];
         auto* box = new QVBoxLayout();
         box->setSpacing(2);
-        auto* title = new QLabel(g.title, w);
-        theme::styled(title, "color:@textDim@; font-weight:bold; font-size:8pt;");
+        auto* title = theme::dimLabel(g.title, w, "font-weight:bold; font-size:8pt;");
         auto* th = new QHBoxLayout();
         th->setSpacing(6);
         th->addWidget(title);
@@ -417,10 +416,9 @@ static QWidget* makeDrumEditor(DrumSampler* ds, QWidget* parent) {
     auto* lay = new QHBoxLayout(w);
     lay->setContentsMargins(4, 4, 4, 4);
     auto* left = new QVBoxLayout();
-    auto* hint = new QLabel(
+    auto* hint = theme::dimLabel(
         "Pads: click to audition (C1 = pad 1), right-click / drop files to assign. Steps trigger pad 1 at the root note.", w);
     hint->setWordWrap(true);
-    theme::styled(hint, "color:@textDim@;");
     left->addWidget(hint);
     auto* grid = new PadGrid(app, owner, ds, w);
     left->addWidget(grid, 1);

@@ -62,8 +62,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
         return mkIconIn(lay, g, tip, checkable, c);
     };
     auto mkLabel = [&](const QString& t) {
-        auto* l = new QLabel(t, this);
-        theme::styled(l, "color:@textDim@; font-size:8pt; padding-left:2px;");
+        auto* l = theme::dimLabel(t, this, "font-size:8pt; padding-left:2px;");
         lay->addWidget(l);
         return l;
     };
@@ -89,8 +88,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_tsNum->setFixedSize(30, 26);
     m_tsNum->setToolTip("Time signature: beats per bar");
     lay->addWidget(m_tsNum);
-    auto* slash = new QLabel("/", this);
-    theme::styled(slash, "color:@textDim@;");
+    auto* slash = theme::dimLabel("/", this);
     lay->addWidget(slash);
     m_tsDen = new DragValue(this);
     m_tsDen->setRange(1, 32, 1, 0);
@@ -104,8 +102,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_position->setFixedHeight(28);
     m_position->setToolTip("Song position in bars : beats : ticks - click to jump to a bar");
     lay->addWidget(m_position);
-    m_timeSec = new QLabel("0:00.0", this);
-    theme::styled(m_timeSec, "color:@textDim@; font-family: monospace; font-size:8pt;");
+    m_timeSec = theme::dimLabel("0:00.0", this, "font-family: monospace; font-size:8pt;");
     m_timeSec->setToolTip("Song position in minutes : seconds");
     lay->addWidget(m_timeSec);
     sep();
@@ -138,8 +135,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_winLayout->setSpacing(2);
     row2->addLayout(m_winLayout);
     sepIn(row2);
-    auto* plbl = new QLabel("Pattern", this);
-    theme::styled(plbl, "color:@textDim@; font-size:8pt; padding-left:2px;");
+    auto* plbl = theme::dimLabel("Pattern", this, "font-size:8pt; padding-left:2px;");
     row2->addWidget(plbl);
     m_pattern = new QComboBox(this);
     m_pattern->setMinimumWidth(130);
@@ -157,8 +153,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     theme::styled(m_midiLed, "color:@focus@; font-weight:bold; font-size:7.5pt;");
     m_midiLed->setToolTip("Lights up when MIDI input arrives");
     row2->addWidget(m_midiLed);
-    m_stats = new QLabel(this);
-    theme::styled(m_stats, "color:@textDim@; font-family: monospace; font-size:7.5pt;");
+    m_stats = theme::dimLabel(QString(), this, "font-family: monospace; font-size:7.5pt;");
     m_stats->setToolTip("Audio engine: callback CPU load, dropouts (xruns), sample rate / buffer size, output latency, delay compensation");
     row2->addWidget(m_stats);
     qApp->installEventFilter(this);

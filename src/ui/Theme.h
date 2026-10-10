@@ -16,6 +16,8 @@ class QWidget;
 class QAbstractButton;
 QT_END_NAMESPACE
 
+class QLabel;
+
 namespace mt::theme {
 inline constexpr int kBarH = 26;   // shared control height for the transport / playlist / piano roll toolbars
 QWidget* barSeparator(QWidget* parent);   // 1px vertical rule between toolbar groups
@@ -105,6 +107,7 @@ inline QFont boldFont() {
 QString stylesheet();
 QString css(const QString& tmpl);   // expands @role@ tokens against the active palette
 void styled(QWidget* w, const QString& tmpl);   // css() + remembers the template so a theme change re-applies it
+QLabel* dimLabel(const QString& text, QWidget* parent, const QString& extraCss = QString());   // secondary text: names, units, hints
 inline void drawPanel(QPainter& p, const QRectF& r, const QColor& c, qreal radius = 3.0) {
     p.setPen(Qt::NoPen);
     p.setBrush(c);

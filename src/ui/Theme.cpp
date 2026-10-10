@@ -1,3 +1,4 @@
+#include <QLabel>
 #include "ui/Theme.h"
 #include "core/Types.h"
 #include <QPixmap>
@@ -282,6 +283,11 @@ void styled(QWidget* w, const QString& tmpl) {
     if (!w) return;
     w->setProperty("mtQss", tmpl);
     w->setStyleSheet(css(tmpl));
+}
+QLabel* dimLabel(const QString& text, QWidget* parent, const QString& extraCss) {
+    auto* l = new QLabel(text, parent);
+    styled(l, "color:@textDim@;" + (extraCss.isEmpty() ? QString() : " " + extraCss));
+    return l;
 }
 
 QString stylesheet() {

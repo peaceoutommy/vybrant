@@ -1732,10 +1732,9 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent)
     fit->setFocusPolicy(Qt::NoFocus);
     top->addWidget(fit);
     top->addStretch(1);
-    auto* hint = new QLabel(
+    auto* hint = theme::dimLabel(
         "Drag samples / patterns / automation from the Browser · Ctrl+drag the ruler selects the loop area · Ctrl+B duplicates it · Ctrl+Shift+drag duplicates clips",
-        this);
-    theme::styled(hint, "color:@textDim@; font-size:8pt;");
+        this, "font-size:8pt;");
     hint->setToolTip(hint->text());
     hint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);   // tips may be cut short: never widen the window past the screen
     top->addWidget(hint, 1);

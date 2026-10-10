@@ -43,6 +43,19 @@ public:
     }
 
 protected:
+    // Sample-accurate MIDI: hands every event due at frame i to onEvent (call once per frame; mi starts at 0 each block)
+    template <class F> static void eventsAt(const MidiEventList& midi, int& mi, int i, F&& onEvent) {
+        while (mi < midi.count && midi.events[mi].sampleOffset <= i) onEvent(midi.events[mi++]);
+    }
+    // A free voice, else the first one that 'worse' ranks below all others (oldest, quietest, furthest along): the one to steal
+    template <class V, size_t N, class Worse> static V* pickVoice(std::array<V, N>& voices, Worse worse) {
+        for (auto& v : voices)
+            if (!v.active) return &v;
+        V* w = &voices[0];
+        for (auto& v : voices)
+            if (worse(v, *w)) w = &v;
+        return w;
+    }
     std::vector<SwapHolder<AudioAsset>*> m_holders;
     float m_bend = 0.f;   // semitones from pitch wheel
     float m_modWheel = 0.f;

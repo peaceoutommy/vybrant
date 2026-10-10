@@ -1023,8 +1023,7 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
                 plugMenu->addAction(p.name + " [" + p.format.toUpper() + "]", [this, p] { m_app.addPluginChannel(p); });
         if (plugMenu->isEmpty()) plugMenu->addAction("(none scanned)")->setEnabled(false);
     });
-    auto* l1 = new QLabel("Steps", this);
-    theme::styled(l1, "color:@textDim@;");
+    auto* l1 = theme::dimLabel("Steps", this);
     m_steps = new DragValue(this);
     m_steps->setRange(4, 128, 1, 0);
     m_steps->setMinimumWidth(48);
@@ -1037,11 +1036,9 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
     m_swing->setShowLabel(false);
     m_swing->setToolTip("Swing");
     m_swing->valueText = [](float v) { return QString("Swing %1%").arg((int)(v * 100)); };
-    auto* l3 = new QLabel("Swing", this);
-    theme::styled(l3, "color:@textDim@;");
+    auto* l3 = theme::dimLabel("Swing", this);
     top->addSpacing(10);
-    auto* l4 = new QLabel("Graph", this);
-    theme::styled(l4, "color:@textDim@;");
+    auto* l4 = theme::dimLabel("Graph", this);
     top->addWidget(l4);
     m_graph = new QComboBox(this);
     m_graph->addItems({"Off", "Velocity", "Pan", "Pitch", "Probability", "Shift"});

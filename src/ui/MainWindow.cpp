@@ -240,8 +240,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     });
     m_status = new QLabel(this);
     statusBar()->addWidget(m_status, 1);
-    m_undoLabel = new QLabel(this);
-    theme::styled(m_undoLabel, "color:@textDim@;");
+    m_undoLabel = theme::dimLabel(QString(), this);
     statusBar()->addPermanentWidget(m_undoLabel);
     connect(&m_app, &App::statusMessage, this, [this](const QString& m, int t) {
         if (t == 0) m_status->setText(m);

@@ -334,8 +334,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
     m_pan->setDefault(0.5f);
     m_pan->valueText = [](float v) { return QString("Pan %1").arg((v - 0.5f) * 2, 0, 'f', 2); };
     mid->addWidget(m_pan);
-    m_latency = new QLabel(this);
-    theme::styled(m_latency, "color:@textDim@; font-size:7pt;");
+    m_latency = theme::dimLabel(QString(), this, "font-size:7pt;");
     m_latency->setToolTip("Latency compensation delay applied to this track");
     mid->addWidget(m_latency);
     lay->addLayout(mid);
