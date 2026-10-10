@@ -44,7 +44,6 @@ Sampler::Sampler() {
     m_holders.push_back(&m_sample);
     m_holders.push_back(&m_stretched);
 }
-void Sampler::onPrepare() { reset(); }
 void Sampler::reset() {
     for (auto& v : m_voices) {
         v.active = false;
@@ -516,7 +515,6 @@ Synth::Synth() {
     p.add(pBendRange, "Bend Range", 0, 24, 2, ParamUnit::Semitones);
     p.add(pDrive, "Drive", 0, 1, 0);
 }
-void Synth::onPrepare() { reset(); }
 void Synth::reset() {
     for (auto& v : m_voices) {
         v.active = false;
@@ -754,7 +752,6 @@ inline float WavetableSynth::readTable(int bank, float pos, double phase) const 
     float va = a[i0] + (a[i1] - a[i0]) * fr, vb = b[i0] + (b[i1] - b[i0]) * fr;
     return va + (vb - va) * ft;
 }
-void WavetableSynth::onPrepare() { reset(); }
 void WavetableSynth::reset() {
     for (auto& v : m_voices) {
         v.active = false;
@@ -892,7 +889,6 @@ FMSynth::FMSynth() {
         p.addToggle(opParam(o, 7), (nm + "Fixed").c_str());
     }
 }
-void FMSynth::onPrepare() { reset(); }
 void FMSynth::reset() {
     for (auto& v : m_voices) {
         v.active = false;

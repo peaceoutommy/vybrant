@@ -230,12 +230,11 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
                 }
                 pm->addSeparator();
                 pm->addAction("Save current as...", [s, userPresets, saveUser, w] {
-                    bool ok;
-                    QString n = QInputDialog::getText(w, "Save envelope preset", "Name:", QLineEdit::Normal, "My 808", &ok);
-                    if (!ok || n.trimmed().isEmpty()) return;
+                    auto n = askName(w, "Save envelope preset", "My 808");
+                    if (!n) return;
                     auto v = userPresets();
                     auto& ps = s->params();
-                    EnvPreset e{n.trimmed(), ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain),
+                    EnvPreset e{*n, ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain),
                         ps.get(Sampler::pRelease)};
                     bool replaced = false;
                     for (auto& x : v)

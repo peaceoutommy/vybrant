@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
                     (p.format == "vst3" || name.contains("vst2", Qt::CaseInsensitive))) {
                     mt::Id cid = daw.addPluginChannel(p); /* plus a bar of notes in a clip so --render has something to play */
                     mt::Id pid = daw.project().selectedPatternId;
-                    daw.editPattern(pid, "test notes", [cid](mt::Pattern& pat) {
+                    daw.edit<mt::Pattern>(pid, "test notes", [cid](mt::Pattern& pat) {
                         pat.ensureChannel(cid);
                         auto* d = pat.channelData(cid);
                         for (int i = 0; i < 4; ++i) {

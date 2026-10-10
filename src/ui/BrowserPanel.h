@@ -2,6 +2,7 @@
 // Supports search, favorites, tags, preview and drag-and-drop into the rack, playlist and mixer.
 #pragma once
 #include "ui/App.h"
+#include "ui/InAppDrag.h"
 #include <QWidget>
 #include <QTreeView>
 #include <QStandardItemModel>
@@ -44,7 +45,7 @@ public:
     bool searching() const { return !m_search.isEmpty(); }
     void reindex();   // rescan the library folders in the background (called when they change)
     QStringList mimeTypes() const override {
-        return {"text/uri-list", "application/x-musicthingy-item", "application/x-musicthingy-folder"};
+        return {"text/uri-list", kItemMime, "application/x-musicthingy-folder"};
     }
     QMimeData* mimeData(const QModelIndexList& indexes) const override;
     bool dropMimeData(const QMimeData* data, Qt::DropAction action, int row, int column, const QModelIndex& parent) override;

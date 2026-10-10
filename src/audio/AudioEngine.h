@@ -52,11 +52,6 @@ public:
         auto it = m_channels.find(id);
         return it == m_channels.end() ? nullptr : it->second.get();
     }
-    dsp::PdcDelay& channelPdc(Id id) {
-        auto& d = m_channelPdc[id];
-        if (!d) d = std::make_unique<dsp::PdcDelay>();
-        return *d;
-    }
     std::atomic<bool>& crashFlag(Id pluginId) {
         auto& f = m_crash[pluginId];
         if (!f) f = std::make_unique<std::atomic<bool>>(false);
@@ -74,7 +69,6 @@ private:
     std::map<Id, std::unique_ptr<IProcessor>> m_procs;
     std::map<Id, std::unique_ptr<TrackControls>> m_tracks;
     std::map<Id, std::unique_ptr<ChannelControls>> m_channels;
-    std::map<Id, std::unique_ptr<dsp::PdcDelay>> m_channelPdc;
     std::map<Id, std::unique_ptr<std::atomic<bool>>> m_crash;
     std::vector<std::pair<uint64_t, std::unique_ptr<IProcessor>>> m_graveyard;
 };
@@ -108,10 +102,8 @@ public:
     // ---- Project -> runtime ----
     void rebuild(const Project& p);   // build & send a new snapshot (UI thread)
     void requestRebuild() { m_rebuildPending = true; }   // coalesced
-    bool rebuildPending() const { return m_rebuildPending; }
     void unloadProject();   // drop all runtime objects (blocking, UI thread)
     void syncStateToProject(Project& p) { m_registry.syncStateToProject(p); }
-    uint64_t activeGeneration() const { return m_activeGen.load(); }
 
     // ---- Transport (UI thread) ----
     void play();
@@ -148,7 +140,6 @@ public:
     double positionTicks() const { return m_posTicks.load(); }
     bool isPlaying() const { return m_playing.load(); }
     bool isRecording() const { return m_recordingFlag.load(); }
-    Tick patternLoopLength() const { return m_patternLength.load(); }
 
     // ---- Live MIDI ----
     void pushUiMidi(const MidiEvent& e) { m_uiMidi.push(e); }
@@ -163,19 +154,16 @@ public:
     bool previewPlaying() const { return m_previewPlaying.load(); }
     double previewPosition() const { return m_previewPos.load(); }
     std::shared_ptr<const PreviewBuffer> previewBuffer() const { return m_preview.shared(); }
-    void setPreviewGain(float g) { m_previewGain.store(g); }
 
     // ---- Stats ----
     float cpuLoad() const { return m_cpuLoad.load(); }
     int xruns() const { return m_devices.xruns(); }
     int totalLatencySamples() const { return m_maxLatency.load(); }
-    int64_t samplesProcessed() const { return m_samplesProcessed.load(); }
 
     // ---- Offline rendering (device must be stopped) ----
     void offlineBegin(double sampleRate, int blockSize);
     void offlineProcess(float* outL, float* outR, int n);
     void offlineEnd();
-    bool isOffline() const { return m_offline; }
 
     // Pump: drains RT->UI messages. Called from a UI timer.
     void poll();
@@ -186,7 +174,6 @@ Q_SIGNALS:
     void transportStateChanged();
     void recordStarted(double tick);
     void loopWrapped();
-    void xrunOccurred();
 
 private:
     void rtCallback(const float* in, float* out, int frames, int inCh, int outCh, bool xrun);
@@ -195,9 +182,9 @@ private:
     void runSequencer(Snapshot& s, Tick t0, Tick t1, int n);
     void scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart, Tick winEnd, Tick tickOffset, int n, Tick t0, Tick t1);
     void renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n);
-    void applyAutomation(Snapshot& s, Tick t0);
     void routeLiveMidi(Snapshot& s, Tick t0);
     void drainCommands();
+    void releaseAllNotes(bool resetInstruments);   // RT: drop scheduled note-offs and send every channel AllNotesOff
     void processTrack(Snapshot& s, RtTrack& t, int n, const ProcessContext& ctx, float* outL, float* outR);
     bool guardedProcess(RtEffect& fx, float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx);
     void renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, bool countIn);

@@ -223,7 +223,6 @@ void AudioEngine::poll() {
         case EngineMessage::RecordedMidi: Q_EMIT recordedMidi(m.midi, m.tick); break;
         case EngineMessage::PluginCrashed: Q_EMIT pluginCrashed(m.id); break;
         case EngineMessage::LoopWrapped: Q_EMIT loopWrapped(); break;
-        case EngineMessage::Xrun: Q_EMIT xrunOccurred(); break;
         case EngineMessage::RecordStarted: Q_EMIT recordStarted(m.tick); break;
         default: break;
         }
@@ -341,13 +340,7 @@ void AudioEngine::drainCommands() {
                 if (m_songMode.load()) m_posTicks.store((double)(m_loopEnabled.load() ? m_loopStart.load() : 0));
                 else m_posTicks.store(0.0);
             }
-            if (m_rtSnapshot)
-                for (auto& ch : m_rtSnapshot->channels) {
-                    ch.noteOffs.clear();
-                    MidiEvent e;
-                    e.type = MidiEvent::AllNotesOff;
-                    ch.midi.add(e);
-                }
+            releaseAllNotes(false);
             m_transportJumped = true;
             break;
         }
@@ -355,38 +348,17 @@ void AudioEngine::drainCommands() {
             m_playing.store(false);
             m_paused.store(true);
             m_countingIn.store(false);
-            if (m_rtSnapshot)
-                for (auto& ch : m_rtSnapshot->channels) {
-                    ch.noteOffs.clear();
-                    MidiEvent e;
-                    e.type = MidiEvent::AllNotesOff;
-                    ch.midi.add(e);
-                }
+            releaseAllNotes(false);
             break;
         }
         case EngineCommand::Seek:
             m_posTicks.store(c.value);
             m_transportJumped = true;
-            if (m_rtSnapshot)
-                for (auto& ch : m_rtSnapshot->channels) {
-                    ch.noteOffs.clear();
-                    MidiEvent e;
-                    e.type = MidiEvent::AllNotesOff;
-                    ch.midi.add(e);
-                }
+            releaseAllNotes(false);
             break;
         case EngineCommand::SetRecording: m_recordingFlag.store(c.ival != 0); break;
         case EngineCommand::AllNotesOff:
-        case EngineCommand::Panic:
-            if (m_rtSnapshot)
-                for (auto& ch : m_rtSnapshot->channels) {
-                    ch.noteOffs.clear();
-                    MidiEvent e;
-                    e.type = MidiEvent::AllNotesOff;
-                    ch.midi.add(e);
-                    if (ch.instrument) ch.instrument->reset();
-                }
-            break;
+        case EngineCommand::Panic: releaseAllNotes(true); break;
         case EngineCommand::PreviewPlay:
             m_previewPosRt = c.value;
             m_previewPos.store(c.value);
@@ -398,14 +370,20 @@ void AudioEngine::drainCommands() {
     }
 }
 
+void AudioEngine::releaseAllNotes(bool resetInstruments) {
+    if (!m_rtSnapshot) return;
+    for (auto& ch : m_rtSnapshot->channels) {
+        ch.noteOffs.clear();
+        MidiEvent e;
+        e.type = MidiEvent::AllNotesOff;
+        ch.midi.add(e);
+        if (resetInstruments && ch.instrument) ch.instrument->reset();
+    }
+}
+
 // ---------------------------------------------------------------- RT: callback
 void AudioEngine::rtCallback(const float* in, float* out, int frames, int inCh, int outCh, bool xrun) {
     auto t0 = std::chrono::steady_clock::now();
-    if (xrun) {
-        EngineMessage m;
-        m.type = EngineMessage::Xrun;
-        m_messages.push(m);
-    }
     if (frames > (int)m_outL.size()) frames = (int)m_outL.size();
     processFrames(in, inCh, m_outL.data(), m_outR.data(), frames);
     for (int i = 0; i < frames; ++i) {
@@ -991,7 +969,6 @@ void AudioEngine::renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n) {
     }
 }
 
-void AudioEngine::applyAutomation(Snapshot&, Tick) {}
 
 // ---------------------------------------------------------------- RT: metronome & preview
 void AudioEngine::renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, bool countIn) {

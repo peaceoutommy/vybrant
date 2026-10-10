@@ -78,6 +78,10 @@ public:
     void debugDoubleClickFirst();   // tests: double-click the first row of the current tab
     bool debugDropFile(const QString& path);   // tests: a browser drop of a file onto the list
     void debugShowFirst();   // tests: 'Show on playlist' on the first row
+    void debugRemoveFirst() {   // tests: 'Remove from project' on the first sample row
+        if (m_list->count()) removeSamples({m_list->item(0)->data(ProjectItemList::PathRole).toString()});
+    }
+    void debugRemoveUnused() { removeUnusedSamples(); }
 Q_SIGNALS:
     void openAudioClip(Id clipId);
     void openSample(Id sourceId);   // a project sample no clip uses: sample-only details
@@ -89,6 +93,9 @@ private:
     void onContext(const QPoint& pos);
     void openDetails(const QString& path);
     std::vector<Id> clipsOf(const QString& path) const;   // playlist clips playing this sample, earliest first
+    std::pair<std::vector<Id>, QStringList> selection() const;   // ids and sample paths of the selected rows
+    void removeSamples(const QStringList& paths);
+    void removeUnusedSamples();
     bool takeDrop(const QMimeData* md);
     QListWidgetItem* addItem(const QString& text, const QColor& dot, const QString& tip);
     App& m_app;

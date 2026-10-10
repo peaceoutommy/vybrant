@@ -1,6 +1,6 @@
 // Piano Roll: full MIDI note editor operating on Pattern channel data in ticks.
 #pragma once
-#include "ui/App.h"
+#include "ui/TimelineView.h"
 #include <QWidget>
 #include <QScrollBar>
 #include <QComboBox>
@@ -13,18 +13,16 @@
 
 namespace mt {
 
-class PianoRollView : public QWidget {
+class PianoRollView : public TimelineView {
     Q_OBJECT
 public:
-    enum Tool { Draw, Select, Erase, MuteTool };
     enum KeyLabels { LabelsC = 0, LabelsAll = 1, LabelsNone = 2 };   // note names drawn on the key column
     explicit PianoRollView(App& app, QWidget* parent = nullptr);
-    void setTool(Tool t);
     // tests: view-local point of a tick/pitch cell, and the vertical scroll state
     QPoint debugPoint(Tick t, int pitch) const { return QPoint(tickToX(t) + 3, pitchToY(pitch) + m_rowH / 2); }
     QString debugScroll() const {
         Layout L = layout();
-        return QString("top=%1 min=%2 rowH=%3 gridH=%4 vbar=%5/%6 ppt=%7 sel=%8 rulerY=%9 velY=%10..%11")
+        return QString("top=%1 min=%2 rowH=%3 gridH=%4 vbar=%5/%6 ppt=%7 sel=%8 rulerY=%9 velY=%10..%11 tool=%12")
             .arg(m_topPitch)
             .arg(minTopPitch())
             .arg(m_rowH)
@@ -35,10 +33,9 @@ public:
             .arg(m_selected.size())
             .arg(L.ruler.center().y())
             .arg(L.vel.top())
-            .arg(L.vel.bottom());
+            .arg(L.vel.bottom())
+            .arg(m_tool);
     }
-    static QCursor toolCursorFor(Tool t);
-    Tool tool() const { return m_tool; }
     void setChannel(Id id) {
         m_channel = id;
         m_selected.clear();
@@ -56,7 +53,6 @@ public:
     }
     void setChord(int chordIdx) { m_chord = chordIdx; }
     void setNoteRepeat(bool r) { m_noteRepeat = r; }
-    void setSnapDivision(int div) { m_snapDiv = div; }
     void setKeyLabels(int m) {
         m_keyLabels = m;
         invalidate();
@@ -80,29 +76,25 @@ public:
     void legato();
     void randomize(float velAmt, float panAmt);
     void transpose(int semis);
-    void selectAll();
-    void deleteSelected();
-    void copySelected();
-    void cutSelected();
-    void paste();
-    void duplicateSelected();
+    void selectAll() override;
+    void deleteSelected() override;
+    void copySelected() override;
+    void paste() override;
+    void duplicateSelected() override;
     void setSelectedLength(Tick len);
-    void invertSelection();
+    void invertSelection() override;
     void selectByPitch();
-    void muteSelected(bool mute);
+    void muteSelected(bool mute) override;
     void glue();
-    void deleteTimeSpace();
-    void insertTimeSpace();
-    QScrollBar* hbar() const { return m_hbar; }
+    void deleteSpace() override;
+    void insertSpace() override;
     QScrollBar* vbar() const { return m_vbar; }
     void zoomToFit();
-    void zoomTimeAt(int x, double factor);
     static QStringList scaleNames();
     static QStringList chordNames();
 Q_SIGNALS:
-    void toolChanged(int tool);
     void channelRequested(Id channelId);
-    void modeChanged(int tool);   // tool currently shown in the toolbar (temporary modes included)
+
 protected:
     bool event(QEvent* e) override;
     void paintEvent(QPaintEvent*) override;
@@ -113,7 +105,6 @@ protected:
     void wheelEvent(QWheelEvent*) override;
     void keyPressEvent(QKeyEvent*) override;
     void keyReleaseEvent(QKeyEvent*) override;
-    void resizeEvent(QResizeEvent*) override;
     void contextMenuEvent(QContextMenuEvent*) override;
     void leaveEvent(QEvent*) override;
 
@@ -132,66 +123,46 @@ private:
     bool stepMode() const;
     const std::vector<Note>& notesView() const;
     mutable std::vector<Note> m_virtual;
-    std::set<Id> m_selBase;
-    Tick xToTick(int x) const;
-    int tickToX(Tick t) const;
     int yToPitch(int y) const;
     int pitchToY(int pitch) const;
     int minTopPitch() const;
-    Tick snap(Tick t, bool force = false) const;
-    Tick snapNear(Tick t) const;
-    Tick snapTicks() const;
     Note* noteAt(const QPoint& p, bool* nearEdge = nullptr) const;
     void beginEdit();
     void commitEdit(const QString& desc);
-    void cancelEdit();
     void seekToPatternTick(Tick t);
-    void invalidate() {
-        m_cacheValid = false;
-        update();
-    }
-    void renderCache();
-    void updateScrollbars();
+    QRect timeArea() const override { return layout().grid; }
+    int rulerHeight() const override { return layout().rulerH; }
+    std::pair<double, double> pptRange() const override { return {0.002, 2.0}; }
+    void onVScroll(int v) override { m_topPitch = clamp(127 - v, minTopPitch(), 127); }
+    void selectInRect(const QRect& r) override;
+    bool hasSelection() const override { return !m_selected.empty() || m_timeSel; }
+    void renderCache() override;
+    void updateScrollbars() override;
     void previewNote(int pitch, bool on);
     bool previewAllowed() const;
     std::map<Id, Note> m_created;
     void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
     bool inScale(int pitch) const;
-    App& m_app;
-    Tool m_tool = Draw;
     Id m_channel = 0;
     bool m_ghost = true;
     int m_scaleRoot = 0, m_scale = 0, m_chord = 0;
     bool m_noteRepeat = false;
-    int m_snapDiv = 4;
-    double m_ppt = 0.08;
     int m_rowH = 17;
-    Tick m_scrollTick = 0;
     int m_topPitch = 84;
     int m_keyLabels = LabelsC;
-    QScrollBar *m_hbar, *m_vbar;
-    bool m_updatingBars = false;
-    std::set<Id> m_selected;
-    Id m_toggleOnRelease = 0;
     Tick m_lastLength = PPQ / 4;
     float m_lastVelocity = 0.8f;
     Drag m_drag = NoDrag;
-    QPoint m_pressPos, m_lastPos;
     Tick m_pressTick = 0;
     int m_pressPitch = 0;
     Id m_dragNote = 0;
     PatternChannelData m_before;
     std::vector<Note> m_baseNotes;
-    bool m_editing = false;
-    bool m_duplicated = false;
-    QRect m_rubber;
     int m_previewPitch = -1;
     QTimer m_repeatTimer, m_autoScroll;
     QPoint m_lastMouse;
-    bool m_altHeld = false;
     float m_laneLock = -1;   // Shift in the lane: value captured at the first Shift position
     std::map<std::pair<Id, int>, float> m_laneOrig;   // (note, lane) -> value before the lane first edited it (Alt restores)
-    bool m_erasedAny = false;
     int m_lane = 0;
     int m_velH = 80;
     int m_laneResizeStart = 0;
@@ -199,17 +170,8 @@ private:
     Tick m_selStart = 0, m_selEnd = 0;
     bool m_timeSel = false;
     Tick m_selAnchor = 0;
-    std::set<Id> m_touched;
-    qint64 m_lastEraseTime = 0;
-    bool m_lastEraseWasClick = false;   // time selection (Ctrl+drag on the ruler)
     anim::RectTracker<Id> m_noteAnim;
-    anim::Ticker* m_ticker = nullptr;
     std::vector<Note> m_clipboard;
-    QPixmap m_cache;
-    bool m_cacheValid = false;
-    int m_themeRev = -1;
-    double m_playTick = -1;
-    QPoint m_hoverPos;
 };
 
 class PianoRollPanel : public QWidget {

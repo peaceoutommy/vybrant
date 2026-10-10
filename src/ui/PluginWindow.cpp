@@ -19,6 +19,57 @@
 namespace mt {
 
 // ---------------------------------------------------------------- generic panel
+// Parameter cells shared by the generic panel and the audio clip editor: every cell is as tall as a knob cell (knob 40 +
+// name + value) so knobs, choices and toggles sit level; callers set the width
+static QWidget* paramCell(QWidget* parent, QVBoxLayout*& vl) {
+    auto* w = new QWidget(parent);
+    w->setFixedHeight(GenericParamPanel::kCellH);
+    vl = new QVBoxLayout(w);
+    vl->setContentsMargins(0, 0, 0, 0);
+    vl->setSpacing(1);
+    return w;
+}
+static QWidget* knobCell(QWidget* parent, const QString& name, float pos, float def, bool bipolar, Knob*& knob, QLabel*& value) {
+    QVBoxLayout* vl;
+    QWidget* w = paramCell(parent, vl);
+    knob = new Knob(w, 40);
+    knob->setLabel(name);
+    knob->setBipolar(bipolar);
+    knob->setDefault(def);
+    knob->setValue(pos);
+    vl->addWidget(knob, 0, Qt::AlignHCenter);
+    value = new QLabel(w);
+    value->setAlignment(Qt::AlignCenter);
+    value->setStyleSheet("color:#d6dae0; font-size:8pt;");
+    vl->addWidget(value);
+    return w;
+}
+static QWidget* choiceCell(QWidget* parent, const QString& name, const std::vector<std::string>& items, int cur, QComboBox*& combo) {
+    QVBoxLayout* vl;
+    QWidget* w = paramCell(parent, vl);
+    vl->addStretch(1);
+    auto* lbl = new QLabel(name, w);
+    theme::styled(lbl, "color:@textDim@; font-size:8pt;");
+    lbl->setAlignment(Qt::AlignCenter);
+    vl->addWidget(lbl);
+    combo = new QComboBox(w);
+    combo->setFixedHeight(22);
+    for (auto& i : items) combo->addItem(QString::fromStdString(i));
+    combo->setCurrentIndex(cur);
+    vl->addWidget(combo);
+    vl->addStretch(1);
+    return w;
+}
+static QWidget* toggleCell(QWidget* parent, const QString& name, bool on, QCheckBox*& check) {
+    QVBoxLayout* vl;
+    QWidget* w = paramCell(parent, vl);
+    check = new QCheckBox(name, w);
+    check->setChecked(on);
+    vl->addStretch(1);
+    vl->addWidget(check);
+    vl->addStretch(1);
+    return w;
+}
 GenericParamPanel::GenericParamPanel(
     App& app, Id ownerId, IProcessor* proc, std::function<bool(const ParamDesc&)> filter, int columns, QWidget* parent, int cellWidth)
     : QWidget(parent)
@@ -37,10 +88,7 @@ GenericParamPanel::GenericParamPanel(
         Row row;
         row.id = d.id;
         uint32_t id = d.id;
-        auto* cellW = new QWidget(this);
-        auto* vl = new QVBoxLayout(cellW);
-        vl->setContentsMargins(0, 0, 0, 0);
-        vl->setSpacing(1);
+        QWidget* cellW = nullptr;
         auto contextMenu = [this, id, d](const QPoint& g) {
             QMenu m;
             bool inst = m_app.project().channel(m_owner) != nullptr;
@@ -58,21 +106,9 @@ GenericParamPanel::GenericParamPanel(
             m.addAction("Reset to default", [this, id, d] { m_app.setProcessorParam(m_owner, id, d.toNormalized(d.def), true); });
             m.exec(g);
         };
-        // every cell is the height of a knob cell (knob 40 + name + value) so combos and checkboxes sit level with the knobs
-        cellW->setFixedHeight(kCellH);
         int span = cellWidth > 0 && d.unit == ParamUnit::Choice && !d.choices.empty() ? 2 : 1;
-        if (cellWidth > 0) cellW->setFixedWidth(span * cellWidth + (span - 1) * grid->horizontalSpacing());
         if (d.unit == ParamUnit::Choice && !d.choices.empty()) {
-            vl->addStretch(1);
-            auto* lbl = new QLabel(QString::fromStdString(d.name), cellW);
-            theme::styled(lbl, "color:@textDim@; font-size:8pt;");
-            lbl->setAlignment(Qt::AlignCenter);
-            vl->addWidget(lbl);
-            row.combo = new QComboBox(cellW);
-            row.combo->setFixedHeight(22);
-            for (auto& c : d.choices) row.combo->addItem(QString::fromStdString(c));
-            row.combo->setCurrentIndex(ps.getInt(id));
-            vl->addWidget(row.combo);
+            cellW = choiceCell(this, QString::fromStdString(d.name), d.choices, ps.getInt(id), row.combo);
             connect(row.combo, &QComboBox::currentIndexChanged, this, [this, id, d](int idx) {
                 if (!m_updating) {
                     m_app.setProcessorParam(m_owner, id, d.toNormalized((float)idx), true);
@@ -82,13 +118,8 @@ GenericParamPanel::GenericParamPanel(
             row.combo->setContextMenuPolicy(Qt::CustomContextMenu);
             connect(row.combo, &QComboBox::customContextMenuRequested, this,
                 [contextMenu, cb = row.combo](const QPoint& p) { contextMenu(cb->mapToGlobal(p)); });
-            vl->addStretch(1);
         } else if (d.unit == ParamUnit::Toggle) {
-            row.check = new QCheckBox(QString::fromStdString(d.name), cellW);
-            row.check->setChecked(ps.getBool(id));
-            vl->addStretch(1);
-            vl->addWidget(row.check);
-            vl->addStretch(1);
+            cellW = toggleCell(this, QString::fromStdString(d.name), ps.getBool(id), row.check);
             connect(row.check, &QCheckBox::toggled, this, [this, id](bool b) {
                 if (!m_updating) {
                     m_app.setProcessorParam(m_owner, id, b ? 1.f : 0.f, true);
@@ -99,20 +130,13 @@ GenericParamPanel::GenericParamPanel(
             connect(row.check, &QCheckBox::customContextMenuRequested, this,
                 [contextMenu, cb = row.check](const QPoint& p) { contextMenu(cb->mapToGlobal(p)); });
         } else {
-            row.knob = new Knob(cellW, 40);
-            row.knob->setLabel(QString::fromStdString(d.name));
-            row.knob->setBipolar(d.min < 0 && d.max > 0);
-            row.knob->setDefault(d.toNormalized(d.def));
-            row.knob->setValue(ps.getNormalized(id));
+            cellW = knobCell(this, QString::fromStdString(d.name), ps.getNormalized(id), d.toNormalized(d.def), d.min < 0 && d.max > 0, row.knob,
+                row.value);
+            row.value->setText(proc->formatValue(id));
             if (!d.automatable) row.knob->setColor(theme::textDim());
             if ((d.unit == ParamUnit::Semitones || d.unit == ParamUnit::Bpm) && !d.steps)
                 row.knob->snap = Knob::wholeStepSnap(d.min, d.max);   // land on whole semitones / BPM
             row.knob->valueText = [this, id](float) { return m_proc->formatValue(id); };
-            vl->addWidget(row.knob, 0, Qt::AlignHCenter);
-            row.value = new QLabel(proc->formatValue(id), cellW);
-            row.value->setAlignment(Qt::AlignCenter);
-            row.value->setStyleSheet("color:#d6dae0; font-size:8pt;");
-            vl->addWidget(row.value);
             makeValueEditable(row.value, [this, id, d, k = row.knob, lbl = row.value](double v) {
                 QString shown = lbl->text();   // typed in the unit on display
                 if (d.unit == ParamUnit::Percent) v /= 100.0;
@@ -134,6 +158,7 @@ GenericParamPanel::GenericParamPanel(
                 row.knob, &Knob::dragFinished, this, [this, id, k = row.knob] { m_app.setProcessorParam(m_owner, id, k->value(), true); });
             connect(row.knob, &Knob::contextRequested, this, [contextMenu](const QPoint& g) { contextMenu(g); });
         }
+        if (cellWidth > 0) cellW->setFixedWidth(span * cellWidth + (span - 1) * grid->horizontalSpacing());
         if (gridCol > 0 && gridCol + span > columns) {
             ++gridRow;
             gridCol = 0;
@@ -273,9 +298,7 @@ void PluginWindow::showPresetMenu() {
     if (!m_proc) return;
     QMenu m;
     m.addAction("Save preset...", [this] {
-        bool ok;
-        QString n = QInputDialog::getText(this, "Save preset", "Name:", QLineEdit::Normal, QString(), &ok);
-        if (ok && !n.isEmpty()) m_app.savePreset(m_owner, n);
+        if (auto n = askName(this, "Save preset", QString())) m_app.savePreset(m_owner, *n);
     });
     m.addAction("Reset to defaults", [this] {
         m_proc->params().resetAll();
@@ -384,9 +407,9 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
         double sec = std::max(0.0, (f * srcSec - trimSec(false)) / speed(m_draft));
         Tick off = secondsToTicks(sec, bpm());
         m_draft.sourceOffset = off;
-        if (m_clip) m_app.editClip(m_clip, "Start offset", [off](Clip& y) { y.sourceOffset = off; }, 0x5a11);
+        if (m_clip) m_app.edit<Clip>(m_clip, "Start offset", [off](Clip& y) { y.sourceOffset = off; }, 0x5a11);
         else
-            m_app.editAudioSource(sid, "Start offset", [d = m_draft](AudioSource& a) {
+            m_app.edit<AudioSource>(sid, "Start offset", [d = m_draft](AudioSource& a) {
                 a.hasPlaceDefaults = true;
                 copyClipSettings(d, a.placeDefaults);
             });
@@ -398,7 +421,7 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
         if (!m_clip) {   // not placed: the clip settings are the sample's placement defaults
             if (!source) {
                 Clip d = m_draft;
-                m_app.editAudioSource(sid, desc, [d](AudioSource& a) {
+                m_app.edit<AudioSource>(sid, desc, [d](AudioSource& a) {
                     a.hasPlaceDefaults = true;
                     copyClipSettings(d, a.placeDefaults);
                 });
@@ -407,12 +430,12 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
             }
         } else if (m_lengthDirty) {   // only fitting the tempo resizes the clip; otherwise the playlist owns its length
             Tick len = m_draft.length;
-            m_app.editClip(m_clip, desc, [len](Clip& x) { x.length = len; }, 0x5a12);
+            m_app.edit<Clip>(m_clip, desc, [len](Clip& x) { x.length = len; }, 0x5a12);
             m_lengthDirty = false;
         }
         if (source) {
             AudioSource d = m_draftSrc;
-            m_app.editAudioSource(sid, desc, [d](AudioSource& a) {
+            m_app.edit<AudioSource>(sid, desc, [d](AudioSource& a) {
                 a.trimStart = d.trimStart;
                 a.trimEnd = d.trimEnd;
                 a.normalize = d.normalize;
@@ -420,7 +443,7 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
             return;
         }
         Clip d = m_draft;
-        m_app.editClip(m_clip, desc, [d](Clip& x) { copyClipSettings(d, x); });
+        m_app.edit<Clip>(m_clip, desc, [d](Clip& x) { copyClipSettings(d, x); });
     };
     // knob groups on the sampler's fixed cell grid, so both editors look the same and knobs line up across rows
     auto* grid = new QGridLayout();
@@ -439,31 +462,16 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
         grid->addLayout(box, row, col, Qt::AlignLeft | Qt::AlignTop);
         return cells;
     };
-    auto cell = [this] {
-        auto* w = new QWidget(this);
-        w->setFixedSize(GenericParamPanel::kCellW, GenericParamPanel::kCellH);
-        auto* vl = new QVBoxLayout(w);
-        vl->setContentsMargins(0, 0, 0, 0);
-        vl->setSpacing(1);
-        return w;
-    };
     // text: knob position -> label; apply: knob position -> working copy. Moving redraws, releasing commits (one undo step,
     // and a time-stretch render only once)
     auto knob = [&](QHBoxLayout* cells, const QString& name, float pos, float def, bool bipolar, std::function<QString(float)> text,
                     std::function<void(float)> apply, const QString& desc, bool source) {
-        QWidget* w = cell();
-        auto* k = new Knob(w, 40);
-        k->setLabel(name);
-        k->setBipolar(bipolar);
-        k->setDefault(def);
-        k->setValue(pos);
+        Knob* k;
+        QLabel* v;
+        QWidget* w = knobCell(this, name, pos, def, bipolar, k, v);
+        w->setFixedWidth(GenericParamPanel::kCellW);
         k->valueText = text;
-        w->layout()->addWidget(k);
-        static_cast<QVBoxLayout*>(w->layout())->setAlignment(k, Qt::AlignHCenter);
-        auto* v = new QLabel(text(pos), w);
-        v->setAlignment(Qt::AlignCenter);
-        v->setStyleSheet("color:#d6dae0; font-size:8pt;");
-        w->layout()->addWidget(v);
+        v->setText(text(pos));
         connect(k, &Knob::valueChanged, v, [v, text, apply, wave](float x) {
             v->setText(text(x));
             apply(x);
@@ -490,13 +498,9 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
         return k;
     };
     auto check = [&](QHBoxLayout* cells, const QString& name, bool on, std::function<void(bool)> apply, const QString& desc, bool source) {
-        QWidget* w = cell();
-        auto* cb = new QCheckBox(name, w);
-        cb->setChecked(on);
-        auto* vl = static_cast<QVBoxLayout*>(w->layout());
-        vl->addStretch(1);
-        vl->addWidget(cb);
-        vl->addStretch(1);
+        QCheckBox* cb;
+        QWidget* w = toggleCell(this, name, on, cb);
+        w->setFixedWidth(GenericParamPanel::kCellW);
         connect(cb, &QCheckBox::toggled, this, [apply, commit, desc, source, wave](bool b) {
             apply(b);
             commit(desc, source);
@@ -520,21 +524,9 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
         "Fade out", false);
     auto combo = [&](QHBoxLayout* cells, const QString& name, const std::vector<std::string>& items, int cur, std::function<void(int)> apply,
                      const QString& desc) {
-        auto* w = new QWidget(this);
-        w->setFixedSize(2 * GenericParamPanel::kCellW + 8, GenericParamPanel::kCellH);   // a choice spans two cells, as in the sampler
-        auto* vl = new QVBoxLayout(w);
-        vl->setContentsMargins(0, 0, 0, 0);
-        vl->addStretch(1);
-        auto* lbl = new QLabel(name, w);
-        theme::styled(lbl, "color:@textDim@; font-size:8pt;");
-        lbl->setAlignment(Qt::AlignCenter);
-        vl->addWidget(lbl);
-        auto* cb = new QComboBox(w);
-        cb->setFixedHeight(22);
-        for (auto& i : items) cb->addItem(QString::fromStdString(i));
-        cb->setCurrentIndex(cur);
-        vl->addWidget(cb);
-        vl->addStretch(1);
+        QComboBox* cb;
+        QWidget* w = choiceCell(this, name, items, cur, cb);
+        w->setFixedWidth(2 * GenericParamPanel::kCellW + 8);   // a choice spans two cells, as in the sampler
         connect(cb, &QComboBox::currentIndexChanged, this, [apply, commit, desc, wave](int i) {
             apply(i);
             commit(desc, false);

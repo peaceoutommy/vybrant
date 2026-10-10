@@ -38,7 +38,6 @@ public:
     bool canUndo() const { return !m_undo.empty(); }
     bool canRedo() const { return !m_redo.empty(); }
     QString undoText() const { return canUndo() ? m_undo.back()->description() : QString(); }
-    QString redoText() const { return canRedo() ? m_redo.back()->description() : QString(); }
     void undo() {
         if (!canUndo()) return;
         auto c = std::move(m_undo.back());
@@ -61,11 +60,6 @@ public:
         Q_EMIT changed();
     }
     size_t count() const { return m_undo.size(); }
-    std::vector<QString> history() const {
-        std::vector<QString> h;
-        for (auto& c : m_undo) h.push_back(c->description());
-        return h;
-    }
 Q_SIGNALS:
     void changed();
 

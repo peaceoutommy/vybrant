@@ -9,4 +9,17 @@
 
 namespace mt {
 bool runInAppDrag(QWidget* source, std::unique_ptr<QMimeData> mime, const QString& badgeText);
+
+// Our drags carry "kind|value" (audio|path, native|key, plugin|key, pattern|id, lane|id, preset|path) under kItemMime,
+// next to plain file URLs for audio
+inline const char* const kItemMime = "application/x-musicthingy-item";
+inline bool hasAppDrop(const QMimeData* m) { return m->hasUrls() || m->hasFormat(kItemMime); }
+struct DropItem {
+    QString kind, value;
+};
+inline DropItem dropItem(const QMimeData* m) {
+    QString s = QString::fromUtf8(m->data(kItemMime));
+    return {s.section('|', 0, 0), s.section('|', 1)};
+}
+inline void setDropItem(QMimeData* m, const QString& payload) { m->setData(kItemMime, payload.toUtf8()); }
 }

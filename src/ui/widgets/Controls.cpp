@@ -365,10 +365,7 @@ void LedButton::paintEvent(QPaintEvent*) {
     p.drawText(r, Qt::AlignCenter, m_text);
 }
 void LedButton::mousePressEvent(QMouseEvent* e) {
-    if (e->button() == Qt::RightButton) {
-        Q_EMIT rightClicked();
-        return;
-    }
+    if (e->button() == Qt::RightButton) return;
     m_checked = !m_checked;
     update();
     Q_EMIT toggled(m_checked);
@@ -452,5 +449,11 @@ void showToast(const QString& text, const QPoint& globalPos) {
     fade->setEndValue(0.0);
     QObject::connect(fade, &QPropertyAnimation::finished, t, &QWidget::close);
     QTimer::singleShot(1100, t, [fade] { fade->start(); });
+}
+std::optional<QString> askName(QWidget* parent, const QString& title, const QString& current, bool allowEmpty) {
+    bool ok = false;
+    QString n = QInputDialog::getText(parent, title, "Name:", QLineEdit::Normal, current, &ok).trimmed();
+    if (!ok || (!allowEmpty && n.isEmpty())) return std::nullopt;
+    return n;
 }
 }   // namespace mt

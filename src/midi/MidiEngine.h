@@ -29,22 +29,17 @@ public:
     ~MidiEngine();
     bool start();
     void stop();
-    bool isRunning() const { return m_running.load(); }
     std::vector<MidiPortInfo> ports() const;
     QStringList enabledInputs() const { return m_enabledInputs; }
     void setEnabledInputs(const QStringList& ids);
     QStringList enabledOutputs() const { return m_enabledOutputs; }
     void setEnabledOutputs(const QStringList& ids);
     void setLearning(bool on) { m_learning.store(on); }
-    bool learning() const { return m_learning.load(); }
     int activityCounter() const { return m_activity.load(); }
-    void sendNow(const MidiEvent& e, int port = -1);   // direct output (UI thread)
     void loadSettings();
     void saveSettings() const;
 Q_SIGNALS:
     void ccReceived(int cc, int channel, int value);
-    void noteReceived(int note, int channel, bool on);
-    void portsChanged();
 
 private:
     void threadLoop();

@@ -48,20 +48,6 @@ QStringList AudioDeviceManager::hostApis() const {
     for (int i = 0; i < Pa_GetHostApiCount(); ++i) l << QString::fromUtf8(Pa_GetHostApiInfo(i)->name);
     return l;
 }
-AudioDeviceInfo AudioDeviceManager::defaultOutput() const {
-    auto all = devices();
-    int d = Pa_GetDefaultOutputDevice();
-    for (auto& a : all)
-        if (a.index == d) return a;
-    return {};
-}
-AudioDeviceInfo AudioDeviceManager::defaultInput() const {
-    auto all = devices();
-    int d = Pa_GetDefaultInputDevice();
-    for (auto& a : all)
-        if (a.index == d) return a;
-    return {};
-}
 
 static int paCallback(
     const void* in, void* out, unsigned long frames, const PaStreamCallbackTimeInfo*, PaStreamCallbackFlags statusFlags, void* user) {

@@ -20,6 +20,7 @@ struct Step {
     float pitch = 0.f;   // semitone offset
     float probability = 1.f;   // 0..1
     float offset = 0.f;   // -0.5..0.5 of a step
+    bool operator==(const Step&) const = default;
 };
 
 struct Note {
@@ -33,6 +34,7 @@ struct Note {
     float finePitch = 0.f;   // cents
     int channel = 0;   // MIDI channel 0..15
     bool muted = false;
+    bool operator==(const Note&) const = default;   // every field: an edit to any of them is an edit
 };
 
 struct PatternChannelData {
@@ -73,6 +75,14 @@ struct Pattern {
 
 // ---------------- Channels ----------------
 enum class ChannelType : uint8_t { Sampler = 0, DrumSampler, Synth, MidiOut, AudioGenerator, Plugin };
+// the channel type a native instrument key creates (every other native instrument is synth-like)
+inline ChannelType channelTypeForKey(const QString& key) {
+    return key == "native.sampler"   ? ChannelType::Sampler
+        : key == "native.drumsampler" ? ChannelType::DrumSampler
+        : key == "native.midiout"     ? ChannelType::MidiOut
+        : key == "native.tonegen"     ? ChannelType::AudioGenerator
+                                      : ChannelType::Synth;
+}
 
 struct Channel {
     Id id = 0;
@@ -125,6 +135,7 @@ struct Clip {
     int stretchMode = 0;   // audio: StretchMode (0 = resample: pitch, stretch and tempo fit all change the playback speed)
     bool fitTempo = false;   // audio: follow the project tempo, treating the source as sourceBpm
     double sourceBpm = 0;
+    bool operator==(const Clip&) const = default;
 };
 // Audio clip playback. Length multiplier: the stretch knob times the tempo fit (an 83 BPM loop at 120 BPM: 83/120)
 inline double clipTimeRatio(const Clip& c, double bpm) {

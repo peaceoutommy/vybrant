@@ -17,8 +17,6 @@ inline double ticksToBeats(Tick t) { return (double)t / PPQ; }
 
 inline double ticksToSeconds(Tick t, double bpm) { return (double)t / PPQ * 60.0 / bpm; }
 inline Tick secondsToTicks(double s, double bpm) { return (Tick)std::llround(s * bpm / 60.0 * PPQ); }
-inline double ticksToSamples(Tick t, double bpm, double sr) { return ticksToSeconds(t, bpm) * sr; }
-inline Tick samplesToTicks(double samples, double bpm, double sr) { return secondsToTicks(samples / sr, bpm); }
 
 inline float dbToGain(float db) { return db <= -96.f ? 0.f : std::pow(10.f, db / 20.f); }
 inline float gainToDb(float g) { return g <= 1e-5f ? -96.f : 20.f * std::log10(g); }

@@ -37,7 +37,7 @@ void ProjectItemList::startDrag(Qt::DropActions) {
         if (!path.isEmpty()) urls << QUrl::fromLocalFile(path);
     }
     if (!urls.isEmpty()) md->setUrls(urls);
-    md->setData("application/x-musicthingy-item", items.first()->data(PayloadRole).toString().toUtf8());
+    setDropItem(md.get(), items.first()->data(PayloadRole).toString());
     m_draggingOut = true;   // in-app drag events carry no source: this is how our own rows are told apart from browser drops
     runInAppDrag(this, std::move(md), items.size() == 1 ? items.first()->text() : QString("%1 items").arg(items.size()));
     m_draggingOut = false;
@@ -109,7 +109,7 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
             openDetails(it->data(ProjectItemList::PathRole).toString());
             return;
         }
-        Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
+        Id track = m_app.firstPlaylistTrack();
         Tick at = (Tick)m_app.engine().positionTicks();
         if (m_tab == Patterns) m_app.addPatternClip(track, it->data(ProjectItemList::IdRole).toULongLong(), at);
         else m_app.addAutomationClip(track, it->data(ProjectItemList::IdRole).toULongLong(), at, 0);
@@ -118,14 +118,7 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
     m_list->setAcceptDrops(true);
     m_list->onDrop = [this](const QMimeData* md) { return takeDrop(md); };
     m_list->onDelete = [this] {   // Delete key: like the rack, more than one item asks first
-        std::vector<Id> ids;
-        QStringList paths;
-        for (auto* x : m_list->selectedItems()) {
-            if (!(x->flags() & Qt::ItemIsEnabled)) continue;
-            ids.push_back(x->data(ProjectItemList::IdRole).toULongLong());
-            QString p = x->data(ProjectItemList::PathRole).toString();
-            if (!p.isEmpty()) paths << p;
-        }
+        auto [ids, paths] = selection();
         int n = (int)(m_tab == Samples ? paths.size() : ids.size());
         if (!n) return;
         if (n > 1 && QMessageBox::question(this, "Delete", QString("Delete %1 items?").arg(n)) != QMessageBox::Yes) return;
@@ -133,18 +126,7 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
             for (Id id : ids) m_app.deletePattern(id);
         } else if (m_tab == Automation) {
             for (Id id : ids) m_app.deleteLane(id);
-        } else {
-            std::vector<std::unique_ptr<Command>> cmds;
-            for (auto& p : paths)
-                for (auto& a : m_app.project().audioSources)
-                    if (a.filePath == p) {
-                        for (auto& c : m_app.project().clips)
-                            if (c.type == ClipType::Audio && c.sourceId == a.id)
-                                cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_app.model(), c.id, ""));
-                        cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
-                    }
-            if (!cmds.empty()) m_app.model().macro("Remove samples from project", std::move(cmds));
-        }
+        } else removeSamples(paths);
     };
     setTab(QSettings().value("ui/projectTab", 0).toInt());
 }
@@ -197,9 +179,7 @@ void ProjectSamplesPanel::rebuild() {
         for (auto& a : proj.audioSources) {
             if (a.filePath.isEmpty() || seen.contains(a.filePath)) continue;
             seen.insert(a.filePath);
-            int uses = 0;
-            for (auto& c : proj.clips)
-                if (c.type == ClipType::Audio && c.sourceId == a.id) ++uses;
+            int uses = (int)clipsOf(a.filePath).size();
             bool miss = !QFileInfo::exists(a.filePath);
             addRow(a.name.isEmpty() ? QFileInfo(a.filePath).fileName() : a.name, a.filePath,
                 uses ? QString("%1 clip%2 in the playlist").arg(uses).arg(uses > 1 ? "s" : "") : "not in the playlist",
@@ -265,52 +245,20 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
         it->setSelected(true);
         m_list->setCurrentItem(it);
     }
-    auto sel = m_list->selectedItems();
-    std::vector<Id> ids;
-    QStringList paths;
-    for (auto* x : sel) {
-        if (!(x->flags() & Qt::ItemIsEnabled)) continue;
-        ids.push_back(x->data(ProjectItemList::IdRole).toULongLong());
-        QString p = x->data(ProjectItemList::PathRole).toString();
-        if (!p.isEmpty()) paths << p;
-    }
+    auto [ids, paths] = selection();
     int n = (int)(m_tab == Samples ? paths.size() : ids.size());
     QString many = n > 1 ? QString(" (%1)").arg(n) : QString();
-    auto track = [this] {
-        return m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
-    };
     if (m_tab == Patterns) {
         m.addAction("New pattern", [this] {
             Id id = m_app.addPattern();
             m_app.selectPattern(id);
         });
         if (n) m.addSeparator();
-        if (n == 1) {
-            Id pid = ids[0];
-            m.addAction("Select", [this, pid] { m_app.selectPattern(pid); });
-            m.addAction("Rename...", [this, pid] {
-                bool ok;
-                QString nn = QInputDialog::getText(this, "Rename pattern", "Name:", QLineEdit::Normal,
-                    m_app.project().pattern(pid) ? m_app.project().pattern(pid)->name : QString(), &ok);
-                if (ok && !nn.isEmpty()) m_app.renamePattern(pid, nn);
-            });
-        }
-        if (n == 1) {
-            Id pid = ids[0];
-            m.addAction("Split by channel", [this, pid] { m_app.splitPatternByChannel(pid); });
-        }
+        if (n == 1) m.addAction("Select", [this, pid = ids[0]] { m_app.selectPattern(pid); });
+        addPatternActions(&m, m_app, this, ids);
         if (n) {
-            m.addAction("Color..." + many, [this, ids] {
-                QColor c = QColorDialog::getColor(
-                    m_app.project().pattern(ids[0]) ? m_app.project().pattern(ids[0])->color : Qt::white, this);
-                if (!c.isValid()) return;
-                for (Id id : ids) m_app.setPatternColor(id, c);
-            });
-            m.addAction("Clone" + many, [this, ids] {
-                for (Id id : ids) m_app.clonePattern(id);
-            });
-            m.addAction("Add to playlist at playhead" + many, [this, ids, track] {
-                Id t = track();
+            m.addAction("Add to playlist at playhead" + many, [this, ids] {
+                Id t = m_app.firstPlaylistTrack();
                 Tick at = (Tick)m_app.engine().positionTicks();
                 for (Id id : ids) m_app.addPatternClip(t, id, at);
             });
@@ -324,8 +272,8 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
     }
     if (m_tab == Automation) {
         if (!n) return;
-        m.addAction("Add to playlist at playhead" + many, [this, ids, track] {
-            Id t = track();
+        m.addAction("Add to playlist at playhead" + many, [this, ids] {
+            Id t = m_app.firstPlaylistTrack();
             Tick at = (Tick)m_app.engine().positionTicks();
             for (Id id : ids) m_app.addAutomationClip(t, id, at, 0);
         });
@@ -336,91 +284,67 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
         m.exec(m_list->viewport()->mapToGlobal(pos));
         return;
     }
-    auto removeUnused = [this] {
-        std::vector<std::unique_ptr<Command>> cmds;
-        for (auto& a : m_app.project().audioSources) {
-            bool used = false;
-            for (auto& c : m_app.project().clips)
-                if (c.type == ClipType::Audio && c.sourceId == a.id) used = true;
-            if (!used) cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
-        }
-        if (!cmds.empty()) m_app.model().macro("Remove unused samples", std::move(cmds));
-    };
-    if (!n) {
-        m.addAction("Remove all unused samples", removeUnused);
-        m.exec(m_list->viewport()->mapToGlobal(pos));
-        return;
+    // samples: one menu for any number of them; a single one also gets its details, playlist spots, preview and relink
+    if (n == 1) {
+        QString path = paths.first();
+        m.addAction("Open details", [this, path] { openDetails(path); });
+        auto onPlaylist = clipsOf(path);
+        m.addAction(onPlaylist.empty() ? "Show on playlist (not placed)" : QString("Show on playlist (%1)").arg(onPlaylist.size()),
+            [this, onPlaylist] { Q_EMIT showOnPlaylist(onPlaylist); })
+            ->setEnabled(!onPlaylist.empty());
+        m.addAction("Preview", [this, path] { m_app.previewFile(path); });
+        if (!QFileInfo::exists(path))
+            m.addAction("Locate...", [this, path] {
+                QString p = QFileDialog::getOpenFileName(this, "Locate " + QFileInfo(path).fileName());
+                if (p.isEmpty()) return;
+                for (auto& a : m_app.project().audioSources)
+                    if (a.filePath == path) m_app.relinkSample(a.id, p);
+            });
     }
-    if (n > 1) {
-        m.addAction("Add to playlist at playhead" + many, [this, paths, track] {
-            Id t = track();
+    if (n) {
+        m.addAction("Add to playlist at playhead" + many, [this, paths] {
+            Id t = m_app.firstPlaylistTrack();
             Tick at = (Tick)m_app.engine().positionTicks();
             for (auto& p : paths) m_app.addAudioClip(t, p, at);
         });
-        m.addAction("Add as sampler channels" + many, [this, paths] {
+        m.addAction((n > 1 ? "Add as sampler channels" : "Add as sampler channel") + many, [this, paths] {
             for (auto& p : paths) m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), p);
         });
         m.addSeparator();
-        m.addAction("Remove from project" + many, [this, paths] {
-            std::vector<std::unique_ptr<Command>> cmds;
-            for (auto& p : paths)
-                for (auto& a : m_app.project().audioSources)
-                    if (a.filePath == p) {
-                        for (auto& c : m_app.project().clips)
-                            if (c.type == ClipType::Audio && c.sourceId == a.id)
-                                cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_app.model(), c.id, ""));
-                        cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
-                    }
-            if (!cmds.empty()) m_app.model().macro("Remove samples from project", std::move(cmds));
-        });
-        m.addAction("Remove all unused samples", removeUnused);
-        m.exec(m_list->viewport()->mapToGlobal(pos));
-        return;
+        m.addAction("Remove from project" + many, [this, paths] { removeSamples(paths); });
     }
-    QString path = paths.first();
-    m.addAction("Open details", [this, path] { openDetails(path); });
-    auto onPlaylist = clipsOf(path);
-    m.addAction(onPlaylist.empty() ? "Show on playlist (not placed)" : QString("Show on playlist (%1)").arg(onPlaylist.size()),
-        [this, onPlaylist] { Q_EMIT showOnPlaylist(onPlaylist); })
-        ->setEnabled(!onPlaylist.empty());
-    m.addAction("Preview", [this, path] { m_app.previewFile(path); });
-    m.addAction("Add to playlist at playhead", [this, path] {
-        Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
-        m_app.addAudioClip(track, path, (Tick)m_app.engine().positionTicks());
-    });
-    m.addAction("Add as sampler channel", [this, path] { m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), path); });
-    if (!QFileInfo::exists(path))
-        m.addAction("Locate...", [this, path] {
-            QString p = QFileDialog::getOpenFileName(this, "Locate " + QFileInfo(path).fileName());
-            if (p.isEmpty()) return;
-            for (auto& a : m_app.project().audioSources)
-                if (a.filePath == path) m_app.relinkSample(a.id, p);
-        });
-    m.addAction("Remove from project", [this, path] {
-        std::vector<std::unique_ptr<Command>> cmds;
-        for (auto& a : m_app.project().audioSources)
-            if (a.filePath == path) {
-                for (auto& c : m_app.project().clips)
-                    if (c.type == ClipType::Audio && c.sourceId == a.id)
-                        cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_app.model(), c.id, ""));
-                cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
-            }
-        if (!cmds.empty()) m_app.model().macro("Remove sample from project", std::move(cmds));
-    });
-    m.addSeparator();
-    m.addAction("Remove all unused samples", [this] {
-        std::vector<std::unique_ptr<Command>> cmds;
-        for (auto& a : m_app.project().audioSources) {
-            bool used = false;
-            for (auto& c : m_app.project().clips)
-                if (c.type == ClipType::Audio && c.sourceId == a.id) used = true;
-            if (!used) cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
-        }
-        if (!cmds.empty()) m_app.model().macro("Remove unused samples", std::move(cmds));
-    });
+    m.addAction("Remove all unused samples", [this] { removeUnusedSamples(); });
     m.exec(m_list->viewport()->mapToGlobal(pos));
 }
 
+std::pair<std::vector<Id>, QStringList> ProjectSamplesPanel::selection() const {
+    std::vector<Id> ids;
+    QStringList paths;
+    for (auto* x : m_list->selectedItems()) {
+        if (!(x->flags() & Qt::ItemIsEnabled)) continue;
+        ids.push_back(x->data(ProjectItemList::IdRole).toULongLong());
+        QString p = x->data(ProjectItemList::PathRole).toString();
+        if (!p.isEmpty()) paths << p;
+    }
+    return {ids, paths};
+}
+// a sample leaves the project with every playlist clip that plays it (one undo step)
+void ProjectSamplesPanel::removeSamples(const QStringList& paths) {
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (auto& p : paths)
+        for (auto& a : m_app.project().audioSources)
+            if (a.filePath == p) {
+                for (Id c : clipsOf(p)) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_app.model(), c, ""));
+                cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
+            }
+    if (!cmds.empty()) m_app.model().macro(paths.size() > 1 ? "Remove samples from project" : "Remove sample from project", std::move(cmds));
+}
+void ProjectSamplesPanel::removeUnusedSamples() {
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (auto& a : m_app.project().audioSources)
+        if (clipsOf(a.filePath).empty()) cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
+    if (!cmds.empty()) m_app.model().macro("Remove unused samples", std::move(cmds));
+}
 std::vector<Id> ProjectSamplesPanel::clipsOf(const QString& path) const {
     auto& proj = m_app.project();
     std::vector<const Clip*> v;
@@ -453,10 +377,7 @@ bool ProjectSamplesPanel::takeDrop(const QMimeData* md) {
     QStringList paths;
     for (auto& u : md->urls())
         if (u.isLocalFile() && AudioFile::isAudioFile(u.toLocalFile())) paths << u.toLocalFile();
-    if (paths.isEmpty() && md->hasFormat("application/x-musicthingy-item")) {
-        QString item = QString::fromUtf8(md->data("application/x-musicthingy-item"));
-        if (item.startsWith("audio|")) paths << item.mid(6);
-    }
+    if (auto it = dropItem(md); paths.isEmpty() && it.kind == "audio") paths << it.value;
     if (paths.isEmpty()) return false;
     for (auto& p : paths) m_app.ensureAudioSource(p);
     setTab(Samples);
@@ -474,11 +395,11 @@ void ProjectSamplesPanel::debugDoubleClickFirst() {
 bool ProjectSamplesPanel::debugDropFile(const QString& path) {
     QMimeData md;
     md.setUrls({QUrl::fromLocalFile(path)});
-    md.setData("application/x-musicthingy-item", ("audio|" + path).toUtf8());
+    setDropItem(&md, "audio|" + path);
     return takeDrop(&md);
 }
 void ProjectItemList::dragEnterEvent(QDragEnterEvent* e) {
-    if (!m_draggingOut && e->source() != this && onDrop && (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item"))) {
+    if (!m_draggingOut && e->source() != this && onDrop && hasAppDrop(e->mimeData())) {
         e->setDropAction(Qt::CopyAction);
         e->accept();
     } else QListWidget::dragEnterEvent(e);

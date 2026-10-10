@@ -122,7 +122,6 @@ public:
         }
     }
     bool active() const { return m_active; }
-    void forget(const Key& k) { m_states.erase(k); }
     void clear() {
         m_states.clear();
         m_ghosts.clear();

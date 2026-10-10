@@ -1,6 +1,5 @@
-#include <cmath>
-#include <QNativeGestureEvent>
 #include "ui/PlaylistPanel.h"
+#include "ui/InAppDrag.h"
 #include "dsp/DspUtils.h"
 #include <QPainterPath>
 #include "ui/TransportBar.h"
@@ -26,44 +25,11 @@
 namespace mt {
 
 PlaylistView::PlaylistView(App& app, QWidget* parent)
-    : QWidget(parent)
-    , m_app(app) {
-    setFocusPolicy(Qt::StrongFocus);
-    setMouseTracking(true);
+    : TimelineView(app, PPQ / 4, parent) {
+    m_snapDiv = -1;
+    m_ppt = 0.03;
     setAcceptDrops(true);
-    m_hbar = new QScrollBar(Qt::Horizontal, this);
-    m_vbar = new QScrollBar(Qt::Vertical, this);
-    m_hbar->setCursor(Qt::ArrowCursor);
-    m_vbar->setCursor(Qt::ArrowCursor);   // tool cursors are for the canvas only
-    connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) {
-        if (!m_updatingBars) {
-            m_scrollTick = (Tick)v * PPQ / 4;
-            invalidate();
-        }
-    });
-    connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) {
-        if (!m_updatingBars) {
-            m_scrollY = v;
-            invalidate();
-        }
-    });
-    m_ticker = new anim::Ticker(this);
 }
-void PlaylistView::setTool(Tool t) {
-    m_tool = t;
-    setCursor(toolCursorFor(t));
-    Q_EMIT modeChanged(t);
-}
-// The pointer carries the active tool's icon; the pencil points from its tip, the rest sit centred on the hotspot.
-QCursor PlaylistView::toolCursorFor(Tool t) {
-    switch (t) {
-    case Erase: return theme::toolCursor(theme::Glyph::Eraser);
-    case MuteTool: return theme::toolCursor(theme::Glyph::MuteSpeaker);
-    case Slice: return theme::toolCursor(theme::Glyph::Slice);
-    case Select: return theme::toolCursor(theme::Glyph::Marquee);
-    default: return QCursor(Qt::ArrowCursor);
-    }
-}   // draw tool: the regular pointer
 PlaylistView::Layout PlaylistView::layout() const {
     Layout l;
     int w = width() - 14, h = height() - 14;
@@ -72,15 +38,6 @@ PlaylistView::Layout PlaylistView::layout() const {
     l.area = QRect(l.headerW, l.rulerH, w - l.headerW, h - l.rulerH);
     return l;
 }
-void PlaylistView::resizeEvent(QResizeEvent*) {
-    Layout L = layout();
-    m_hbar->setGeometry(L.headerW, height() - 14, width() - L.headerW - 14, 14);
-    m_vbar->setGeometry(width() - 14, L.rulerH, 14, height() - L.rulerH - 14);
-    updateScrollbars();
-    invalidate();
-}
-Tick PlaylistView::xToTick(int x) const { return m_scrollTick + (Tick)((x - layout().headerW) / m_ppt); }
-int PlaylistView::tickToX(Tick t) const { return layout().headerW + (int)((t - m_scrollTick) * m_ppt); }
 int PlaylistView::trackH(int idx) const {
     auto& tr = m_app.project().playlistTracks;
     return (int)std::lround(((idx >= 0 && idx < (int)tr.size()) ? tr[idx].height : 60) * m_vzoom);
@@ -100,28 +57,15 @@ int PlaylistView::trackAtY(int y) const {
     }
     return -1;
 }
-Tick PlaylistView::snapTicks() const {
-    if (m_snapDiv == 0) return 1;
-    if (m_snapDiv < 0) return m_app.project().transport.timeSig.ticksPerBar() * -m_snapDiv;
-    return PPQ / m_snapDiv;
-}
-Tick PlaylistView::snap(Tick t, bool force) const {
-    if (m_altHeld && !force) return t;
-    Tick s = snapTicks();
-    if (s <= 1) return t;
-    return (t / s) * s;
-}
-Tick PlaylistView::snapNear(Tick t) const {
-    if (m_altHeld) return t;
-    Tick s = snapTicks();
-    if (s <= 1) return t;
-    return ((t + s / 2) / s) * s;
-}   // nearest grid line, past halfway rounds up
 Tick PlaylistView::snapRound(Tick t) const {
     Tick s = snapTicks();
     if (s <= 1) s = PPQ / 4;
     return ((t + s / 2) / s) * s;
 }   // nearest grid line (rounds up past halfway)
+void PlaylistView::selectInRect(const QRect& r) {
+    for (auto& c : m_app.project().clips)
+        if (r.intersects(clipRect(c))) m_selected.insert(c.id);
+}
 QRect PlaylistView::clipRect(const Clip& c) const {
     auto& tr = m_app.project().playlistTracks;
     int idx = -1;
@@ -261,10 +205,6 @@ QRect PlaylistView::gainIconRect(const Clip& c) const {
     QRect r = clipRect(c);
     return QRect(r.center().x() - 22, r.bottom() - 15, 44, 13);
 }   // bottom centre
-int PlaylistView::gainY(const Clip& c) const {
-    QRect body = clipRect(c).adjusted(1, 14, -1, -1);
-    return body.top() + 3 + (int)((1.0 - std::min(c.gain, 2.f) / 2.0) * (body.height() - 6));
-}
 static double distToPolyline(const QPolygonF& poly, const QPointF& pt) {
     double best = 1e9;
     for (int i = 1; i < poly.size(); ++i) {
@@ -473,9 +413,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
 }
 void PlaylistView::renderCache() {
     Layout L = layout();
-    m_cache = QPixmap(size() * devicePixelRatioF());
-    m_cache.setDevicePixelRatio(devicePixelRatioF());
-    m_cache.fill(theme::bg());
+    prepareCache();
     QPainter p(&m_cache);
     p.setRenderHint(
         QPainter::TextAntialiasing); /* the cache is rendered at the screen's real resolution: text stays crisp at 125 % / 150 % scaling */
@@ -520,22 +458,8 @@ void PlaylistView::renderCache() {
         p.fillRect(QRect(x1, L.area.top(), x2 - x1, L.area.height()), QColor(0xf2, 0xa9, 0x3b, 18));
     }
     p.setClipping(false);
-    // ruler
-    p.fillRect(L.ruler, theme::panel());
-    p.setClipRect(L.ruler);
-    p.setFont(theme::smallFont());
-    Tick lstep = barStep;
-    while (lstep * m_ppt < 34) lstep *= 2;
-    Tick tickStep = beat * m_ppt >= 6 ? beat : barStep;
-    for (Tick t = (m_scrollTick / tickStep) * tickStep; t <= last; t += tickStep) {
-        int x = tickToX(t);
-        bool isBar = t % bar == 0;
-        bool labeled = t % lstep == 0;
-        p.setPen(labeled ? theme::text() : theme::textDim());
-        p.drawLine(x, labeled ? L.ruler.top() + 8 : (isBar ? L.ruler.top() + 13 : L.ruler.top() + 17), x, L.ruler.bottom());
-        if (labeled) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1));
-    }
-    if (proj.transport.loopEnabled || true) {
+    paintRuler(p, L.ruler, barStep, last);
+    {   // loop area: accent when on, dim when off
         int x1 = tickToX(proj.transport.loopStart), x2 = tickToX(proj.transport.loopEnd);
         p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), proj.transport.loopEnabled ? theme::accent() : theme::textDim());
     }
@@ -591,16 +515,10 @@ void PlaylistView::renderCache() {
     p.fillRect(QRect(0, 0, L.headerW, L.rulerH), theme::panel());
     p.setPen(theme::border());
     p.drawLine(0, L.rulerH - 1, L.headerW, L.rulerH - 1);
-    m_cacheValid = true;
 }
 void PlaylistView::paintEvent(QPaintEvent*) {
-    if (m_themeRev != theme::revision()) {
-        m_themeRev = theme::revision();
-        m_cacheValid = false;
-    }   // the cached pixmap still holds the old theme
-    if (!m_cacheValid) renderCache();
     QPainter p(this);
-    p.drawPixmap(0, 0, m_cache);
+    drawCache(p);
     Layout L = layout();
     {   // clips: animated (appear / move / vanish), instant while being dragged
         p.save();
@@ -653,21 +571,8 @@ void PlaylistView::paintEvent(QPaintEvent*) {
         p.restore();
         m_ticker->keepAlive(m_clipAnim.active());
     }
-    if (m_playTick >= 0) {
-        int x = tickToX((Tick)m_playTick);
-        if (x >= L.area.left() && x <= L.area.right()) {
-            p.setPen(QPen(theme::playhead(), 1.5));
-            p.drawLine(x, L.ruler.top(), x, L.area.bottom());
-        }
-    }
-    if (m_drag == Rubber) {
-        p.save();
-        p.setRenderHint(QPainter::Antialiasing, false);
-        p.setPen(QPen(theme::withAlpha(theme::accent(), 220), 1));
-        p.setBrush(theme::selection());
-        p.drawRect(m_rubber.normalized());
-        p.restore();
-    }
+    paintPlayhead(p, L.ruler.top(), L.area.bottom());
+    if (m_drag == Rubber) paintRubber(p);
     if (m_tool == Draw && m_drag == NoDrag && L.area.contains(m_hoverPos) && underMouse() && !clipAt(m_hoverPos)) {
         int tr = trackAtY(m_hoverPos.y());
         if (tr >= 0) {
@@ -713,10 +618,7 @@ void PlaylistView::commitEdit(const QString& desc) {
             continue;
         }
         Clip after = c;
-        if (after.start == it->second.start && after.length == it->second.length && after.trackId == it->second.trackId &&
-            after.sourceOffset == it->second.sourceOffset && after.fadeIn == it->second.fadeIn && after.fadeOut == it->second.fadeOut &&
-            after.muted == it->second.muted)
-            continue;
+        if (after == it->second) continue;   // every field: gain and fade-curve drags are edits too
         c = it->second;
         cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_app.model(), c.id, "", [after](Clip& x) { x = after; }, 0));
     }
@@ -751,17 +653,13 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         if (e->button() == Qt::RightButton) {
             QMenu m;
             m.addAction("Add marker here", [this, t] {
-                bool ok;
-                QString n = QInputDialog::getText(
-                    this, "Marker", "Name:", QLineEdit::Normal, QString("Marker %1").arg(m_app.project().markers.size() + 1), &ok);
-                if (ok) m_app.addMarker(t, n);
+                if (auto n = askName(this, "Marker", QString("Marker %1").arg(m_app.project().markers.size() + 1), true)) m_app.addMarker(t, *n);
             });
             for (auto& mk : proj.markers)
                 if (std::abs(tickToX(mk.position) - e->pos().x()) < 8) {
                     m.addAction("Rename marker '" + mk.name + "'", [this, id = mk.id, n = mk.name] {
-                        bool ok;
-                        QString nn = QInputDialog::getText(this, "Marker", "Name:", QLineEdit::Normal, n, &ok);
-                        if (ok) m_app.model().edit<Marker>(id, "Rename marker", [nn](Marker& x) { x.name = nn; });
+                        if (auto nn = askName(this, "Marker", n, true))
+                            m_app.model().edit<Marker>(id, "Rename marker", [nn = *nn](Marker& x) { x.name = nn; });
                     });
                     m.addAction(
                         "Delete marker '" + mk.name + "'", [this, id = mk.id] { m_app.model().remove<Marker>(id, "Delete marker"); });
@@ -799,18 +697,14 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         if (trackH(idx) >= 40 && ly >= 22 && ly <= 36) {
             int x = e->pos().x();
             if (x >= 10 && x < 28)
-                m_app.editTrack(t.id, t.mute ? "Unmute track" : "Mute track", [](PlaylistTrack& x) { x.mute = !x.mute; });
-            else if (x >= 31 && x < 49) m_app.editTrack(t.id, "Solo track", [](PlaylistTrack& x) { x.solo = !x.solo; });
-            else if (x >= 52 && x < 70) m_app.editTrack(t.id, "Lock track", [](PlaylistTrack& x) { x.locked = !x.locked; });
+                m_app.edit<PlaylistTrack>(t.id, t.mute ? "Unmute track" : "Mute track", [](PlaylistTrack& x) { x.mute = !x.mute; });
+            else if (x >= 31 && x < 49) m_app.edit<PlaylistTrack>(t.id, "Solo track", [](PlaylistTrack& x) { x.solo = !x.solo; });
+            else if (x >= 52 && x < 70) m_app.edit<PlaylistTrack>(t.id, "Lock track", [](PlaylistTrack& x) { x.locked = !x.locked; });
             else if (x >= 73 && x < 113) {
                 QMenu m;
-                for (auto& mt : proj.mixerTracks) {
-                    auto* a = m.addAction(mt.name, [this, tid = t.id, mid = mt.id] {
-                        m_app.editTrack(tid, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; });
-                    });
-                    a->setCheckable(true);
-                    a->setChecked(mt.id == t.mixerTrackId);
-                }
+                fillMixerTrackMenu(&m, proj, t.mixerTrackId, [this, tid = t.id](Id mid) {
+                    m_app.edit<PlaylistTrack>(tid, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; });
+                });
                 m.exec(e->globalPosition().toPoint());
             }
         }
@@ -854,7 +748,7 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         m_touched.clear();
         if (c) {
             m_touched.insert(c->id);
-            m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; });
+            m_app.edit<Clip>(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; });
         }
         return;
     }
@@ -883,11 +777,8 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
             return;
         }
         if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) {
-            m_toggleOnRelease = c->id;
-            m_selBase = m_selected;
             m_drag = Rubber;
-            m_rubber = QRect(e->pos(), QSize(0, 0));
-            invalidate();
+            beginRubber(e->pos(), c->id);
             return;
         }   // Ctrl: drag = rubber-band selection from here, click = toggle this clip
         if (!m_selected.count(c->id)) {
@@ -925,10 +816,8 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
     }
     if (m_tool == Select || (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
         if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear();
-        m_selBase = m_selected;
         m_drag = Rubber;
-        m_rubber = QRect(e->pos(), QSize(0, 0));
-        invalidate();
+        beginRubber(e->pos());
         return;
     }
     // draw tool on empty: place the brush (last clicked clip), or the selected pattern
@@ -1068,16 +957,7 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
         return;
     }
     if (m_drag == Rubber) {
-        m_rubber = QRect(m_pressPos, e->pos());
-        QRect r = m_rubber.normalized();
-        if (m_toggleOnRelease && (r.width() >= 3 || r.height() >= 3)) {
-            m_toggleOnRelease = 0;
-            if (!(e->modifiers() & Qt::ShiftModifier)) m_selBase.clear();
-        }
-        m_selected = m_selBase;
-        for (auto& c : proj.clips)
-            if (r.intersects(clipRect(c))) m_selected.insert(c.id);
-        invalidate();
+        dragRubber(e->pos(), e->modifiers());
         return;
     }
     if (m_drag == Erasing) {
@@ -1091,7 +971,7 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
         if (Clip* c = clipAt(e->pos())) {
             if (!m_touched.count(c->id)) {
                 m_touched.insert(c->id);
-                m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; });
+                m_app.edit<Clip>(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; });
             }
         }
         return;
@@ -1226,7 +1106,7 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
     case TrackHeight: {
         int h = proj.playlistTracks[m_heightTrack].height;
         proj.playlistTracks[m_heightTrack].height = m_heightStart;
-        m_app.editTrack(proj.playlistTracks[m_heightTrack].id, "Track height", [h](PlaylistTrack& t) { t.height = h; });
+        m_app.edit<PlaylistTrack>(proj.playlistTracks[m_heightTrack].id, "Track height", [h](PlaylistTrack& t) { t.height = h; });
         break;
     }
     case AutoPoint: {
@@ -1234,20 +1114,11 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
         if (l) {
             AutomationLane after = *l;
             *l = m_laneBefore;
-            m_app.editLane(m_autoLane, "Move automation point", [after](AutomationLane& x) { x = after; });
+            m_app.edit<AutomationLane>(m_autoLane, "Move automation point", [after](AutomationLane& x) { x = after; });
         }
         break;
     }
-    case Rubber: {
-        bool tiny = m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3;
-        if (tiny && m_toggleOnRelease) {
-            m_selected = m_selBase;
-            if (m_selected.count(m_toggleOnRelease)) m_selected.erase(m_toggleOnRelease);
-            else m_selected.insert(m_toggleOnRelease);
-        } else if (tiny && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear();
-        m_toggleOnRelease = 0;
-        break;
-    }
+    case Rubber: finishRubber(e->modifiers()); break;
     case Erasing:
         setTool(m_tool);
         m_lastEraseWasClick = m_erasedAny && (e->pos() - m_pressPos).manhattanLength() < 4;
@@ -1271,11 +1142,11 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
         }
         m_drag = Muting;
         m_touched.clear();
-        setCursor(theme::toolCursor(theme::Glyph::MuteSpeaker));
+        setCursor(toolCursorFor(MuteTool));
         Q_EMIT modeChanged(MuteTool);
         if (Clip* c = clipAt(e->pos())) {
             m_touched.insert(c->id);
-            m_app.editClip(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; });
+            m_app.edit<Clip>(c->id, c->muted ? "Unmute clip" : "Mute clip", [](Clip& x) { x.muted = !x.muted; });
         }
         return;
     }
@@ -1286,9 +1157,7 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
             return;
         }
         auto& t = proj.playlistTracks[idx];
-        bool ok;
-        QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t.name, &ok);
-        if (ok && !n.isEmpty()) m_app.editTrack(t.id, "Rename track", [n](PlaylistTrack& x) { x.name = n; });
+        if (auto n = askName(this, "Rename track", t.name)) m_app.edit<PlaylistTrack>(t.id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
         return;
     }
     if (L.ruler.contains(e->pos())) {
@@ -1303,7 +1172,7 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
             AutomationPoint pt;
             pt.time = snap(autoTickAtX(*c, e->pos().x()));
             pt.value = autoValueAtY(*c, e->pos().y());
-            m_app.editLane(l->id, "Add automation point", [pt](AutomationLane& x) {
+            m_app.edit<AutomationLane>(l->id, "Add automation point", [pt](AutomationLane& x) {
                 x.points.push_back(pt);
                 std::sort(
                     x.points.begin(), x.points.end(), [](const AutomationPoint& a, const AutomationPoint& b) { return a.time < b.time; });
@@ -1322,25 +1191,6 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
         }
     }
 }
-void PlaylistView::zoomTimeAt(int x, double factor) {
-    Layout L = layout();
-    Tick anchor = xToTick(x);
-    double minPpt = (double)L.area.width() / (double)maxExtent();
-    m_ppt = clamp(m_ppt * factor, minPpt, 1.0);
-    m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround((x - L.headerW) / m_ppt));
-    updateScrollbars();
-    invalidate();
-}
-bool PlaylistView::event(QEvent* e) {
-    if (e->type() == QEvent::NativeGesture) {   // trackpad pinch
-        auto* g = static_cast<QNativeGestureEvent*>(e);
-        if (g->gestureType() == Qt::ZoomNativeGesture) {
-            zoomTimeAt(g->position().toPoint().x(), 1.0 + g->value());
-            return true;
-        }
-    }
-    return QWidget::event(e);
-}
 void PlaylistView::wheelEvent(QWheelEvent* e) {
     int dy = e->angleDelta().y();
     Layout L = layout();
@@ -1355,14 +1205,8 @@ void PlaylistView::wheelEvent(QWheelEvent* e) {
         e->accept();
         return;
     }
-    if (e->modifiers() & Qt::ControlModifier) {
-        if (dy != 0) zoomTimeAt(e->position().toPoint().x(), std::pow(1.15, dy / 120.0));   // proportional: trackpads send many small deltas
-        e->accept();
-        return;
-    } else if (e->modifiers() & Qt::ShiftModifier || e->angleDelta().x() != 0) {
-        int d = e->angleDelta().x() != 0 ? e->angleDelta().x() : dy;
-        m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(d / m_ppt * 0.5));
-    } else m_scrollY = clamp(m_scrollY - dy / 2, 0, m_vbar->maximum());
+    if (handleTimeWheel(e)) return;
+    m_scrollY = clamp(m_scrollY - dy / 2, 0, m_vbar->maximum());
     updateScrollbars();
     invalidate();
     e->accept();
@@ -1371,112 +1215,32 @@ void PlaylistView::wheelEvent(QWheelEvent* e) {
 void PlaylistView::keyPressEvent(QKeyEvent* e) {
     bool ctrl = e->modifiers() & Qt::ControlModifier, shift = e->modifiers() & Qt::ShiftModifier, alt = e->modifiers() & Qt::AltModifier;
     auto& proj = m_app.project();
-    auto tool = [this](Tool t) {
-        setTool(t);
-        Q_EMIT toolChanged(t);
-    };
-    switch (e->key()) {
-    case Qt::Key_Delete:
-        if (ctrl) {
-            deleteLoopSpace();
-            return;
-        }
-        deleteSelected();
-        return;
+    switch (e->key()) {   // playlist keys; the shortcuts shared with the piano roll are in TimelineView::handleSharedKey
     case Qt::Key_Insert:
-        if (ctrl) {
-            insertLoopSpace();
-            return;
-        }
+        if (ctrl) break;
         sliceAtPlayhead();
         return;
-    case Qt::Key_A:
-        if (ctrl) {
-            selectAll();
-            return;
-        }
-        break;
     case Qt::Key_C:
-        if (ctrl) {
-            copySelected();
-            return;
-        }
+        if (ctrl) break;
         if (shift) {
             selectBySource();
             return;
         }
         if (!alt) {
-            tool(Slice);
-            return;
-        }
-        break;
-    case Qt::Key_X:
-        if (ctrl) {
-            cutSelected();
-            return;
-        }
-        break;
-    case Qt::Key_V:
-        if (ctrl) {
-            paste();
+            pickTool(Slice);
             return;
         }
         break;
     case Qt::Key_D:
-        if (ctrl) {
-            m_selected.clear();
-            invalidate();
-            return;
-        }
-        if (!alt) {
-            tool(Erase);
-            return;
-        }
-        break;
+        if (ctrl || alt) break;
+        pickTool(Erase);
+        return;
     case Qt::Key_B:
-        if (ctrl) {
-            duplicateSelected();
-            return;
-        }
-        if (!alt) {
-            tool(Draw);
-            return;
-        }
-        break;
-    case Qt::Key_P:
-        if (!ctrl && !alt) {
-            tool(Draw);
-            return;
-        }
-        break;
-    case Qt::Key_E:
-        if (!ctrl && !alt) {
-            tool(Select);
-            return;
-        }
-        break;
-    case Qt::Key_T:
-        if (!ctrl && !alt) {
-            tool(MuteTool);
-            return;
-        }
-        break;
-    case Qt::Key_I:
-        if (shift) {
-            std::set<Id> inv;
-            for (auto& c : proj.clips)
-                if (!m_selected.count(c.id)) inv.insert(c.id);
-            m_selected = inv;
-            invalidate();
-            return;
-        }
-        break;
+        if (ctrl || alt) break;
+        pickTool(Draw);
+        return;
     case Qt::Key_M:
-        if (alt) {
-            muteSelected(!shift);
-            return;
-        }
-        if (!ctrl && !m_selected.empty()) {
+        if (!alt && !ctrl && !m_selected.empty()) {
             bool any = false;
             for (auto& c : proj.clips)
                 if (m_selected.count(c.id) && !c.muted) any = true;
@@ -1519,28 +1283,11 @@ void PlaylistView::keyPressEvent(QKeyEvent* e) {
         commitEdit("Move clips");
         return;
     }
-    case Qt::Key_PageUp:
-    case Qt::Key_PageDown: {
-        Layout L = layout();
-        Tick anchor = xToTick(L.area.center().x());
-        double minPpt = (double)L.area.width() / (double)maxExtent();
-        m_ppt = clamp(m_ppt * (e->key() == Qt::Key_PageUp ? 1.3 : 1 / 1.3), minPpt, 1.0);
-        m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround(L.area.width() / 2 / m_ppt));
-        updateScrollbars();
-        invalidate();
-        return;
-    }
-    case Qt::Key_Escape:
-        m_selected.clear();
-        invalidate();
-        return;
-    case Qt::Key_1: tool(Draw); return;
-    case Qt::Key_2: tool(Select); return;
-    case Qt::Key_3: tool(Erase); return;
-    case Qt::Key_4: tool(Slice); return;
-    case Qt::Key_5: tool(MuteTool); return;
+    case Qt::Key_4: pickTool(Slice); return;
+    case Qt::Key_5: pickTool(MuteTool); return;
     default: break;
     }
+    if (handleSharedKey(e)) return;
     QWidget::keyPressEvent(e);
 }
 // clipboard: clips are copied relative to the earliest one and pasted at the playhead on their original tracks
@@ -1553,10 +1300,6 @@ void PlaylistView::copySelected() {
             minS = std::min(minS, c.start);
         }
     for (auto& c : m_clipboard) c.start -= minS;
-}
-void PlaylistView::cutSelected() {
-    copySelected();
-    deleteSelected();
 }
 void PlaylistView::paste() {
     if (m_clipboard.empty()) return;
@@ -1588,8 +1331,15 @@ void PlaylistView::sliceAtPlayhead() {
     if (ids.empty()) return;
     for (Id id : ids) m_app.splitClip(id, at);
 }
+void PlaylistView::invertSelection() {
+    std::set<Id> inv;
+    for (auto& c : m_app.project().clips)
+        if (!m_selected.count(c.id)) inv.insert(c.id);
+    m_selected = inv;
+    invalidate();
+}
 // Ctrl+Delete / Ctrl+Insert: remove or insert the loop area's span, shifting everything after it
-void PlaylistView::deleteLoopSpace() {
+void PlaylistView::deleteSpace() {
     auto& t = m_app.project().transport;
     if (t.loopEnd <= t.loopStart) return;
     Tick len = t.loopEnd - t.loopStart;
@@ -1611,7 +1361,7 @@ void PlaylistView::deleteLoopSpace() {
     for (Id id : del) m_selected.erase(id);
     invalidate();
 }
-void PlaylistView::insertLoopSpace() {
+void PlaylistView::insertSpace() {
     auto& t = m_app.project().transport;
     if (t.loopEnd <= t.loopStart) return;
     Tick len = t.loopEnd - t.loopStart;
@@ -1632,16 +1382,14 @@ void PlaylistView::contextMenuEvent(QContextMenuEvent* e) {
     e->accept();
 }   // area menus open on right-button release (see mouseReleaseEvent) so right-drag can erase
 void PlaylistView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
-    QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, globalPos);
-    QContextMenuEvent* e = &ev;
     Layout L = layout();
-    if (!L.area.contains(e->pos())) return;
+    if (!L.area.contains(pos)) return;
     QMenu m(this);
     m.addAction("Select all", [this] { selectAll(); });
     m.addAction("Add track", [this] { m_app.addPlaylistTrack(); });
     m.addAction("Zoom to fit", [this] { zoomToFit(); });
-    int tr = trackAtY(e->pos().y());
-    Tick at = snap(xToTick(e->pos().x()));
+    int tr = trackAtY(pos.y());
+    Tick at = snap(xToTick(pos.x()));
     if (tr >= 0) {
         Id tid = m_app.project().playlistTracks[tr].id;
         auto* pm = m.addMenu("Insert pattern");
@@ -1650,7 +1398,7 @@ void PlaylistView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
         for (auto& l : m_app.project().automationLanes)
             am->addAction(l.name, [this, tid, lid = l.id, at] { m_app.addAutomationClip(tid, lid, at, 0); });
     }
-    m.exec(e->globalPos());
+    m.exec(globalPos);
 }
 void PlaylistView::showTrackMenu(int idx, const QPoint& global) {
     auto& proj = m_app.project();
@@ -1659,13 +1407,11 @@ void PlaylistView::showTrackMenu(int idx, const QPoint& global) {
     Id id = t.id;
     QMenu m(this);
     m.addAction("Rename...", [this, id, t] {
-        bool ok;
-        QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t.name, &ok);
-        if (ok && !n.isEmpty()) m_app.editTrack(id, "Rename track", [n](PlaylistTrack& x) { x.name = n; });
+        if (auto n = askName(this, "Rename track", t.name)) m_app.edit<PlaylistTrack>(id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
     });
     m.addAction("Color...", [this, id, t] {
         QColor c = QColorDialog::getColor(t.color, this);
-        if (c.isValid()) m_app.editTrack(id, "Track color", [c](PlaylistTrack& x) { x.color = c; });
+        if (c.isValid()) m_app.edit<PlaylistTrack>(id, "Track color", [c](PlaylistTrack& x) { x.color = c; });
     });
     m.addAction("Insert track above", [this, idx] {
         Id nid = m_app.addPlaylistTrack();
@@ -1674,17 +1420,12 @@ void PlaylistView::showTrackMenu(int idx, const QPoint& global) {
     m.addAction("Add track", [this] { m_app.addPlaylistTrack(); });
     m.addAction("Delete track", [this, id] { m_app.deletePlaylistTrack(id); });
     m.addSeparator();
-    auto* route = m.addMenu("Audio clips to mixer track");
-    for (auto& mt : proj.mixerTracks) {
-        auto* a = route->addAction(mt.name,
-            [this, id, mid = mt.id] { m_app.editTrack(id, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; }); });
-        a->setCheckable(true);
-        a->setChecked(mt.id == t.mixerTrackId);
-    }
+    fillMixerTrackMenu(m.addMenu("Audio clips to mixer track"), proj, t.mixerTrackId,
+        [this, id](Id mid) { m_app.edit<PlaylistTrack>(id, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; }); });
     auto* h = m.addMenu("Height");
     for (int hh : {30, 60, 100, 160})
         h->addAction(
-            QString::number(hh), [this, id, hh] { m_app.editTrack(id, "Track height", [hh](PlaylistTrack& x) { x.height = hh; }); });
+            QString::number(hh), [this, id, hh] { m_app.edit<PlaylistTrack>(id, "Track height", [hh](PlaylistTrack& x) { x.height = hh; }); });
     m.exec(global);
 }
 void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
@@ -1697,14 +1438,12 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
     ClipType type = c->type;
     QMenu m(this);
     auto& proj = m_app.project();
-    m.addAction(c->muted ? "Unmute" : "Mute", [this, id] { m_app.editClip(id, "Mute clip", [](Clip& x) { x.muted = !x.muted; }); });
+    m.addAction(c->muted ? "Unmute" : "Mute", [this, id] { m_app.edit<Clip>(id, "Mute clip", [](Clip& x) { x.muted = !x.muted; }); });
     m.addAction("Delete", [this] { deleteSelected(); });
     m.addAction("Duplicate", [this] { duplicateSelected(); });
     m.addAction("Split at playhead", [this, id] { m_app.splitClip(id, (Tick)m_app.engine().positionTicks()); });
     m.addAction("Rename...", [this, id, n = c->name] {
-        bool ok;
-        QString nn = QInputDialog::getText(this, "Rename clip", "Name:", QLineEdit::Normal, n, &ok);
-        if (ok) m_app.editClip(id, "Rename clip", [nn](Clip& x) { x.name = nn; });
+        if (auto nn = askName(this, "Rename clip", n, true)) m_app.edit<Clip>(id, "Rename clip", [nn = *nn](Clip& x) { x.name = nn; });
     });
     m.addSeparator();
     if (type == ClipType::Pattern) {
@@ -1714,30 +1453,30 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             Q_EMIT openPattern(pid);
         });
         m.addAction(c->loopSource ? "Don't repeat pattern" : "Repeat pattern (when the clip is longer than the pattern)",
-            [this, id] { m_app.editClip(id, "Repeat pattern", [](Clip& x) { x.loopSource = !x.loopSource; }); });
+            [this, id] { m_app.edit<Clip>(id, "Repeat pattern", [](Clip& x) { x.loopSource = !x.loopSource; }); });
         if (c->length > 0)
-            m.addAction("Fit to pattern length", [this, id] { m_app.editClip(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); });
+            m.addAction("Fit to pattern length", [this, id] { m_app.edit<Clip>(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); });
     }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
         m.addAction(c->reverse ? "Un-reverse" : "Reverse",
-            [this, id] { m_app.editClip(id, "Reverse clip", [](Clip& x) { x.reverse = !x.reverse; }); });
+            [this, id] { m_app.edit<Clip>(id, "Reverse clip", [](Clip& x) { x.reverse = !x.reverse; }); });
         m.addAction("Normalize (source)",
-            [this, sid = c->sourceId] { m_app.editAudioSource(sid, "Normalize", [](AudioSource& a) { a.normalize = !a.normalize; }); });
+            [this, sid = c->sourceId] { m_app.edit<AudioSource>(sid, "Normalize", [](AudioSource& a) { a.normalize = !a.normalize; }); });
         m.addAction("Gain...", [this, id, g = c->gain] {
             bool ok;
             double db = QInputDialog::getDouble(this, "Clip gain", "dB:", gainToDb(g), -60, 24, 1, &ok);
-            if (ok) m_app.editClip(id, "Clip gain", [db](Clip& x) { x.gain = dbToGain((float)db); });
+            if (ok) m_app.edit<Clip>(id, "Clip gain", [db](Clip& x) { x.gain = dbToGain((float)db); });
         });
         m.addAction("Fade in...", [this, id, c] {
             bool ok;
             double beats = QInputDialog::getDouble(this, "Fade in", "Beats:", ticksToBeats(c->fadeIn), 0, 64, 2, &ok);
-            if (ok) m_app.editClip(id, "Fade in", [beats](Clip& x) { x.fadeIn = beatsToTicks(beats); });
+            if (ok) m_app.edit<Clip>(id, "Fade in", [beats](Clip& x) { x.fadeIn = beatsToTicks(beats); });
         });
         m.addAction("Fade out...", [this, id, c] {
             bool ok;
             double beats = QInputDialog::getDouble(this, "Fade out", "Beats:", ticksToBeats(c->fadeOut), 0, 64, 2, &ok);
-            if (ok) m_app.editClip(id, "Fade out", [beats](Clip& x) { x.fadeOut = beatsToTicks(beats); });
+            if (ok) m_app.edit<Clip>(id, "Fade out", [beats](Clip& x) { x.fadeOut = beatsToTicks(beats); });
         });
         m.addAction("Crossfade with overlapping clip", [this] { crossfadeSelected(); });
         m.addAction("Time stretch / pitch...", [this, id] { Q_EMIT openAudioClip(id); });
@@ -1749,7 +1488,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             Tick bar = m_app.project().transport.timeSig.ticksPerBar();
             Tick target = std::max<Tick>(bar, ((nat + bar / 2) / bar) * bar);
             double ratio = (double)target / nat;
-            m_app.editClip(id, "Stretch to whole bars", [ratio, target](Clip& x) {
+            m_app.edit<Clip>(id, "Stretch to whole bars", [ratio, target](Clip& x) {
                 x.timeStretch = ratio;
                 x.length = target;
                 if (x.stretchMode == StretchResample) x.stretchMode = StretchGeneral;   // keep the pitch
@@ -1778,7 +1517,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             }
         });
         m.addAction(c->loopSource ? "Don't loop audio" : "Loop audio",
-            [this, id] { m_app.editClip(id, "Loop audio", [](Clip& x) { x.loopSource = !x.loopSource; }); });
+            [this, id] { m_app.edit<Clip>(id, "Loop audio", [](Clip& x) { x.loopSource = !x.loopSource; }); });
     }
     if (type == ClipType::Automation) {
         m.addAction("Delete automation lane", [this, lid = c->sourceId] { m_app.deleteLane(lid); });
@@ -1786,21 +1525,21 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
         const char* names[] = {"Linear", "Stepped", "Smooth", "Bezier"};
         for (int i = 0; i < 4; ++i)
             cm->addAction(names[i], [this, lid = c->sourceId, i] {
-                m_app.editLane(lid, "Curve type", [i](AutomationLane& l) {
+                m_app.edit<AutomationLane>(lid, "Curve type", [i](AutomationLane& l) {
                     for (auto& p : l.points) p.curve = (CurveType)i;
                 });
             });
         int pi = autoPointAt(*c, mapFromGlobal(global));
         if (pi >= 0) {
             m.addAction("Delete point", [this, lid = c->sourceId, pi] {
-                m_app.editLane(lid, "Delete point", [pi](AutomationLane& l) {
+                m_app.edit<AutomationLane>(lid, "Delete point", [pi](AutomationLane& l) {
                     if (l.points.size() > 1 && pi < (int)l.points.size()) l.points.erase(l.points.begin() + pi);
                 });
             });
             auto* pcm = m.addMenu("Point curve");
             for (int i = 0; i < 4; ++i)
                 pcm->addAction(names[i], [this, lid = c->sourceId, pi, i] {
-                    m_app.editLane(lid, "Curve type", [pi, i](AutomationLane& l) {
+                    m_app.edit<AutomationLane>(lid, "Curve type", [pi, i](AutomationLane& l) {
                         if (pi < (int)l.points.size()) l.points[pi].curve = (CurveType)i;
                     });
                 });
@@ -1808,7 +1547,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
                 bool ok;
                 double t = QInputDialog::getDouble(this, "Tension", "-1..1:", 0, -1, 1, 2, &ok);
                 if (ok)
-                    m_app.editLane(lid, "Tension", [pi, t](AutomationLane& l) {
+                    m_app.edit<AutomationLane>(lid, "Tension", [pi, t](AutomationLane& l) {
                         if (pi < (int)l.points.size()) {
                             l.points[pi].tension = (float)t;
                             l.points[pi].curve = CurveType::Bezier;
@@ -1905,7 +1644,7 @@ void PlaylistView::crossfadeSelected() {
     m_app.model().macro("Crossfade", std::move(cmds));
 }
 void PlaylistView::dragEnterEvent(QDragEnterEvent* e) {
-    if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) e->acceptProposedAction();
+    if (hasAppDrop(e->mimeData())) e->acceptProposedAction();
 }
 void PlaylistView::dragMoveEvent(QDragMoveEvent* e) { e->acceptProposedAction(); }
 void PlaylistView::dropEvent(QDropEvent* e) {
@@ -1918,8 +1657,7 @@ void PlaylistView::dropEvent(QDropEvent* e) {
     }
     Id tid = proj.playlistTracks[tr].id;
     Tick at = std::max<Tick>(0, snap(xToTick(pos.x())));
-    QString payload = QString::fromUtf8(e->mimeData()->data("application/x-musicthingy-item"));
-    QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
+    auto [kind, val] = dropItem(e->mimeData());
     if (e->mimeData()->hasUrls()) {
         for (auto& u : e->mimeData()->urls()) {
             QString p = u.toLocalFile();

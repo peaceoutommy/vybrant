@@ -108,9 +108,6 @@ public:
         return m_params.get(pTime) * (m_params.getBool(pFitTempo) && src > 0 && bpm > 0 ? src / bpm : 1.0);
     }
     QString pendingPath;   // path recorded in state that still needs loading (resolved by the registry)
-protected:
-    void onPrepare() override;
-
 private:
     struct Voice {
         bool active = false;
@@ -178,11 +175,6 @@ public:
     QString builtinName() const { return m_builtin; }
     static std::shared_ptr<AudioAsset> synthesizeDrum(const QString& name, double sr);
     static uint32_t padParam(int pad, int which) { return pPadBase + pad * 8 + which; }
-    std::vector<QString> pendingPaths() const {
-        std::vector<QString> v;
-        for (auto& p : m_pads) v.push_back(p.path);
-        return v;
-    }
 
 protected:
     void onPrepare() override;
@@ -261,9 +253,6 @@ public:
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
 
-protected:
-    void onPrepare() override;
-
 private:
     struct Voice {
         bool active = false;
@@ -327,9 +316,6 @@ public:
     void reset() override;
     const float* table(int bank, int idx) const { return m_tables[bank][idx].data(); }
 
-protected:
-    void onPrepare() override;
-
 private:
     struct Voice {
         bool active = false;
@@ -375,9 +361,6 @@ public:
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
     static uint32_t opParam(int op, int which) { return pOpBase + op * 8 + which; }
-
-protected:
-    void onPrepare() override;
 
 private:
     struct Voice {

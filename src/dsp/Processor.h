@@ -110,7 +110,7 @@ public:
     }
 
 protected:
-    virtual void onPrepare() {}
+    virtual void onPrepare() { reset(); }   // a fresh start at the new rate; override when buffers must be (re)sized
     double m_sr = 44100;
     int m_maxBlock = 512;
     ParameterSet m_params;

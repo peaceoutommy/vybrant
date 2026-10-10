@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QString>
 #include <functional>
+#include <optional>
 
 class QLabel;
 
@@ -136,10 +137,6 @@ public:
         m_suffix = s;
         update();
     }
-    void setPrefix(const QString& s) {
-        m_prefix = s;
-        update();
-    }
     QSize sizeHint() const override { return {64, 22}; }
 Q_SIGNALS:
     void valueChanged(double v);
@@ -176,13 +173,8 @@ public:
         }
     }
     QSize sizeHint() const override { return {m_w, 20}; }
-    void setWidth(int w) {
-        m_w = w;
-        updateGeometry();
-    }
 Q_SIGNALS:
     void toggled(bool);
-    void rightClicked();
 
 protected:
     void paintEvent(QPaintEvent*) override;
@@ -198,6 +190,8 @@ private:
 // Double-click a knob's value label to type a number (Enter applies, Escape cancels). The first number in the typed text is
 // passed on, so "3", "+3 st" and "-1,5" all work.
 void makeValueEditable(QLabel* label, std::function<void(double)> onValue);
+// Name prompt used by every rename / save-as: trimmed; nullopt when cancelled, or when empty and allowEmpty is false
+std::optional<QString> askName(QWidget* parent, const QString& title, const QString& current, bool allowEmpty = false);
 // A short message that pops up right next to the cursor and fades away: feedback that a click did something
 void showToast(const QString& text, const QPoint& globalPos);
 

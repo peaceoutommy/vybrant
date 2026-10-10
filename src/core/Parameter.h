@@ -140,11 +140,6 @@ public:
         for (int i = 0; i < count(); ++i) setAt(i, m_descs[i].def);
     }
 
-    std::atomic<float>* atomicFor(uint32_t id) {
-        int i = indexOf(id);
-        return i < 0 ? nullptr : m_values[i].get();
-    }
-
 private:
     std::vector<ParamDesc> m_descs;
     std::vector<std::unique_ptr<std::atomic<float>>> m_values;
@@ -161,7 +156,6 @@ struct Smoother {
         current += (target - current) * coeff;
         return current;
     }
-    bool isSmoothing() const { return std::fabs(target - current) > 1e-6f; }
 };
 
 }   // namespace mt

@@ -115,7 +115,6 @@ void RuntimeRegistry::clearAll() {
     m_graveyard.clear();
     m_tracks.clear();
     m_channels.clear();
-    m_channelPdc.clear();
     m_crash.clear();
     procKeys().clear();
     procPluginIds().clear();

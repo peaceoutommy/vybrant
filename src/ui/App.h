@@ -15,6 +15,8 @@
 #include <QStringList>
 #include <map>
 
+class QMenu;
+
 namespace mt {
 
 class App : public QObject {
@@ -31,11 +33,9 @@ public:
     AudioEngine& engine() { return *m_engine; }
     AudioDeviceManager& devices() { return m_devices; }
     SampleCache& cache() { return m_cache; }
-    RecordingEngine& recorder() { return *m_recorder; }
     MidiEngine& midi() { return *m_midi; }
     PluginDatabase& pluginDb() { return m_pluginDb; }
     PluginScanner& scanner() { return *m_scanner; }
-    PluginHost& pluginHost() { return *m_pluginHost; }
     CommandRegistry& commands() { return m_commands; }
 
     // ---- project lifecycle
@@ -68,7 +68,6 @@ public:
     QString backupDir() const;
     QStringList backups() const;
     bool writeBackupNow(QString* error = nullptr);
-    bool checkPluginAvailability(QStringList* missing);
 
     // ---- transport
     void play();
@@ -85,7 +84,6 @@ public:
     void setLoopRange(Tick s, Tick e);
     void setMetronome(bool m);
     void setCountIn(bool c);
-    void setSnap(int division);
     void setPunch(bool on, Tick in, Tick out);
     void setLoopRecord(bool on);
     Tick snapTicks() const;
@@ -120,41 +118,30 @@ public:
         Id id); /* FL split by channel: one new pattern per channel with content, named after the channel */
     void renamePattern(Id id, const QString& name);
     void setPatternColor(Id id, const QColor& c);
-    void movePattern(Id id, int index);
-    void editPattern(Id id, const QString& desc, std::function<void(Pattern&)> fn, int mergeId = 0) {
-        m_model.edit<Pattern>(id, desc, std::move(fn), mergeId);
-    }
     void setStep(Id patternId, Id channelId, int step, bool enabled);
     void setStepProperty(Id patternId, Id channelId, int step, int which, float value, bool commit);
 
     // ---- playlist
-    Id addPlaylistTrack(const QString& name = QString());
-    void deletePlaylistTrack(Id id);
-    void editTrack(Id id, const QString& desc, std::function<void(PlaylistTrack&)> fn) {
-        m_model.edit<PlaylistTrack>(id, desc, std::move(fn));
+    // edit one project object (Pattern, Clip, MixerTrack...) as an undoable command, merged with the previous one when mergeId matches
+    template <class T> void edit(Id id, const QString& desc, std::function<void(T&)> fn, int mergeId = 0) {
+        m_model.edit<T>(id, desc, std::move(fn), mergeId);
     }
+    Id addPlaylistTrack(const QString& name = QString());
+    Id firstPlaylistTrack();   // where 'add to playlist' puts things; creates a track when there is none
+    void deletePlaylistTrack(Id id);
     Id addPatternClip(Id trackId, Id patternId, Tick start, Tick length = 0, bool loopSource = false);
     Id addAudioClip(Id trackId, const QString& file, Tick start);
     Id addAutomationClip(Id trackId, Id laneId, Tick start, Tick length);
-    void editClip(Id id, const QString& desc, std::function<void(Clip&)> fn, int mergeId = 0) {
-        m_model.edit<Clip>(id, desc, std::move(fn), mergeId);
-    }
     void deleteClips(const std::vector<Id>& ids);
     void splitClip(Id id, Tick at);
     Id duplicateClip(Id id, Tick newStart, Id newTrack);
     void makeClipUnique(Id clipId);
-    void editAudioSource(Id id, const QString& desc, std::function<void(AudioSource&)> fn) {
-        m_model.edit<AudioSource>(id, desc, std::move(fn));
-    }
     Id ensureAudioSource(const QString& path);
     Id addMarker(Tick pos, const QString& name);
 
     // ---- mixer
     Id addMixerTrack(const QString& name = QString());
     void deleteMixerTrack(Id id);
-    void editMixerTrack(Id id, const QString& desc, std::function<void(MixerTrack&)> fn, int mergeId = 0) {
-        m_model.edit<MixerTrack>(id, desc, std::move(fn), mergeId);
-    }
     void setMixerVolume(Id id, float v, bool commit);
     void setMixerPan(Id id, float v, bool commit);
     void setSendLevel(Id from, Id to, float level, bool commit);
@@ -163,7 +150,7 @@ public:
     void removeEffect(Id trackId, Id slotId);
     void moveEffect(Id trackId, Id slotId, int newIndex);
     void setEffectBypass(Id trackId, Id slotId, bool b);
-    void setEffectMix(Id trackId, Id slotId, float mix, bool commit);
+    void setEffectMix(Id trackId, Id slotId, float mix);
     bool routeTrack(Id from, Id to);
     void addSend(Id from, Id to, bool sidechain = false);
     void removeSend(Id from, Id to);
@@ -178,9 +165,6 @@ public:
 
     // ---- automation & MIDI mapping
     Id createAutomationLane(const ParamTarget& target, const QString& name, bool placeClip = true, Id patternId = 0);
-    void editLane(Id id, const QString& desc, std::function<void(AutomationLane&)> fn, int mergeId = 0) {
-        m_model.edit<AutomationLane>(id, desc, std::move(fn), mergeId);
-    }
     void deleteLane(Id id);
     QString targetName(const ParamTarget& t) const;
     void startMidiLearn(const ParamTarget& target, const QString& name);
@@ -207,7 +191,6 @@ Q_SIGNALS:
     void statusMessage(const QString& msg, int timeoutMs);
     void projectLoaded();
     void midiLearnChanged(bool active, const QString& name);
-    void recordingFinished();
     void previewChanged(const QString& path);   // preview started / stopped / loading state changed
 
 private:
@@ -222,6 +205,9 @@ private:
     void autosave();
     void addRecent(const QString& path);
     void recordAutomationPoint(const ParamTarget& t, float normalized);
+    // Faders and knobs: the change is written live while dragging and as one merged undo step on release (commit); with the
+    // record mode set to Automation every move also records the target's new value. One rule for every continuous control.
+    template <class T> void liveControl(Id id, const char* desc, int mergeId, bool commit, std::function<void(T&)> set, const ParamTarget& t);
     void syncTransportToEngine();
     void syncMixerTrackNames();
     void updateSamplerStretch();
@@ -249,5 +235,10 @@ private:
     std::shared_ptr<PreviewBuffer> m_previewBuffer;
     PreviewLoader m_previewLoader;
 };
+
+// Rename / Split by channel (one pattern) and Color / Clone (any number): the pattern actions every pattern menu offers
+void addPatternActions(QMenu* menu, App& app, QWidget* parent, const std::vector<Id>& ids);
+// One checkable entry per mixer track (the current one checked); picking one calls pick(trackId)
+void fillMixerTrackMenu(QMenu* menu, const Project& p, Id current, std::function<void(Id)> pick);
 
 }   // namespace mt

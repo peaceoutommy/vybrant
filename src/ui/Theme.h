@@ -157,6 +157,4 @@ QCursor toolCursor(Glyph g, int hotX = 11, int hotY = 11);   // the active edito
 // Icons are pixmaps, so they cannot follow a palette change on their own: remember which glyph a button carries and
 // applyTheme() repaints it. Use this instead of setIcon(glyphIcon(...)) for any chrome icon.
 void setGlyph(QAbstractButton* b, Glyph g, int size);
-QCursor deleteCursor();   // eraser cursor shown while right-drag deleting
-QCursor muteCursor();   // cursor for the mute mode (double right-click + drag / mute tool)
 }   // namespace mt::theme

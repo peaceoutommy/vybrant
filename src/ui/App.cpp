@@ -1,4 +1,7 @@
+#include <QMenu>
+#include <QColorDialog>
 #include "ui/App.h"
+#include "ui/widgets/Controls.h"
 #include <QRegularExpression>
 #include <cstdio>
 #include "audio/RenderEngine.h"
@@ -328,7 +331,7 @@ std::vector<AudioSource*> App::missingSamples() {
     return v;
 }
 void App::relinkSample(Id id, const QString& newPath) {
-    editAudioSource(id, "Relink sample", [newPath](AudioSource& a) {
+    edit<AudioSource>(id, "Relink sample", [newPath](AudioSource& a) {
         a.filePath = newPath;
         a.missing = false;
     });
@@ -378,23 +381,6 @@ void App::collectSamples() {
     }
     if (!cmds.empty()) m_model.macro("Collect project samples", std::move(cmds));
     Q_EMIT statusMessage(QString("Collected %1 sample(s) into %2").arg(n).arg(dir), 4000);
-}
-bool App::checkPluginAvailability(QStringList* missing) {
-    bool ok = true;
-    for (auto& pl : project().plugins) {
-        bool inUse = false;
-        for (auto& c : project().channels)
-            if (c.pluginInstanceId == pl.id) inUse = true;
-        for (auto& t : project().mixerTracks)
-            for (auto& e : t.effects)
-                if (e.pluginInstanceId == pl.id) inUse = true;
-        if (inUse && !processor(0)) {}
-        if (inUse && !QFileInfo::exists(pl.path) && !m_pluginDb.find(pl.format, pl.identifier)) {
-            ok = false;
-            if (missing) *missing << pl.name;
-        }
-    }
-    return ok;
 }
 
 // ---------------------------------------------------------------- transport
@@ -482,12 +468,6 @@ void App::setMetronome(bool m) {
 }
 void App::setCountIn(bool c) {
     m_model.editTransport("Count-in", [c](TransportSettings& t) { t.countIn = c; });
-}
-void App::setSnap(int division) {
-    m_model.editTransport("Snap", [division](TransportSettings& t) {
-        t.snapDivision = division;
-        t.snap = division != 0;
-    });
 }
 void App::setPunch(bool on, Tick in, Tick out) {
     m_model.editTransport("Punch", [=](TransportSettings& t) {
@@ -628,18 +608,22 @@ void App::setChannelColor(Id id, const QColor& col) {
     m_model.edit<Channel>(id, "Channel color", [col](Channel& c) { c.color = col; });
 }
 void App::moveChannel(Id id, int newIndex) { m_model.reorder<Channel>(id, newIndex, "Move channel"); }
+template <class T> void App::liveControl(Id id, const char* desc, int mergeId, bool commit, std::function<void(T&)> set, const ParamTarget& t) {
+    if (commit) m_model.edit<T>(id, desc, set, mergeId);
+    else {
+        auto& v = m_model.vec<T>();
+        auto it = std::find_if(v.begin(), v.end(), [id](const T& x) { return x.id == id; });
+        if (it != v.end()) set(*it);
+    }
+    if (m_engine->isRecording() && project().transport.recordMode == 3) recordAutomationPoint(t, targetValue(t));
+}
 void App::setChannelVolume(Id id, float v, bool commit) {
     if (auto* c = m_engine->registry().channelIfExists(id)) c->volume.store(v);
-    if (commit) m_model.edit<Channel>(id, "Channel volume", [v](Channel& c) { c.volume = v; }, 2001);
-    else if (auto* c = project().channel(id)) { c->volume = v; }
-    if (m_engine->isRecording() && project().transport.recordMode == 3) recordAutomationPoint({ParamTarget::ChannelVolume, id, 0, 0}, v);
+    liveControl<Channel>(id, "Channel volume", 2001, commit, [v](Channel& c) { c.volume = v; }, {ParamTarget::ChannelVolume, id, 0, 0});
 }
 void App::setChannelPan(Id id, float v, bool commit) {
     if (auto* c = m_engine->registry().channelIfExists(id)) c->pan.store(v);
-    if (commit) m_model.edit<Channel>(id, "Channel pan", [v](Channel& c) { c.pan = v; }, 2002);
-    else if (auto* c = project().channel(id)) c->pan = v;
-    if (m_engine->isRecording() && project().transport.recordMode == 3)
-        recordAutomationPoint({ParamTarget::ChannelPan, id, 0, 0}, (v + 1) * 0.5f);
+    liveControl<Channel>(id, "Channel pan", 2002, commit, [v](Channel& c) { c.pan = v; }, {ParamTarget::ChannelPan, id, 0, 0});
 }
 void App::setChannelMute(Id id, bool m) {
     m_model.edit<Channel>(id, m ? "Mute channel" : "Unmute channel", [m](Channel& c) { c.mute = m; });
@@ -692,12 +676,7 @@ void App::setChannelSample(Id id, const QString& path) {
     } else changeChannelInstrument(id, "native.sampler"), setChannelSample(id, path);
 }
 void App::changeChannelInstrument(Id id, const QString& key, Id pluginId) {
-    ChannelType type = key == "native.sampler" ? ChannelType::Sampler
-        : key == "native.drumsampler"          ? ChannelType::DrumSampler
-        : key == "native.midiout"              ? ChannelType::MidiOut
-        : key == "native.tonegen"              ? ChannelType::AudioGenerator
-        : pluginId                             ? ChannelType::Plugin
-                                               : ChannelType::Synth;
+    ChannelType type = pluginId ? ChannelType::Plugin : channelTypeForKey(key);
     m_model.edit<Channel>(id, "Change instrument", [key, pluginId, type](Channel& c) {
         c.instrumentKey = pluginId ? "plugin" : key;
         c.pluginInstanceId = pluginId;
@@ -824,7 +803,6 @@ void App::renamePattern(Id id, const QString& name) {
 void App::setPatternColor(Id id, const QColor& c) {
     m_model.edit<Pattern>(id, "Pattern color", [c](Pattern& p) { p.color = c; });
 }
-void App::movePattern(Id id, int index) { m_model.reorder<Pattern>(id, index, "Reorder pattern"); }
 void App::setStep(Id patternId, Id channelId, int step, bool enabled) {
     TimeSignature ts = project().transport.timeSig;
     m_model.edit<Pattern>(patternId, enabled ? "Set step" : "Clear step", [=](Pattern& p) {
@@ -879,6 +857,7 @@ Id App::addPlaylistTrack(const QString& name) {
     m_model.insert<PlaylistTrack>(t, "Add track");
     return t.id;
 }
+Id App::firstPlaylistTrack() { return project().playlistTracks.empty() ? addPlaylistTrack() : project().playlistTracks.front().id; }
 void App::deletePlaylistTrack(Id id) {
     std::vector<std::unique_ptr<Command>> cmds;
     for (auto& c : project().clips)
@@ -1041,32 +1020,20 @@ void App::deleteMixerTrack(Id id) {
 }
 void App::setMixerVolume(Id id, float v, bool commit) {
     m_engine->registry().track(id).volume.store(v);
-    if (commit) m_model.edit<MixerTrack>(id, "Mixer volume", [v](MixerTrack& t) { t.volume = v; }, 2003);
-    else if (auto* t = project().mixerTrack(id)) t->volume = v;
-    if (m_engine->isRecording() && project().transport.recordMode == 3)
-        recordAutomationPoint({ParamTarget::MixerVolume, id, 0, 0}, v / 1.25f);
+    liveControl<MixerTrack>(id, "Mixer volume", 2003, commit, [v](MixerTrack& t) { t.volume = v; }, {ParamTarget::MixerVolume, id, 0, 0});
 }
 void App::setMixerPan(Id id, float v, bool commit) {
     m_engine->registry().track(id).pan.store(v);
-    if (commit) m_model.edit<MixerTrack>(id, "Mixer pan", [v](MixerTrack& t) { t.pan = v; }, 2004);
-    else if (auto* t = project().mixerTrack(id)) t->pan = v;
+    liveControl<MixerTrack>(id, "Mixer pan", 2004, commit, [v](MixerTrack& t) { t.pan = v; }, {ParamTarget::MixerPan, id, 0, 0});
 }
 void App::setSendLevel(Id from, Id to, float level, bool commit) {
-    auto& tc = m_engine->registry().track(from);
-    auto& lv = tc.sendLevels[to];
+    auto& lv = m_engine->registry().track(from).sendLevels[to];
     if (!lv) lv = std::make_unique<std::atomic<float>>(level);
     else lv->store(level);
-    if (commit)
-        m_model.edit<MixerTrack>(
-            from, "Send level",
-            [to, level](MixerTrack& t) {
-                for (auto& s : t.sends)
-                    if (s.targetTrackId == to) s.level = level;
-            },
-            2005);
-    else if (auto* t = project().mixerTrack(from))
-        for (auto& s : t->sends)
+    liveControl<MixerTrack>(from, "Send level", 2005, commit, [to, level](MixerTrack& t) {
+        for (auto& s : t.sends)
             if (s.targetTrackId == to) s.level = level;
+    }, {ParamTarget::MixerSend, from, to, 0});
 }
 Id App::addEffect(Id trackId, const QString& key, int slot) {
     EffectSlot e;
@@ -1117,15 +1084,11 @@ void App::setEffectBypass(Id trackId, Id slotId, bool b) {
             if (e.id == slotId) e.bypass = b;
     });
 }
-void App::setEffectMix(Id trackId, Id slotId, float mix, bool commit) {
-    if (commit)
-        m_model.edit<MixerTrack>(
-            trackId, "Effect mix",
-            [slotId, mix](MixerTrack& t) {
-                for (auto& e : t.effects)
-                    if (e.id == slotId) e.mix = mix;
-            },
-            2006);
+void App::setEffectMix(Id trackId, Id slotId, float mix) {
+    m_model.edit<MixerTrack>(trackId, "Effect mix", [slotId, mix](MixerTrack& t) {
+        for (auto& e : t.effects)
+            if (e.id == slotId) e.mix = mix;
+    }, 2006);
 }
 bool App::routeTrack(Id from, Id to) {
     if (from == to || project().routingWouldCycle(from, to)) {
@@ -1524,7 +1487,6 @@ void App::onTakesFinished(const std::vector<RecordedTake>& takes) {
         m_cache.get(t.filePath);
     }
     if (!cmds.empty()) m_model.macro(QString("Record %1 take(s)").arg(n), std::move(cmds));
-    Q_EMIT recordingFinished();
     if (n) Q_EMIT statusMessage(QString("Recorded %1 take(s)").arg(n), 4000);
 }
 void App::onRecordedMidi(const MidiEvent& e, double tick) {
@@ -1599,6 +1561,35 @@ bool App::exportAudio(const RenderOptions& opt, std::function<bool(double)> prog
     bool ok = RenderEngine::render(*m_engine, project(), opt, std::move(progress), error);
     syncTransportToEngine();
     return ok;
+}
+
+void addPatternActions(QMenu* menu, App& app, QWidget* parent, const std::vector<Id>& ids) {
+    if (ids.empty()) return;
+    QString many = ids.size() > 1 ? QString(" (%1)").arg(ids.size()) : QString();
+    const Pattern* first = app.project().pattern(ids[0]);
+    if (ids.size() == 1) {
+        menu->addAction("Rename...", [&app, parent, id = ids[0]] {
+            const Pattern* p = app.project().pattern(id);
+            if (auto n = askName(parent, "Rename pattern", p ? p->name : QString())) app.renamePattern(id, *n);
+        });
+        menu->addAction("Split by channel", [&app, id = ids[0]] { app.splitPatternByChannel(id); })
+            ->setToolTip("Every channel with content becomes its own pattern, named after the channel");
+    }
+    menu->addAction("Color..." + many, [&app, parent, ids, c0 = first ? first->color : QColor(Qt::white)] {
+        QColor c = QColorDialog::getColor(c0, parent);
+        if (c.isValid())
+            for (Id id : ids) app.setPatternColor(id, c);
+    });
+    menu->addAction("Clone" + many, [&app, ids] {
+        for (Id id : ids) app.clonePattern(id);
+    });
+}
+void fillMixerTrackMenu(QMenu* menu, const Project& p, Id current, std::function<void(Id)> pick) {
+    for (auto& t : p.mixerTracks) {
+        auto* a = menu->addAction(t.name, [pick, id = t.id] { pick(id); });
+        a->setCheckable(true);
+        a->setChecked(t.id == current);
+    }
 }
 
 }   // namespace mt

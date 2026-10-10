@@ -7,6 +7,10 @@
 #include "audio/RenderEngine.h"
 #include "ui/widgets/Controls.h"
 #include <QMouseEvent>
+#include <QMenu>
+#include <QInputDialog>
+#include <QApplication>
+#include <QTimer>
 #include <QLabel>
 #include <QLineEdit>
 #include <QKeyEvent>
@@ -244,7 +248,7 @@ int runSelfTest(App& app) {
         src.placeDefaults.pitch = 3;
         src.placeDefaults.stretchMode = StretchVocals;
         pr.audioSources.push_back(src);
-        Id track = pr.playlistTracks.empty() ? app.addPlaylistTrack() : pr.playlistTracks.front().id;
+        Id track = app.firstPlaylistTrack();
         Id cid = app.addAudioClip(track, src.filePath, 0);
         const Clip* c = pr.clip(cid);
         CHECK(c && c->gain == 0.5f && c->pitch == 3 && c->stretchMode == StretchVocals, "a new clip starts from its sample's placement settings");
@@ -254,6 +258,39 @@ int runSelfTest(App& app) {
             "placement settings survive save/load");
         std::erase_if(pr.clips, [&](const Clip& x) { return x.id == cid; });
         std::erase_if(pr.audioSources, [&](const AudioSource& x) { return x.id == src.id; });
+    }
+    // ---- recording in 'Automation' mode: every live control records (mixer pan and sends used to be left out)
+    {
+        auto& pr = app.project();
+        auto& eng = app.engine();
+        Id t1 = app.addMixerTrack(), t2 = app.addMixerTrack();
+        app.addSend(t1, t2, false);
+        int mode = pr.transport.recordMode;
+        pr.transport.recordMode = 3;
+        eng.offlineBegin(44100, 512);
+        std::vector<float> l(512), r(512);
+        eng.setRecording(true);
+        eng.offlineProcess(l.data(), r.data(), 512);   // the engine picks the flag up on its next block
+        auto recorded = [&](ParamTarget::Kind k, Id owner) {
+            return std::any_of(pr.automationLanes.begin(), pr.automationLanes.end(),
+                [&](const AutomationLane& x) { return x.target.kind == k && x.target.ownerId == owner && !x.points.empty(); });
+        };
+        app.setMixerVolume(t1, 0.5f, false);
+        app.setMixerPan(t1, -0.5f, false);
+        app.setSendLevel(t1, t2, 0.3f, false);
+        bool vol = recorded(ParamTarget::MixerVolume, t1), pan = recorded(ParamTarget::MixerPan, t1), snd = recorded(ParamTarget::MixerSend, t1);
+        CHECK(vol && pan && snd, QString("automation recording catches mixer volume, pan and send moves (%1 %2 %3)")
+                                     .arg(vol).arg(pan).arg(snd).toUtf8().constData());
+        eng.setRecording(false);
+        eng.offlineProcess(l.data(), r.data(), 512);
+        eng.offlineEnd();
+        pr.transport.recordMode = mode;
+        std::vector<Id> lanes;
+        for (auto& x : pr.automationLanes)
+            if (x.target.ownerId == t1) lanes.push_back(x.id);
+        for (Id id : lanes) app.deleteLane(id);
+        app.deleteMixerTrack(t2);
+        app.deleteMixerTrack(t1);
     }
     // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
     {
@@ -308,6 +345,41 @@ int runSelfTest(App& app) {
         typeInto("5", Qt::Key_Escape);
         CHECK(calls == 1, "Escape cancels a typed knob value");
     }
+    // ---- one name prompt for every rename / save-as: trimmed, empty refused unless allowed
+    {
+        auto answer = [](const QString& typed) {   // types into the dialog as soon as it opens, then presses OK
+            QTimer::singleShot(0, [typed] {
+                if (auto* d = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                    d->setTextValue(typed);
+                    d->accept();
+                }
+            });
+        };
+        answer("  Bass  ");
+        auto a1 = askName(nullptr, "t", "x");
+        answer("");
+        auto a2 = askName(nullptr, "t", "x");
+        answer("   ");
+        auto a3 = askName(nullptr, "t", "x", true);
+        CHECK(a1 == QString("Bass") && !a2 && a3 == QString(""), "name prompt trims, refuses empty names unless allowed");
+        QMenu one, two;
+        addPatternActions(&one, app, nullptr, {app.project().patterns.front().id});
+        addPatternActions(&two, app, nullptr, {app.project().patterns.front().id, app.project().patterns.front().id});
+        CHECK(one.actions().size() == 4 && two.actions().size() == 2 && two.actions().front()->text() == "Color... (2)",
+            "pattern menus: rename / split / color / clone for one, color / clone for several");
+    }
+    // ---- the shared mixer-track picker menu (rack and playlist routing)
+    {
+        auto& tracks = app.project().mixerTracks;
+        Id cur = tracks.size() > 2 ? tracks[2].id : tracks.back().id, picked = 0;
+        QMenu m;
+        fillMixerTrackMenu(&m, app.project(), cur, [&](Id id) { picked = id; });
+        auto acts = m.actions();
+        bool ok = acts.size() == (int)tracks.size();
+        for (int i = 0; ok && i < acts.size(); ++i) ok = acts[i]->text() == tracks[i].name && acts[i]->isChecked() == (tracks[i].id == cur);
+        if (ok) acts.last()->trigger();
+        CHECK(ok && picked == tracks.back().id, "mixer-track menu lists every track, checks the current one, reports the pick");
+    }
     // ---- semitone knobs: gentle detent at whole semitones that a slow drag can still leave
     {
         auto snap = Knob::wholeStepSnap(-24, 24);
@@ -337,7 +409,7 @@ int runSelfTest(App& app) {
         CHECK(name(t1) == "Piano", "mixer track takes the name of the channel routed to it");
         app.setChannelMixerTrack(pc, t2);
         CHECK(name(t2) == "Piano" && name(t1) == t1Default, "moving the channel moves the name; the old track gets its default back");
-        app.editMixerTrack(t1, "Rename", [](MixerTrack& x) { x.name = "Strings bus"; x.customName = true; });
+        app.edit<MixerTrack>(t1, "Rename", [](MixerTrack& x) { x.name = "Strings bus"; x.customName = true; });
         app.setChannelMixerTrack(pc, t1);
         CHECK(name(t1) == "Strings bus" && name(t2) != "Piano", "a renamed track keeps its name when a channel is routed to it");
         app.renameChannel(pc, "Grand");
@@ -373,8 +445,20 @@ int runSelfTest(App& app) {
         float heard = blocks(4);
         blocks(400);   // ~4.6 s: far longer than any release
         float tail = blocks(4);
-        eng.offlineEnd();
         CHECK(heard > 1e-4f && tail < 1e-6f, "live tap (note-on + note-off in one block) sounds and releases");
+        // a held note is released by Stop, and by Panic (both go through AudioEngine::releaseAllNotes)
+        for (int how = 0; how < 2; ++how) {
+            app.noteOn(60);
+            float held = blocks(20);
+            if (how == 0) eng.stop();
+            else eng.allNotesOff();
+            blocks(400);
+            float after = blocks(4);
+            CHECK(held > 1e-4f && after < 1e-6f, how == 0 ? "Stop releases a held note" : "Panic releases a held note");
+            app.noteOff(60);
+            blocks(1);
+        }
+        eng.offlineEnd();
         app.selectChannel(prevSel);
         app.deleteChannel(sid);
     }

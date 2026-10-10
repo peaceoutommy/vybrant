@@ -30,7 +30,6 @@ Compressor::Compressor() {
     p.addChoice(pDetector, "Detector", {"Peak", "RMS"});
     p.addToggle(pAutoMakeup, "Auto Makeup");
 }
-void Compressor::onPrepare() { reset(); }
 void Compressor::reset() { m_env.env = 0; }
 void Compressor::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext& ctx) {
     auto& p = m_params;
@@ -134,7 +133,6 @@ Gate::Gate() {
     p.addToggle(pSidechain, "Ext. Sidechain");
     p.add(pHysteresis, "Hysteresis", 0, 12, 3, ParamUnit::Decibel);
 }
-void Gate::onPrepare() { reset(); }
 void Gate::reset() {
     m_env.env = 0;
     m_gain = 0;
@@ -177,7 +175,6 @@ Expander::Expander() {
     p.add(pKnee, "Knee", 0, 24, 6, ParamUnit::Decibel);
     p.add(pRange, "Range", -60, 0, -40, ParamUnit::Decibel);
 }
-void Expander::onPrepare() { reset(); }
 void Expander::reset() { m_env.env = 0; }
 void Expander::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
@@ -255,7 +252,6 @@ TransientProcessor::TransientProcessor() {
     p.add(pSpeed, "Speed", 0.5f, 10, 2, ParamUnit::Milliseconds);
     p.add(pOutput, "Output", -24, 12, 0, ParamUnit::Decibel);
 }
-void TransientProcessor::onPrepare() { reset(); }
 void TransientProcessor::reset() {
     m_fast.env = 0;
     m_slow.env = 0;
@@ -363,7 +359,6 @@ ShelvingEQ::ShelvingEQ() {
     p.add(pMidGain, "Mid Gain", -18, 18, 0, ParamUnit::Decibel);
     p.add(pMidQ, "Mid Q", 0.2f, 8, 0.8f);
 }
-void ShelvingEQ::onPrepare() { reset(); }
 void ShelvingEQ::reset() {
     m_ll.reset();
     m_lr.reset();
@@ -410,7 +405,6 @@ FilterEffect::FilterEffect(Biquad::Type type, QString key, QString name)
     p.addChoice(pSlope, "Slope", {"12 dB", "24 dB", "36 dB", "48 dB"});
     p.add(pMix, "Mix", 0, 1, 1, ParamUnit::Percent);
 }
-void FilterEffect::onPrepare() { reset(); }
 void FilterEffect::reset() {
     for (int i = 0; i < 4; ++i) {
         m_l[i].reset();
@@ -791,7 +785,6 @@ Phaser::Phaser() {
     p.add(pSpread, "Stereo Spread", 0, 1, 0.5f);
     p.addChoice(pSync, "Sync", kSyncChoices, 0);
 }
-void Phaser::onPrepare() { reset(); }
 void Phaser::reset() {
     for (int i = 0; i < 12; ++i) {
         m_apL[i].reset();
@@ -824,7 +817,7 @@ void Phaser::process(float* L, float* R, int n, const MidiEventList&, const Proc
         }
         m_fbL = xl;
         m_fbR = xr;
-        L[i] = L[i] * (1 - mix * 0.5f) + xl * mix * 0.5f + L[i] * 0.0f;
+        L[i] = L[i] * (1 - mix * 0.5f) + xl * mix * 0.5f;
         R[i] = R[i] * (1 - mix * 0.5f) + xr * mix * 0.5f;
     }
 }
@@ -839,7 +832,6 @@ Tremolo::Tremolo() {
     p.add(pStereoPhase, "Stereo Phase", 0, 180, 0, ParamUnit::Degrees);
     p.add(pSmooth, "Smooth", 0, 1, 0.3f);
 }
-void Tremolo::onPrepare() { reset(); }
 void Tremolo::reset() { m_lfo.phase = 0; }
 void Tremolo::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext& ctx) {
     auto& p = m_params;
@@ -912,7 +904,6 @@ Saturation::Saturation() {
     p.addChoice(pType, "Type", {"Tape", "Tube", "Transistor"});
     p.add(pBias, "Bias", 0, 1, 0);
 }
-void Saturation::onPrepare() { reset(); }
 void Saturation::reset() {
     m_toneL.reset();
     m_toneR.reset();
@@ -952,7 +943,6 @@ Waveshaper::Waveshaper() {
     p.add(pOutput, "Output", -24, 12, 0, ParamUnit::Decibel);
     p.add(pSymmetry, "Asymmetry", -1, 1, 0);
 }
-void Waveshaper::onPrepare() {}
 void Waveshaper::reset() {}
 void Waveshaper::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
@@ -997,7 +987,6 @@ BitCrusher::BitCrusher() {
     p.addToggle(pDither, "Dither");
     p.add(pJitter, "Jitter", 0, 1, 0);
 }
-void BitCrusher::onPrepare() { reset(); }
 void BitCrusher::reset() {
     m_counter = 0;
     m_holdL = m_holdR = 0;
@@ -1034,7 +1023,6 @@ Distortion::Distortion() {
     p.add(pMix, "Mix", 0, 1, 1, ParamUnit::Percent);
     p.add(pLowCut, "Low Cut", 20, 1000, 60, ParamUnit::Hertz, true);
 }
-void Distortion::onPrepare() { reset(); }
 void Distortion::reset() {
     m_toneL.reset();
     m_toneR.reset();
@@ -1109,7 +1097,6 @@ StereoWidth::StereoWidth() {
     p.add(pMidGain, "Mid Gain", -24, 12, 0, ParamUnit::Decibel);
     p.add(pSideGain, "Side Gain", -24, 12, 0, ParamUnit::Decibel);
 }
-void StereoWidth::onPrepare() { reset(); }
 void StereoWidth::reset() {
     m_lpL.reset();
     m_lpR.reset();
@@ -1144,7 +1131,6 @@ PhaseInvert::PhaseInvert() {
     p.addToggle(pRight, "Invert Right");
     p.addToggle(pSwap, "Swap L/R");
 }
-void PhaseInvert::onPrepare() {}
 void PhaseInvert::reset() {}
 void PhaseInvert::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
@@ -1162,7 +1148,6 @@ MonoConversion::MonoConversion() {
     p.addChoice(pMode, "Mode", {"Mono (L+R)", "Left", "Right", "Side"});
     p.add(pMix, "Mix", 0, 1, 1, ParamUnit::Percent);
 }
-void MonoConversion::onPrepare() {}
 void MonoConversion::reset() {}
 void MonoConversion::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
@@ -1243,7 +1228,6 @@ MeterEffect::MeterEffect() {
     p.add(pHold, "Peak Hold", 0, 5, 1.5f, ParamUnit::Seconds);
     p.add(pRmsWindow, "RMS Window", 10, 1000, 300, ParamUnit::Milliseconds);
 }
-void MeterEffect::onPrepare() { reset(); }
 void MeterEffect::reset() {
     m_sqL = m_sqR = 0;
     m_hl = m_hr = 0;

@@ -38,8 +38,6 @@ public:
     bool initialize();
     std::vector<AudioDeviceInfo> devices() const;
     QStringList hostApis() const;
-    AudioDeviceInfo defaultOutput() const;
-    AudioDeviceInfo defaultInput() const;
     bool open(const AudioConfig& cfg, Callback cb, QString* error = nullptr);
     void close();
     bool isOpen() const { return m_stream != nullptr; }
@@ -47,7 +45,6 @@ public:
     double actualSampleRate() const { return m_actualSr; }
     double reportedOutputLatency() const { return m_outLatency; }
     int xruns() const { return m_xruns.load(); }
-    void resetXruns() { m_xruns.store(0); }
     static std::vector<int> standardBufferSizes() { return {32, 64, 128, 256, 512, 1024, 2048}; }
     static std::vector<double> standardSampleRates() { return {44100, 48000, 88200, 96000, 176400, 192000}; }
     void loadConfig();

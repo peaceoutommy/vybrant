@@ -197,11 +197,6 @@ void MidiEngine::handleAlsaEvent(void* evp) {
         int cc = e.data1, ch = e.channel, val = e.data2;
         QMetaObject::invokeMethod(this, [this, cc, ch, val] { Q_EMIT ccReceived(cc, ch, val); }, Qt::QueuedConnection);
     }
-    if (m_learning.load() && (e.type == MidiEvent::NoteOn || e.type == MidiEvent::NoteOff)) {
-        int n = e.data1, ch = e.channel;
-        bool on = e.type == MidiEvent::NoteOn;
-        QMetaObject::invokeMethod(this, [this, n, ch, on] { Q_EMIT noteReceived(n, ch, on); }, Qt::QueuedConnection);
-    }
 }
 
 static void fillAlsa(snd_seq_event_t& ae, const MidiEvent& e) {
@@ -239,15 +234,5 @@ void MidiEngine::flushOutput() {
     if (sent) snd_seq_drain_output(seq);
 }
 
-void MidiEngine::sendNow(const MidiEvent& e, int) {
-    if (!m_seq) return;
-    snd_seq_t* seq = (snd_seq_t*)m_seq;
-    snd_seq_event_t ae;
-    fillAlsa(ae, e);
-    snd_seq_ev_set_source(&ae, m_outPort);
-    snd_seq_ev_set_subs(&ae);
-    snd_seq_ev_set_direct(&ae);
-    snd_seq_event_output_direct(seq, &ae);
-}
 
 }   // namespace mt

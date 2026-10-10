@@ -1,4 +1,5 @@
 #include "ui/ChannelRackPanel.h"
+#include "ui/InAppDrag.h"
 #include <QCoreApplication>
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
@@ -38,11 +39,6 @@ const Step* RackView::stepAt(Id ch, int step) const {
     auto* d = p->channelData(ch);
     if (!d || step < 0 || step >= (int)d->steps.size()) return nullptr;
     return &d->steps[step];
-}
-int RackView::stepsPerBar() const {
-    Pattern* p = pattern();
-    const auto& ts = m_app.project().transport.timeSig;
-    return std::max(1, (int)(ts.ticksPerBar() / (p ? p->stepTicks() : PPQ / 4)));
 }
 int RackView::patternSteps() const {
     Pattern* p = pattern();
@@ -463,11 +459,7 @@ void RackView::mousePressEvent(QMouseEvent* e) {
     case Mixer: {
         if (e->button() == Qt::RightButton) {
             QMenu m;
-            for (auto& t : proj.mixerTracks) {
-                auto* a = m.addAction(t.name, [this, id = c.id, tid = t.id] { m_app.setChannelMixerTrack(id, tid); });
-                a->setCheckable(true);
-                a->setChecked(t.id == c.mixerTrackId);
-            }
+            fillMixerTrackMenu(&m, proj, c.mixerTrackId, [this, id = c.id](Id tid) { m_app.setChannelMixerTrack(id, tid); });
             m.exec(e->globalPosition().toPoint());
             m_dragging = false;
         }
@@ -692,20 +684,7 @@ void RackView::wheelEvent(QWheelEvent* e) {
 void RackView::contextMenuEvent(QContextMenuEvent* e) {
     HitInfo h = hitTest(e->pos());
     if (h.hit == Name || h.hit == Enable || h.hit == Grip) showChannelMenu(h.row, e->globalPos());
-    else if (h.row < 0 && h.hit == None) {
-        QMenu m;
-        auto* add = m.addMenu("Add channel");
-        for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument))
-            add->addAction(i->name, [this, k = i->key] {
-                m_app.addChannel(k == "native.drumsampler" ? ChannelType::DrumSampler
-                        : k == "native.sampler"            ? ChannelType::Sampler
-                        : k == "native.midiout"            ? ChannelType::MidiOut
-                        : k == "native.tonegen"            ? ChannelType::AudioGenerator
-                                                           : ChannelType::Synth,
-                    k);
-            });
-        m.exec(e->globalPos());
-    }
+    else if (h.row < 0 && h.hit == None) Q_EMIT addChannelRequested(e->globalPos());   // the same menu as the '+' row (plugins included)
 }
 std::vector<Id> RackView::selectedIds() const {
     std::vector<Id> ids;
@@ -789,7 +768,7 @@ void RackView::keyPressEvent(QKeyEvent* e) {
         if (!pat) return;
         int dir = k == Qt::Key_Left ? -1 : 1;
         std::vector<Id> ids = selectedIds();
-        m_app.editPattern(pat->id, "Shift steps", [ids, dir](Pattern& pp) {
+        m_app.edit<Pattern>(pat->id, "Shift steps", [ids, dir](Pattern& pp) {
             for (Id id : ids) {
                 auto* d = pp.channelData(id);
                 if (!d || d->steps.empty()) continue;
@@ -849,7 +828,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
         m.addAction("Clear all (steps and notes)", [this, ids] {
             Pattern* p = pattern();
             if (!p) return;
-            m_app.editPattern(p->id, "Clear channels in pattern", [ids](Pattern& pp) {
+            m_app.edit<Pattern>(p->id, "Clear channels in pattern", [ids](Pattern& pp) {
                 for (Id i : ids) {
                     auto& d = pp.ensureChannel(i);
                     for (auto& s : d.steps) s.enabled = false;
@@ -880,9 +859,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     }
     m.addAction("Open editor", [this, id] { Q_EMIT openEditor(id); });
     m.addAction("Rename...", [this, id, c] {
-        bool ok;
-        QString n = QInputDialog::getText(this, "Rename channel", "Name:", QLineEdit::Normal, c.name, &ok);
-        if (ok && !n.isEmpty()) m_app.renameChannel(id, n);
+        if (auto n = askName(this, "Rename channel", c.name)) m_app.renameChannel(id, *n);
     });
     m.addAction("Color...", [this, id, c] {
         QColor col = QColorDialog::getColor(c.color, this, "Channel color");
@@ -910,12 +887,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
                 m_app.model().insert<PluginInstanceData>(d, "Add plugin");
                 m_app.changeChannelInstrument(id, "plugin", d.id);
             });
-    auto* route = m.addMenu("Route to mixer track");
-    for (auto& t : proj.mixerTracks) {
-        auto* a = route->addAction(t.name, [this, id, tid = t.id] { m_app.setChannelMixerTrack(id, tid); });
-        a->setCheckable(true);
-        a->setChecked(t.id == c.mixerTrackId);
-    }
+    fillMixerTrackMenu(m.addMenu("Route to mixer track"), proj, c.mixerTrackId, [this, id](Id tid) { m_app.setChannelMixerTrack(id, tid); });
     m.addSeparator();
     m.addAction("Move up", [this, id, row] { m_app.moveChannel(id, std::max(0, row - 1)); });
     m.addAction("Move down", [this, id, row] { m_app.moveChannel(id, row + 1); });
@@ -923,7 +895,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     m.addAction("Fill every 2 steps", [this, id] {
         Pattern* p = pattern();
         if (!p) return;
-        m_app.editPattern(p->id, "Fill steps", [id](Pattern& pp) {
+        m_app.edit<Pattern>(p->id, "Fill steps", [id](Pattern& pp) {
             auto& d = pp.ensureChannel(id);
             for (int i = 0; i < (int)d.steps.size(); ++i) d.steps[i].enabled = (i % 2 == 0);
         });
@@ -931,7 +903,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     m.addAction("Fill every 4 steps", [this, id] {
         Pattern* p = pattern();
         if (!p) return;
-        m_app.editPattern(p->id, "Fill steps", [id](Pattern& pp) {
+        m_app.edit<Pattern>(p->id, "Fill steps", [id](Pattern& pp) {
             auto& d = pp.ensureChannel(id);
             for (int i = 0; i < (int)d.steps.size(); ++i) d.steps[i].enabled = (i % 4 == 0);
         });
@@ -939,7 +911,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     m.addAction("Clear (steps and notes)", [this, id] {
         Pattern* p = pattern();
         if (!p) return;
-        m_app.editPattern(p->id, "Clear channel in pattern", [id](Pattern& pp) {
+        m_app.edit<Pattern>(p->id, "Clear channel in pattern", [id](Pattern& pp) {
             auto& d = pp.ensureChannel(id);
             for (auto& s : d.steps) s.enabled = false;
             d.notes.clear();
@@ -948,7 +920,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     m.exec(global);
 }
 void RackView::dragEnterEvent(QDragEnterEvent* e) {
-    if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) {
+    if (hasAppDrop(e->mimeData())) {
         e->setDropAction(Qt::CopyAction);
         e->accept();
     }
@@ -967,8 +939,7 @@ void RackView::handleDrop(const QMimeData* mime, const QPoint& at) {
     HitInfo h = hitTest(at);
     auto& proj = m_app.project();
     Id target = (h.row >= 0 && h.row < (int)proj.channels.size()) ? proj.channels[h.row].id : 0;
-    QString payload = QString::fromUtf8(mime->data("application/x-musicthingy-item"));
-    QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
+    auto [kind, val] = dropItem(mime);
     if (mime->hasUrls()) {
         for (auto& u : mime->urls()) {
             QString p = u.toLocalFile();
@@ -985,12 +956,7 @@ void RackView::handleDrop(const QMimeData* mime, const QPoint& at) {
         if (info && info->kind == ProcessorKind::Instrument) {
             if (target) m_app.changeChannelInstrument(target, val);
             else
-                m_app.addChannel(val == "native.drumsampler" ? ChannelType::DrumSampler
-                        : val == "native.sampler"            ? ChannelType::Sampler
-                        : val == "native.midiout"            ? ChannelType::MidiOut
-                        : val == "native.tonegen"            ? ChannelType::AudioGenerator
-                                                             : ChannelType::Synth,
-                    val);
+                m_app.addChannel(channelTypeForKey(val), val);
         } else if (info) {
             Id tr = target ? proj.channel(target)->mixerTrackId : proj.masterId();
             m_app.addEffect(tr, val);
@@ -1033,41 +999,22 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
         if (!p) return;
         Id pid = p->id;
         QMenu m(this);
-        m.addAction("Rename...", [this, pid] {
-            bool ok;
-            QString n = QInputDialog::getText(this, "Rename pattern", "Name:", QLineEdit::Normal, m_app.project().pattern(pid)->name, &ok);
-            if (ok && !n.isEmpty()) m_app.renamePattern(pid, n);
-        });
-        m.addAction("Color...", [this, pid] {
-            QColor c = QColorDialog::getColor(m_app.project().pattern(pid)->color, this);
-            if (c.isValid()) m_app.setPatternColor(pid, c);
-        });
-        m.addAction("Split by channel", [this, pid] {
-             m_app.splitPatternByChannel(pid);
-         })->setToolTip("Every channel with content becomes its own pattern, named after the channel");
+        addPatternActions(&m, m_app, this, {pid});
         auto* res = m.addMenu("Step resolution");
         static const int spb[] = {1, 2, 3, 4, 8};
         const char* names[] = {"1/4 (quarter notes)", "1/8", "1/8 triplets", "1/16 (default)", "1/32"};
         for (int i = 0; i < 5; ++i) {
             auto* a = res->addAction(names[i],
-                [this, pid, v = spb[i]] { m_app.editPattern(pid, "Step resolution", [v](Pattern& pp) { pp.stepsPerBeat = v; }); });
+                [this, pid, v = spb[i]] { m_app.edit<Pattern>(pid, "Step resolution", [v](Pattern& pp) { pp.stepsPerBeat = v; }); });
             a->setCheckable(true);
             a->setChecked(p->stepsPerBeat == spb[i]);
         }
-        m.addAction("Clone pattern", [this, pid] { m_app.clonePattern(pid); });
         m.exec(m_patName->mapToGlobal(pos));
     });
     auto* addMenu = new QMenu(this);
     m_addMenu = addMenu;
     for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument))
-        addMenu->addAction(i->name, [this, k = i->key] {
-            m_app.addChannel(k == "native.drumsampler" ? ChannelType::DrumSampler
-                    : k == "native.sampler"            ? ChannelType::Sampler
-                    : k == "native.midiout"            ? ChannelType::MidiOut
-                    : k == "native.tonegen"            ? ChannelType::AudioGenerator
-                                                       : ChannelType::Synth,
-                k);
-        });
+        addMenu->addAction(i->name, [this, k = i->key] { m_app.addChannel(channelTypeForKey(k), k); });
     auto* plugMenu = addMenu->addMenu("Plugin instruments");
     connect(plugMenu, &QMenu::aboutToShow, this, [this, plugMenu] {
         plugMenu->clear();
@@ -1122,7 +1069,7 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
         if (m_updating) return;
         if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId)) {
             int n = (int)m_steps->value();
-            m_app.editPattern(p->id, "Pattern steps", [n](Pattern& pp) {
+            m_app.edit<Pattern>(p->id, "Pattern steps", [n](Pattern& pp) {
                 pp.stepCount = n;
                 for (auto& c : pp.channels)
                     if ((int)c.steps.size() < n) c.steps.resize(n);
@@ -1133,11 +1080,11 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
         if (m_updating) return;
         static const int spb[] = {1, 2, 3, 4, 8};
         if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId))
-            m_app.editPattern(p->id, "Step resolution", [v = spb[i]](Pattern& pp) { pp.stepsPerBeat = v; });
+            m_app.edit<Pattern>(p->id, "Step resolution", [v = spb[i]](Pattern& pp) { pp.stepsPerBeat = v; });
     });
     connect(m_swing, &Knob::dragFinished, this, [this] {
         if (auto* p = m_app.project().pattern(m_app.project().selectedPatternId))
-            m_app.editPattern(p->id, "Swing", [v = m_swing->value()](Pattern& pp) { pp.swing = v; }, 3100);
+            m_app.edit<Pattern>(p->id, "Swing", [v = m_swing->value()](Pattern& pp) { pp.swing = v; }, 3100);
     });
     connect(m_graph, &QComboBox::currentIndexChanged, this, [this](int i) {
         m_view->setGraphMode(i - 1);
@@ -1161,7 +1108,7 @@ void ChannelRackPanel::fitStepsToWidth() {
 }
 // Anything dropped on the rack window outside the channel rows (header, empty space) becomes a new channel
 void ChannelRackPanel::dragEnterEvent(QDragEnterEvent* e) {
-    if (e->mimeData()->hasUrls() || e->mimeData()->hasFormat("application/x-musicthingy-item")) {
+    if (hasAppDrop(e->mimeData())) {
         e->setDropAction(Qt::CopyAction);
         e->accept();
     }

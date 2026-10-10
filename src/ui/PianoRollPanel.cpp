@@ -17,7 +17,6 @@
 #include <QDateTime>
 #include <QSettings>
 #include <QApplication>
-#include <QNativeGestureEvent>
 #include <cmath>
 
 namespace mt {
@@ -77,28 +76,8 @@ QStringList PianoRollView::chordNames() {
 }
 
 PianoRollView::PianoRollView(App& app, QWidget* parent)
-    : QWidget(parent)
-    , m_app(app) {
-    setFocusPolicy(Qt::StrongFocus);
-    setMouseTracking(true);
+    : TimelineView(app, PPQ / 16, parent) {
     m_velH = clamp(QSettings().value("pianoroll/laneHeight", 80).toInt(), 40, 400);
-    m_ticker = new anim::Ticker(this);
-    m_hbar = new QScrollBar(Qt::Horizontal, this);
-    m_vbar = new QScrollBar(Qt::Vertical, this);
-    m_hbar->setCursor(Qt::ArrowCursor);
-    m_vbar->setCursor(Qt::ArrowCursor);   // tool cursors are for the canvas only
-    connect(m_hbar, &QScrollBar::valueChanged, this, [this](int v) {
-        if (!m_updatingBars) {
-            m_scrollTick = (Tick)v * PPQ / 16;
-            invalidate();
-        }
-    });
-    connect(m_vbar, &QScrollBar::valueChanged, this, [this](int v) {
-        if (!m_updatingBars) {
-            m_topPitch = clamp(127 - v, minTopPitch(), 127);
-            invalidate();
-        }
-    });
     connect(&m_repeatTimer, &QTimer::timeout, this, [this] {
         if (m_previewPitch >= 0) {
             m_app.noteOff(m_previewPitch);
@@ -135,20 +114,6 @@ PianoRollView::PianoRollView(App& app, QWidget* parent)
         }
     });
 }
-void PianoRollView::setTool(Tool t) {
-    m_tool = t;
-    setCursor(toolCursorFor(t));
-    Q_EMIT modeChanged(t);
-}
-// The pointer carries the active tool's icon; the pencil points from its tip, the rest sit centred on the hotspot.
-QCursor PianoRollView::toolCursorFor(Tool t) {
-    switch (t) {
-    case Erase: return theme::toolCursor(theme::Glyph::Eraser);
-    case MuteTool: return theme::toolCursor(theme::Glyph::MuteSpeaker);
-    case Select: return theme::toolCursor(theme::Glyph::Marquee);
-    default: return QCursor(Qt::ArrowCursor);
-    }
-}   // draw tool: the regular pointer
 PianoRollView::Layout PianoRollView::layout() const {
     Layout l;
     l.velH = m_velH;
@@ -158,12 +123,6 @@ PianoRollView::Layout PianoRollView::layout() const {
     l.grid = QRect(l.keyW, l.rulerH, w - l.keyW, h - l.rulerH - l.velH);
     l.vel = QRect(l.keyW, h - l.velH, w - l.keyW, l.velH);
     return l;
-}
-void PianoRollView::resizeEvent(QResizeEvent*) {
-    m_hbar->setGeometry(layout().keyW, height() - 14, width() - layout().keyW - 14, 14);
-    m_vbar->setGeometry(width() - 14, layout().rulerH, 14, height() - layout().rulerH - 14);
-    updateScrollbars();
-    invalidate();
 }
 Pattern* PianoRollView::pattern() const { return m_app.project().pattern(m_app.project().selectedPatternId); }
 PatternChannelData* PianoRollView::data() const {
@@ -229,31 +188,12 @@ const std::vector<Note>& PianoRollView::notesView() const {
     m_virtual = stepsAsNotes();
     return m_virtual;
 }
-Tick PianoRollView::xToTick(int x) const { return m_scrollTick + (Tick)((x - layout().keyW) / m_ppt); }
-int PianoRollView::tickToX(Tick t) const { return layout().keyW + (int)((t - m_scrollTick) * m_ppt); }
 int PianoRollView::yToPitch(int y) const { return m_topPitch - (y - layout().rulerH) / m_rowH; }
 int PianoRollView::pitchToY(int pitch) const { return layout().rulerH + (m_topPitch - pitch) * m_rowH; }
 // lowest allowed top pitch: pitch 0 sits on the bottom row, so the grid never scrolls past the end of the keyboard
 int PianoRollView::minTopPitch() const {
     int rows = (layout().grid.height() + m_rowH - 1) / m_rowH;
     return clamp(rows - 1, 0, 127);
-}
-Tick PianoRollView::snapTicks() const {
-    if (m_snapDiv == 0) return 1;
-    if (m_snapDiv < 0) return m_app.project().transport.timeSig.ticksPerBar() * -m_snapDiv;
-    return PPQ / m_snapDiv;
-}
-Tick PianoRollView::snap(Tick t, bool force) const {
-    if (m_altHeld && !force) return t;
-    Tick s = snapTicks();
-    if (s <= 1) return t;
-    return (t / s) * s;
-}
-Tick PianoRollView::snapNear(Tick t) const {
-    if (m_altHeld) return t;
-    Tick s = snapTicks();
-    if (s <= 1) return t;
-    return ((t + s / 2) / s) * s;
 }
 bool PianoRollView::inScale(int pitch) const {
     if (m_scale <= 0 || m_scale >= (int)scaleDefs().size()) return true;
@@ -324,9 +264,7 @@ void PianoRollView::uiTick() {
 // ---------------------------------------------------------------- painting
 void PianoRollView::renderCache() {
     Layout L = layout();
-    m_cache = QPixmap(size() * devicePixelRatioF());
-    m_cache.setDevicePixelRatio(devicePixelRatioF());
-    m_cache.fill(theme::bg());
+    prepareCache();
     QPainter p(&m_cache);
     p.setRenderHint(
         QPainter::TextAntialiasing); /* the cache is rendered at the screen's real resolution: text stays crisp at 125 % / 150 % scaling */
@@ -395,21 +333,7 @@ void PianoRollView::renderCache() {
     QColor base = ch ? ch->color : theme::accent();
     bool virt = stepMode();
     p.setClipping(false);
-    // ruler
-    p.fillRect(L.ruler, theme::panel());
-    p.setClipRect(L.ruler);
-    p.setFont(theme::smallFont());
-    Tick rstep = beat * m_ppt >= 6 ? beat : barStep;
-    Tick lstep = barStep;
-    while (lstep * m_ppt < 34) lstep *= 2;
-    for (Tick t = (m_scrollTick / rstep) * rstep; t <= last; t += rstep) {
-        int x = tickToX(t);
-        bool isBar = t % bar == 0;
-        bool labeled = t % lstep == 0;
-        p.setPen(labeled ? theme::text() : theme::textDim());
-        p.drawLine(x, labeled ? L.ruler.top() + 6 : (isBar ? L.ruler.top() + 11 : L.ruler.top() + 15), x, L.ruler.bottom());
-        if (labeled) p.drawText(x + 3, L.ruler.top() + 12, QString::number(t / bar + 1));
-    }
+    paintRuler(p, L.ruler, barStep, last);
     if (m_timeSel) {
         int x1 = tickToX(m_selStart), x2 = tickToX(m_selEnd);
         p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), theme::accent());
@@ -488,16 +412,10 @@ void PianoRollView::renderCache() {
         p.drawText(QRect(L.grid.left() + 6, L.grid.top() + 3, 500, 14), Qt::AlignLeft,
             "Showing the channel's step-sequencer steps - editing anything here turns them into piano roll notes");
     }
-    m_cacheValid = true;
 }
 void PianoRollView::paintEvent(QPaintEvent*) {
-    if (m_themeRev != theme::revision()) {
-        m_themeRev = theme::revision();
-        m_cacheValid = false;
-    }   // the cached pixmap still holds the old theme
-    if (!m_cacheValid) renderCache();
     QPainter p(this);
-    p.drawPixmap(0, 0, m_cache);
+    drawCache(p);
     Layout L = layout();
     {   // notes: animated (appear / move / vanish), instant while being dragged
         p.save();
@@ -548,21 +466,8 @@ void PianoRollView::paintEvent(QPaintEvent*) {
         p.restore();
         m_ticker->keepAlive(m_noteAnim.active());
     }
-    if (m_playTick >= 0) {
-        int x = tickToX((Tick)m_playTick);
-        if (x >= L.grid.left() && x <= L.grid.right()) {
-            p.setPen(QPen(theme::playhead(), 1.5));
-            p.drawLine(x, L.ruler.top(), x, L.vel.bottom());
-        }
-    }
-    if (m_drag == Rubber) {
-        p.save();
-        p.setRenderHint(QPainter::Antialiasing, false);
-        p.setPen(QPen(theme::withAlpha(theme::accent(), 220), 1));
-        p.setBrush(theme::selection());
-        p.drawRect(m_rubber.normalized());
-        p.restore();
-    }
+    paintPlayhead(p, L.ruler.top(), L.vel.bottom());
+    if (m_drag == Rubber) paintRubber(p);
     if (m_tool == Draw && m_drag == NoDrag && L.grid.contains(m_hoverPos) && underMouse()) {
         int pitch = yToPitch(m_hoverPos.y());
         Tick t = snap(xToTick(m_hoverPos.x()));
@@ -580,6 +485,12 @@ void PianoRollView::paintEvent(QPaintEvent*) {
 }
 
 // ---------------------------------------------------------------- editing helpers
+void PianoRollView::selectInRect(const QRect& r) {
+    for (auto& n : notesView()) {
+        QRect nr(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH);
+        if (r.intersects(nr)) m_selected.insert(n.id);
+    }
+}
 Note* PianoRollView::noteAt(const QPoint& pt, bool* nearEdge) const {
     PatternChannelData* d = data();
     if (!d) return nullptr;
@@ -670,39 +581,11 @@ void PianoRollView::commitEdit(const QString& desc) {
     Id ch = m_channel;
     Id pid = pattern()->id;
     // only push if something changed
-    bool same = after.notes.size() == m_before.notes.size() && after.steps.size() == m_before.steps.size();
-    if (same)
-        for (size_t i = 0; i < after.steps.size(); ++i)
-            if (after.steps[i].enabled != m_before.steps[i].enabled) {
-                same = false;
-                break;
-            }
-    if (same)
-        for (size_t i = 0; i < after.notes.size(); ++i) {
-            auto& a = after.notes[i];
-            auto& b = m_before.notes[i];
-            if (a.id != b.id || a.pitch != b.pitch || a.start != b.start || a.duration != b.duration || a.velocity != b.velocity ||
-                a.pan != b.pan || a.muted != b.muted || a.finePitch != b.finePitch) {
-                same = false;
-                break;
-            }
-        }
+    bool same = after.notes == m_before.notes && after.steps == m_before.steps;
     if (!same && m_before.notes.empty()) {   // before = steps only: unchanged if 'after' is exactly the step conversion
         *d = m_before;
-        std::vector<Note> conv = stepsAsNotes();
-        bool eq = conv.size() == after.notes.size() &&
+        same = after.notes == stepsAsNotes() &&
             std::all_of(after.steps.begin(), after.steps.end(), [](const Step& s) { return !s.enabled; });
-        if (eq)
-            for (size_t i = 0; i < conv.size(); ++i) {
-                auto& a = after.notes[i];
-                auto& b = conv[i];
-                if (a.id != b.id || a.pitch != b.pitch || a.start != b.start || a.duration != b.duration || a.velocity != b.velocity ||
-                    a.pan != b.pan) {
-                    eq = false;
-                    break;
-                }
-            }
-        if (eq) same = true;
     }
     if (same) {
         invalidate();
@@ -727,7 +610,7 @@ void PianoRollView::commitEdit(const QString& desc) {
         for (auto& n : after.notes) {
             int i = (int)(n.start / st);
             if (!stepShaped || n.start % st != 0 || n.duration != st || n.pitch != chn->rootNote || n.muted || n.finePitch != 0.f ||
-                n.channel != 0 || used.count(i)) {
+                n.channel != 0 || n.releaseVelocity != Note{}.releaseVelocity || used.count(i)) {   // steps can't hold these
                 stepShaped = false;
                 break;
             }
@@ -752,7 +635,7 @@ void PianoRollView::commitEdit(const QString& desc) {
             after.steps = std::move(steps);
             m_selected = ksel;
             TimeSignature ts = m_app.project().transport.timeSig;
-            m_app.editPattern(pid, desc, [after, ch, ts](Pattern& p) {
+            m_app.edit<Pattern>(pid, desc, [after, ch, ts](Pattern& p) {
                 p.ensureChannel(ch) = after;
                 int spb = std::max(1, (int)(ts.ticksPerBar() / p.stepTicks()));
                 int last = -1;
@@ -769,13 +652,7 @@ void PianoRollView::commitEdit(const QString& desc) {
             return;
         }
     }
-    m_app.editPattern(pid, desc, [after, ch](Pattern& p) { p.ensureChannel(ch) = after; });
-}
-void PianoRollView::cancelEdit() {
-    PatternChannelData* d = data();
-    if (d && m_editing) *d = m_before;
-    m_editing = false;
-    invalidate();
+    m_app.edit<Pattern>(pid, desc, [after, ch](Pattern& p) { p.ensureChannel(ch) = after; });
 }
 // Note preview policy (Options > Note preview): 0 = when placing / re-pitching while the transport is stopped (default), 1 = always, 2 = never
 bool PianoRollView::previewAllowed() const {
@@ -886,11 +763,8 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
         if (n->id < kVirtualBase && e->button() == Qt::LeftButton)
             m_lastLength = n->duration;   // FL: clicking a note makes its length the length of the notes you draw next
         if (e->modifiers() & Qt::ControlModifier && !(e->modifiers() & Qt::ShiftModifier)) {
-            m_toggleOnRelease = n->id;
-            m_selBase = m_selected;
             m_drag = Rubber;
-            m_rubber = QRect(e->pos(), QSize(0, 0));
-            invalidate();
+            beginRubber(e->pos(), n->id);
             return;
         }   // Ctrl: drag = rubber-band selection from here, click = toggle this note
         if (!m_selected.count(n->id)) {
@@ -924,10 +798,8 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
     }
     if (m_tool == Select || (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
         if (!(e->modifiers() & Qt::ShiftModifier)) m_selected.clear();
-        m_selBase = m_selected;
         m_drag = Rubber;
-        m_rubber = QRect(e->pos(), QSize(0, 0));
-        invalidate();
+        beginRubber(e->pos());
         return;
     }
     // draw: create note (+ chord)
@@ -1074,18 +946,7 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
         return;
     }
     if (m_drag == Rubber) {
-        m_rubber = QRect(m_pressPos, e->pos());
-        QRect r = m_rubber.normalized();
-        if (m_toggleOnRelease && (r.width() >= 3 || r.height() >= 3)) {
-            m_toggleOnRelease = 0;
-            if (!(e->modifiers() & Qt::ShiftModifier)) m_selBase.clear();
-        }
-        m_selected = m_selBase;
-        for (auto& n : notesView()) {
-            QRect nr(tickToX(n.start), pitchToY(n.pitch), std::max(3, (int)(n.duration * m_ppt)), m_rowH);
-            if (r.intersects(nr)) m_selected.insert(n.id);
-        }
-        invalidate();
+        dragRubber(e->pos(), e->modifiers());
         return;
     }
     if (m_drag == Moving || m_drag == Creating) {
@@ -1198,15 +1059,7 @@ void PianoRollView::mouseReleaseEvent(QMouseEvent* e) {
     case Muting: commitEdit("Mute notes"); break;
     default: break;
     }
-    if (m_drag == Rubber) {
-        bool tiny = m_rubber.normalized().width() < 3 && m_rubber.normalized().height() < 3;
-        if (tiny && m_toggleOnRelease) {
-            m_selected = m_selBase;
-            if (m_selected.count(m_toggleOnRelease)) m_selected.erase(m_toggleOnRelease);
-            else m_selected.insert(m_toggleOnRelease);
-        } else if (tiny && !(e->modifiers() & Qt::ShiftModifier)) m_selected.clear();
-        m_toggleOnRelease = 0;
-    }
+    if (m_drag == Rubber) finishRubber(e->modifiers());
     m_drag = NoDrag;
     m_dragNote = 0;
     invalidate();
@@ -1221,7 +1074,7 @@ void PianoRollView::mouseDoubleClickEvent(QMouseEvent* e) {
         beginEdit();
         m_drag = Muting;
         m_touched.clear();
-        setCursor(theme::muteCursor());
+        setCursor(toolCursorFor(MuteTool));
         Q_EMIT modeChanged(MuteTool);
         if (Note* n = noteAt(e->pos())) {
             n->muted = !n->muted;
@@ -1274,50 +1127,16 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
         e->accept();
         return;
     }
-    if (e->modifiers() & Qt::ControlModifier) {
-        if (e->modifiers() & Qt::ShiftModifier) {
-            m_rowH = clamp(m_rowH + (dy > 0 ? 1 : -1), 5, 30);
-        } else {
-            if (dy == 0) {   // trackpads send horizontal-only and zero events too
-                e->accept();
-                return;
-            }
-            zoomTimeAt(e->position().toPoint().x(), std::pow(1.15, dy / 120.0));   // proportional: a trackpad sends many small deltas
-            e->accept();
-            return;
-        }
-        updateScrollbars();
-        invalidate();
-    } else if (e->modifiers() & Qt::ShiftModifier || e->angleDelta().x() != 0) {
-        int d = e->angleDelta().x() != 0 ? e->angleDelta().x() : dy;
-        m_scrollTick = std::max<Tick>(0, m_scrollTick - (Tick)(d / m_ppt * 0.5));
-        updateScrollbars();
-        invalidate();
-    } else {
-        m_topPitch = clamp(m_topPitch + (dy > 0 ? 3 : -3), minTopPitch(), 127);
-        updateScrollbars();
-        invalidate();
-    }
+    if ((e->modifiers() & Qt::ControlModifier) && (e->modifiers() & Qt::ShiftModifier)) m_rowH = clamp(m_rowH + (dy > 0 ? 1 : -1), 5, 30);
+    else if (handleTimeWheel(e)) return;
+    else m_topPitch = clamp(m_topPitch + (dy > 0 ? 3 : -3), minTopPitch(), 127);
+    updateScrollbars();
+    invalidate();
     e->accept();
 }
 void PianoRollView::leaveEvent(QEvent*) { update(); }
 // Arrow keys (with any modifier) are note editing while the piano roll has focus: claim them before application shortcuts (Ctrl+Up/Down = tempo) can take them
-void PianoRollView::zoomTimeAt(int x, double factor) {
-    Layout L = layout();
-    Tick anchor = xToTick(x);
-    m_ppt = clamp(m_ppt * factor, 0.002, 2.0);
-    m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround((x - L.keyW) / m_ppt));
-    updateScrollbars();
-    invalidate();
-}
 bool PianoRollView::event(QEvent* e) {
-    if (e->type() == QEvent::NativeGesture) {   // trackpad pinch
-        auto* g = static_cast<QNativeGestureEvent*>(e);
-        if (g->gestureType() == Qt::ZoomNativeGesture) {
-            zoomTimeAt(g->position().toPoint().x(), 1.0 + g->value());
-            return true;
-        }
-    }
     if (e->type() == QEvent::ShortcutOverride) {
         auto* ke = static_cast<QKeyEvent*>(e);
         int k = ke->key();
@@ -1326,7 +1145,7 @@ bool PianoRollView::event(QEvent* e) {
             return true;
         }
     }
-    return QWidget::event(e);
+    return TimelineView::event(e);
 }
 // FL Studio default keybinds (typing keyboard mode intercepts unmodified letters before this, see MainWindow)
 void PianoRollView::keyPressEvent(QKeyEvent* e) {
@@ -1336,10 +1155,6 @@ void PianoRollView::keyPressEvent(QKeyEvent* e) {
         return;
     }
     bool ctrl = e->modifiers() & Qt::ControlModifier, shift = e->modifiers() & Qt::ShiftModifier, alt = e->modifiers() & Qt::AltModifier;
-    auto tool = [this](Tool t) {
-        setTool(t);
-        Q_EMIT toolChanged(t);
-    };
     auto neighbourChannel = [this](int dir, bool withNotes) {
         auto& ch = m_app.project().channels;
         int i = -1;
@@ -1356,92 +1171,25 @@ void PianoRollView::keyPressEvent(QKeyEvent* e) {
             return;
         }
     };
-    switch (e->key()) {
-    case Qt::Key_Delete:
-        if (ctrl) {
-            deleteTimeSpace();
-            return;
-        }
-        deleteSelected();
-        return;
-    case Qt::Key_Insert:
-        if (ctrl) {
-            insertTimeSpace();
-            return;
-        }
-        break;
+    switch (e->key()) {   // piano-roll keys; the shortcuts shared with the playlist are in TimelineView::handleSharedKey
     case Qt::Key_C:
-        if (ctrl) {
-            copySelected();
-            return;
-        }
-        if (shift) {
+        if (shift && !ctrl) {
             selectByPitch();
             return;
         }
         break;
-    case Qt::Key_X:
-        if (ctrl) {
-            cutSelected();
-            return;
-        }
-        break;
-    case Qt::Key_V:
-        if (ctrl) {
-            paste();
-            return;
-        }
-        break;
     case Qt::Key_D:
-        if (ctrl) {
-            m_selected.clear();
-            invalidate();
-            return;
-        }
-        if (shift) {
-            setSelectedLength(snapTicks());
-            return;
-        }
-        tool(Erase);
+        if (ctrl) break;
+        if (shift) setSelectedLength(snapTicks());
+        else pickTool(Erase);
         return;
     case Qt::Key_B:
-        if (ctrl) {
-            duplicateSelected();
-            return;
-        }
-        tool(Draw);
+        if (ctrl) break;
+        pickTool(Draw);
         return;
-    case Qt::Key_P:
-        if (!ctrl && !alt) {
-            tool(Draw);
-            return;
-        }
-        break;
-    case Qt::Key_E:
-        if (!ctrl && !alt) {
-            tool(Select);
-            return;
-        }
-        break;
-    case Qt::Key_T:
-        if (!ctrl && !alt) {
-            tool(MuteTool);
-            return;
-        }
-        break;
-    case Qt::Key_I:
-        if (shift) {
-            invertSelection();
-            return;
-        }
-        break;
     case Qt::Key_A:
         if (alt) {
             arpeggiate();
-            return;
-        }
-        if (ctrl) {
-            selectAll();
             return;
         }
         break;
@@ -1497,12 +1245,6 @@ void PianoRollView::keyPressEvent(QKeyEvent* e) {
             return;
         }
         break;
-    case Qt::Key_M:
-        if (alt) {
-            muteSelected(!shift);
-            return;
-        }
-        break;
     case Qt::Key_F:
         if (!ctrl && !alt) {
             setLane((m_lane + 1) % 4);
@@ -1525,26 +1267,14 @@ void PianoRollView::keyPressEvent(QKeyEvent* e) {
         commitEdit(alt ? "Nudge notes" : "Move notes");
         return;
     }
-    case Qt::Key_PageUp:
-    case Qt::Key_PageDown: {
-        Layout L = layout();
-        Tick anchor = xToTick(L.grid.center().x());
-        m_ppt = clamp(m_ppt * (e->key() == Qt::Key_PageUp ? 1.3 : 1 / 1.3), 0.002, 2.0);
-        m_scrollTick = std::max<Tick>(0, anchor - (Tick)std::llround(L.grid.width() / 2 / m_ppt));
-        updateScrollbars();
-        invalidate();
-        return;
-    }
     case Qt::Key_Escape:
         m_selected.clear();
         m_timeSel = false;
         invalidate();
         return;
-    case Qt::Key_1: tool(Draw); return;
-    case Qt::Key_2: tool(Select); return;
-    case Qt::Key_3: tool(Erase); return;
     default: break;
     }
+    if (handleSharedKey(e)) return;
     QWidget::keyPressEvent(e);
 }
 // selection helpers used by the keybinds above
@@ -1599,7 +1329,7 @@ void PianoRollView::glue() {
     commitEdit("Glue notes");
 }
 // Ctrl+Delete / Ctrl+Insert: remove or insert the time selection's span, shifting everything after it
-void PianoRollView::deleteTimeSpace() {
+void PianoRollView::deleteSpace() {
     PatternChannelData* d = data();
     if (!d || !m_timeSel || m_selEnd <= m_selStart) return;
     Tick len = m_selEnd - m_selStart;
@@ -1611,7 +1341,7 @@ void PianoRollView::deleteTimeSpace() {
     m_timeSel = false;
     invalidate();
 }
-void PianoRollView::insertTimeSpace() {
+void PianoRollView::insertSpace() {
     PatternChannelData* d = data();
     if (!d || !m_timeSel || m_selEnd <= m_selStart) return;
     Tick len = m_selEnd - m_selStart;
@@ -1625,8 +1355,6 @@ void PianoRollView::contextMenuEvent(QContextMenuEvent* e) { e->accept(); }   //
 void PianoRollView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
     Layout L = layout();
     if (!L.grid.contains(pos)) return;
-    QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, globalPos);
-    QContextMenuEvent* e = &ev;
     QMenu m(this);
     m.addAction("Select all", [this] { selectAll(); });
     m.addAction("Quantize (Ctrl+Q)", [this] { quantize(false); });
@@ -1644,7 +1372,7 @@ void PianoRollView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
     m.addAction("Transpose -12", [this] { transpose(-12); });
     m.addSeparator();
     m.addAction("Zoom to fit", [this] { zoomToFit(); });
-    m.exec(e->globalPos());
+    m.exec(globalPos);
 }
 
 // ---------------------------------------------------------------- tools
@@ -1678,10 +1406,6 @@ void PianoRollView::copySelected() {
             minS = std::min(minS, n.start);
         }
     for (auto& n : m_clipboard) n.start -= minS;
-}
-void PianoRollView::cutSelected() {
-    copySelected();
-    deleteSelected();
 }
 void PianoRollView::paste() {
     PatternChannelData* d = data();
@@ -1923,7 +1647,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     tm->addAction("Transpose -12", [this] { m_view->transpose(-12); });
     tm->addSeparator();
     tm->addAction("Select all\tCtrl+A", [this] { m_view->selectAll(); });
-    tm->addAction("Duplicate\tCtrl+D", [this] { m_view->duplicateSelected(); });
+    tm->addAction("Duplicate\tCtrl+B", [this] { m_view->duplicateSelected(); });
     tm->addAction("Copy\tCtrl+C", [this] { m_view->copySelected(); });
     tm->addAction("Paste\tCtrl+V", [this] { m_view->paste(); });
     tm->addAction("Delete\tDel", [this] { m_view->deleteSelected(); });
@@ -1983,7 +1707,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
         m_draw->setChecked(t == 0);
         m_select->setChecked(t == 1);
         m_erase->setChecked(t == 2);
-        m_mute->setChecked(t == 3);
+        m_mute->setChecked(t == PianoRollView::MuteTool);
     };
     connect(m_view, &PianoRollView::toolChanged, this, showMode);
     connect(m_view, &PianoRollView::modeChanged, this, showMode);

@@ -154,6 +154,13 @@ def main():
     check(vel() == before, "Alt+drag in the velocity lane restores the original velocities", f"{before} -> {vel()}")
     ins.send(f"prmouse {tx(0) + 1} {vt + 25} {tx(3000)} {vb - 10}")
     check(len(set(vel().split(","))) > 1, "a plain velocity drag still follows the cursor", vel())
+    # the Release lane edits stick (its edits used to be compared away and undone on release)
+    ins.send("prlane 2")
+    rel0 = ins.send("prrel")
+    ins.send(f"prmouse {tx(0) + 1} {vt + 25} {tx(3000)} {vb - 10}")
+    rel1 = ins.send("prrel")
+    ins.send("prlane 0")
+    check(rel1 != rel0 and not rel1.startswith("err"), "dragging in the Release lane changes release velocity", f"{rel0} -> {rel1}")
     ppt0 = float(info["ppt"])
     ppt1 = float(dict(kv.split("=", 1) for kv in ins.send("prpinch 0.5").split())["ppt"])
     check(abs(ppt1 - ppt0 * 1.5) < 1e-6, "trackpad pinch zooms the piano roll", f"{ppt0} -> {ppt1}")
@@ -188,6 +195,9 @@ def main():
         time.sleep(0.25)
     check(r.startswith(f"channels={before + 1} "), "the '+' on a browser sample adds it to the channel rack", f"{before} -> {r}")
     check("toast=Added" in r and "snare_hit" in r and "Channel Rack" in r, "adding it shows a toast by the cursor", r)
+    n = len(ins.send("channels").split(" | "))
+    r = ins.send(f"droptest {os.path.join(lib, 'snare_hit.wav')}")   # a browser drag dropped on the rack
+    check(r.startswith("enter=1 move=1 drop=1") and r.endswith(f"channels={n + 1}"), "a sample dropped on the channel rack adds a channel", r)
     ins.quit()
 
     # ---- project samples panel: browser drops save a sample unplaced, double-click opens its details, 'Show on playlist'
@@ -195,6 +205,8 @@ def main():
     os.makedirs(cfg8)
     ins = Instance(cfg8, sock)
     kept = os.path.join(lib, "snare_hit.wav")
+    with wave.open(os.path.join(lib, "pad_unused.wav"), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 4410)
     r = ins.send(f"samples drop {kept}")
     clips0 = len([x for x in ins.send("clips").split() if x])
     check(r == "sources=1" and clips0 == 1, "a sample dropped on the project panel is saved without being placed", f"{r} clips={clips0}")
@@ -204,6 +216,85 @@ def main():
     ins.send(f"audioclip {kept}")
     r = ins.send("samples show")
     check(r == "selected=2", "'Show on playlist' selects every clip of that sample", r)
+    ins.send(f"samples drop {os.path.join(lib, 'pad_unused.wav')}")   # a second sample, never placed
+    clips = len(ins.send("clips").split())
+    r = ins.send("samples unused")
+    check(r == f"sources=1 clips={clips}", "'Remove all unused samples' drops only the unplaced one", r)
+    r = ins.send("samples remove")
+    ins.send("action edit.undo")
+    back = ins.send("samples unused")
+    check(r == f"sources=0 clips={clips - 2}" and back == f"sources=1 clips={clips}",
+          "removing a sample takes its playlist clips with it, in one undo step", f"{r} / undo -> {back}")
+    ins.quit()
+
+    # ---- the Release lane on a step-only channel: the edit must not be dropped by turning the notes back into steps
+    cfg10 = os.path.join(tmp, "cfg10")
+    os.makedirs(cfg10)
+    ins = Instance(cfg10, sock)
+    ins.send("action view.pianoRoll")   # the demo kick: steps only
+    info = dict(kv.split("=", 1) for kv in ins.send("prwheel -4").split())
+    vt, vb, ppt = int(info["velY"].split("..")[0]), int(info["velY"].split("..")[1]), float(info["ppt"])
+    ins.send("prlane 2")
+    ins.send(f"prmouse 61 {vt + 25} {int(60 + 3000 * ppt)} {vb - 10}")
+    rel = ins.send("prrel")
+    check(rel != "" and set(rel.split(",")) != {"50"}, "a Release-lane edit on a step-only channel sticks", repr(rel))
+    ins.quit()
+
+    # ---- keyboard shortcuts of both editors (shared ones live in TimelineView::handleSharedKey)
+    cfg11 = os.path.join(tmp, "cfg11")
+    os.makedirs(cfg11)
+    ins = Instance(cfg11, sock)
+    ins.send("action view.pianoRoll")   # the demo kick: 4 steps
+    pr = lambda: dict(kv.split("=", 1) for kv in ins.send("prinfo").split())  # noqa: E731
+    kick = lambda: ins.send("patdata").split(" | ")[1]  # noqa: E731
+    seq = []
+    for k in ["Ctrl+A", "Ctrl+D", "Shift+I", "Esc"]:
+        ins.send(f"key pr {k}")
+        seq.append(pr()["sel"])
+    check(seq == ["4", "0", "4", "0"], "piano roll: Ctrl+A, Ctrl+D, Shift+I, Esc select / deselect / invert / clear", str(seq))
+    tools = []
+    for k in ["2", "T", "3", "E", "P"]:
+        ins.send(f"key pr {k}")
+        tools.append(pr()["tool"])
+    check(tools == ["1", "4", "2", "1", "0"], "piano roll: 2 / T / 3 / E / P pick select, mute, erase, select, draw", str(tools))
+    p0 = float(pr()["ppt"])
+    ins.send("key pr PgUp")
+    check(abs(float(pr()["ppt"]) - p0 * 1.3) < 1e-6, "piano roll: Page Up zooms in", f"{p0} -> {pr()['ppt']}")
+    ins.send("key pr Ctrl+A")
+    ins.send("key pr Ctrl+C")
+    ins.send("key pr Del")
+    gone = kick()
+    ins.send("key pr Ctrl+V")
+    back = kick()
+    check("steps=................" in gone and "steps=x...x...x...x..." in back, "piano roll: Ctrl+C, Del, Ctrl+V copy, delete and paste back", f"{gone} / {back}")
+    ins.send("action view.playlist")
+    pl = lambda: dict(kv.split("=", 1) for kv in ins.send("plinfo").split())  # noqa: E731
+    ins.send("key pl Ctrl+A")
+    s1 = pl()["sel"]
+    ins.send("key pl Ctrl+D")
+    s2 = pl()["sel"]
+    check((s1, s2) == ("1", "0"), "playlist: Ctrl+A / Ctrl+D select all and deselect", f"{s1} {s2}")
+    tools = []
+    for k in ["4", "5", "B", "C", "D", "1"]:
+        ins.send(f"key pl {k}")
+        tools.append(pl()["tool"])
+    check(tools == ["3", "4", "0", "3", "2", "0"], "playlist: 4 / 5 / B / C / D / 1 pick slice, mute, draw, slice, erase, draw", str(tools))
+    ins.quit()
+
+    # ---- a clip gain-handle drag is one undo step (it used to change the clip without undo, rebuild or 'unsaved')
+    cfg9 = os.path.join(tmp, "cfg9")
+    os.makedirs(cfg9)
+    ins = Instance(cfg9, sock)
+    ins.send("action view.playlist")
+    long_wav = os.path.join(lib, "pad_long.wav")
+    with wave.open(long_wav, "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 44100 * 4)
+    ins.send(f"audioclip {long_wav}")
+    dragged = ins.send("plgain 30")
+    ins.send("action edit.undo")
+    undone = ins.send("plgain 0")
+    check(dragged not in ("gain=1.00", "") and not dragged.startswith("err") and undone == "gain=1.00",
+          "a gain-handle drag changes the clip and one undo restores it", f"{dragged} -> undo -> {undone}")
     ins.quit()
 
     # ---- clicking the workspace puts away an open editor window; reopening the editor brings it back

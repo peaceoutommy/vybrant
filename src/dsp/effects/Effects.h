@@ -20,9 +20,6 @@ public:
         void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;                            \
         void reset() override;                                                                                                             \
                                                                                                                                            \
-    protected:                                                                                                                             \
-        void onPrepare() override;                                                                                                         \
-                                                                                                                                           \
     private:
 
 // Tempo-sync helper: returns delay time in seconds for a sync choice index (0 = use ms)
@@ -44,6 +41,9 @@ bool wantsSidechain() const override { return true; }
 };
 
 MT_EFFECT(Limiter, "native.limiter", "Limiter")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pCeiling = 1, pRelease, pLookahead, pInputGain };
 int latencySamples() const override { return m_latency; }
@@ -82,6 +82,9 @@ dsp::EnvelopeFollower m_env;
 ;
 
 MT_EFFECT(Clipper, "native.clipper", "Clipper")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pThreshold = 1, pSoftness, pInput, pOutput, pOversample };
 
@@ -101,6 +104,9 @@ dsp::EnvelopeFollower m_fast, m_slow;
 
 // ---------------- EQ / Filtering ----------------
 MT_EFFECT(ParametricEQ, "native.parametriceq", "Parametric EQ")
+protected:
+void onPrepare() override;
+
 public:
 static constexpr int kBands = 6;
 enum P : uint32_t { pBandBase = 10 /* + band*5: enabled, type, freq, gain, q */, pOutput = 1 };
@@ -134,9 +140,6 @@ public:
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
 
-protected:
-    void onPrepare() override;
-
 private:
     dsp::Biquad::Type m_type;
     QString m_key, m_name;
@@ -161,6 +164,9 @@ struct NotchFilter : FilterEffect {
 
 // ---------------- Time-based ----------------
 MT_EFFECT(Delay, "native.delay", "Delay")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pTime = 1, pSync, pFeedback, pLowCut, pHighCut, pMix, pStereoOffset, pModRate, pModDepth };
 int tailSamples() const override { return (int)(m_sr * 4); }
@@ -174,6 +180,9 @@ Smoother m_timeS;
 ;
 
 MT_EFFECT(PingPongDelay, "native.pingpong", "Ping-Pong Delay")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pTime = 1, pSync, pFeedback, pLowCut, pHighCut, pMix, pWidth };
 int tailSamples() const override { return (int)(m_sr * 4); }
@@ -186,6 +195,9 @@ Smoother m_timeS;
 ;
 
 MT_EFFECT(Reverb, "native.reverb", "Reverb")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pSize = 1, pDamping, pWidth, pPreDelay, pMix, pLowCut, pHighCut, pDecay };
 int tailSamples() const override { return (int)(m_sr * 6); }
@@ -207,6 +219,9 @@ dsp::DelayLine m_preR;
 ;
 
 MT_EFFECT(Echo, "native.echo", "Echo")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pTime = 1, pSync, pFeedback, pTaps, pSpread, pDamp, pMix, pDecayShape };
 int tailSamples() const override { return (int)(m_sr * 4); }
@@ -219,6 +234,9 @@ dsp::Biquad m_dampL, m_dampR;
 
 // ---------------- Modulation ----------------
 MT_EFFECT(Chorus, "native.chorus", "Chorus")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pRate = 1, pDepth, pDelay, pVoices, pMix, pFeedback, pWidth };
 
@@ -229,6 +247,9 @@ dsp::LFO m_lfo[4];
 ;
 
 MT_EFFECT(Flanger, "native.flanger", "Flanger")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pRate = 1, pDepth, pDelay, pFeedback, pMix, pPhase, pSync };
 
@@ -261,6 +282,9 @@ double m_phaseR = 0;
 ;
 
 MT_EFFECT(Vibrato, "native.vibrato", "Vibrato")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pRate = 1, pDepth, pShape, pSync, pStereoPhase };
 
@@ -313,6 +337,9 @@ dsp::DcBlocker m_dcL, m_dcR;
 
 // ---------------- Utility ----------------
 MT_EFFECT(GainUtility, "native.gain", "Gain")
+protected:
+void onPrepare() override;
+
 public:
 enum P : uint32_t { pGain = 1, pPan, pBalance, pMute };
 
@@ -343,6 +370,9 @@ enum P : uint32_t { pMode = 1, pMix };
 ;
 
 MT_EFFECT(SpectrumAnalyzer, "native.spectrum", "Spectrum Analyzer")
+protected:
+void onPrepare() override;
+
 public:
 static constexpr int kFft = 2048;
 enum P : uint32_t { pDecay = 1, pRange, pSmooth };

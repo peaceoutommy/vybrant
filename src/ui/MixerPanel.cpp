@@ -1,4 +1,5 @@
 #include "ui/MixerPanel.h"
+#include "ui/InAppDrag.h"
 #include <QMessageBox>
 #include <QShortcut>
 #include "ui/Theme.h"
@@ -226,7 +227,7 @@ void EffectSlotList::menu(int slot, const QPoint& global) {
         m.addAction("Mix (wet/dry)...", [this, id, e] {
             bool ok;
             int v = QInputDialog::getInt(this, "Effect mix", "Wet %:", (int)(e.mix * 100), 0, 100, 1, &ok);
-            if (ok) m_app.setEffectMix(m_track, id, v / 100.f, true);
+            if (ok) m_app.setEffectMix(m_track, id, v / 100.f);
         });
         if (auto* pd = m_app.project().plugin(e.pluginInstanceId)) {
             if (pd->crashed)
@@ -240,12 +241,11 @@ void EffectSlotList::menu(int slot, const QPoint& global) {
     m.exec(global);
 }
 void EffectSlotList::dragEnterEvent(QDragEnterEvent* e) {
-    if (e->mimeData()->hasFormat("application/x-musicthingy-item")) e->acceptProposedAction();
+    if (e->mimeData()->hasFormat(kItemMime)) e->acceptProposedAction();   // effects / plugins / presets only, no files
 }
 void EffectSlotList::dragMoveEvent(QDragMoveEvent* e) { e->acceptProposedAction(); }
 void EffectSlotList::dropEvent(QDropEvent* e) {
-    QString payload = QString::fromUtf8(e->mimeData()->data("application/x-musicthingy-item"));
-    QString kind = payload.section('|', 0, 0), val = payload.section('|', 1);
+    auto [kind, val] = dropItem(e->mimeData());
     int slot = slotAt(e->position().toPoint().y());
     const MixerTrack* t = m_app.project().mixerTrack(m_track);
     if (!t) return;
@@ -409,17 +409,17 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
         m.exec(g);
     });
     connect(m_mute, &LedButton::toggled, this,
-        [this](bool b) { m_app.editMixerTrack(m_track, b ? "Mute track" : "Unmute track", [b](MixerTrack& t) { t.mute = b; }); });
+        [this](bool b) { m_app.edit<MixerTrack>(m_track, b ? "Mute track" : "Unmute track", [b](MixerTrack& t) { t.mute = b; }); });
     connect(m_solo, &LedButton::toggled, this,
-        [this](bool b) { m_app.editMixerTrack(m_track, "Solo track", [b](MixerTrack& t) { t.solo = b; }); });
+        [this](bool b) { m_app.edit<MixerTrack>(m_track, "Solo track", [b](MixerTrack& t) { t.solo = b; }); });
     connect(m_arm, &LedButton::toggled, this,
-        [this](bool b) { m_app.editMixerTrack(m_track, b ? "Arm track" : "Disarm track", [b](MixerTrack& t) { t.armed = b; }); });
+        [this](bool b) { m_app.edit<MixerTrack>(m_track, b ? "Arm track" : "Disarm track", [b](MixerTrack& t) { t.armed = b; }); });
     connect(m_route, &QToolButton::clicked, this, [this] { showRouteMenu(); });
     connect(m_sends, &QToolButton::clicked, this, [this] { showSendsMenu(); });
     connect(m_input, &QToolButton::clicked, this, [this] {
         QMenu m;
         auto* none = m.addAction(
-            "None", [this] { m_app.editMixerTrack(m_track, "Track input", [](MixerTrack& t) { t.inputChannel = -1; }); });
+            "None", [this] { m_app.edit<MixerTrack>(m_track, "Track input", [](MixerTrack& t) { t.inputChannel = -1; }); });
         none->setCheckable(true);
         const auto& cfg = m_app.devices().config();
         const MixerTrack* t = m_app.project().mixerTrack(m_track);
@@ -427,7 +427,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
         for (int i = 0; i < cfg.inputChannels; ++i) {
             auto* a = m.addAction(
                 QString("Input %1%2").arg(i + 1).arg(i + 1 < cfg.inputChannels ? QString(" (+%1 stereo)").arg(i + 2) : ""),
-                [this, i] { m_app.editMixerTrack(m_track, "Track input", [i](MixerTrack& t) { t.inputChannel = i; }); });
+                [this, i] { m_app.edit<MixerTrack>(m_track, "Track input", [i](MixerTrack& t) { t.inputChannel = i; }); });
             a->setCheckable(true);
             a->setChecked(t && t->inputChannel == i);
         }
@@ -491,9 +491,8 @@ void MixerStrip::mousePressEvent(QMouseEvent* e) {
 void MixerStrip::mouseDoubleClickEvent(QMouseEvent* e) {
     if (m_name->geometry().contains(e->pos())) {
         const MixerTrack* t = m_app.project().mixerTrack(m_track);
-        bool ok;
-        QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t ? t->name : "", &ok);
-        if (ok) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { renameTrack(x, n); });
+        if (auto n = askName(this, "Rename track", t ? t->name : "", true))
+            m_app.edit<MixerTrack>(m_track, "Rename mixer track", [n = *n](MixerTrack& x) { renameTrack(x, n); });
     }
 }
 void MixerStrip::showRouteMenu() {
@@ -529,13 +528,13 @@ void MixerStrip::showSendsMenu() {
             if (ok) m_app.setSendLevel(m_track, to, v / 100.f, true);
         });
         sub->addAction(s.preFader ? "Make post-fader" : "Make pre-fader", [this, to] {
-            m_app.editMixerTrack(m_track, "Send pre/post", [to](MixerTrack& x) {
+            m_app.edit<MixerTrack>(m_track, "Send pre/post", [to](MixerTrack& x) {
                 for (auto& sd : x.sends)
                     if (sd.targetTrackId == to) sd.preFader = !sd.preFader;
             });
         });
         sub->addAction(s.sidechain ? "Make normal send" : "Make sidechain", [this, to] {
-            m_app.editMixerTrack(m_track, "Send sidechain", [to](MixerTrack& x) {
+            m_app.edit<MixerTrack>(m_track, "Send sidechain", [to](MixerTrack& x) {
                 for (auto& sd : x.sends)
                     if (sd.targetTrackId == to) sd.sidechain = !sd.sidechain;
             });
@@ -575,13 +574,12 @@ void MixerStrip::contextMenuEvent(QContextMenuEvent* e) {
         m.addSeparator();
     }
     m.addAction("Rename...", [this, t] {
-        bool ok;
-        QString n = QInputDialog::getText(this, "Rename track", "Name:", QLineEdit::Normal, t->name, &ok);
-        if (ok) m_app.editMixerTrack(m_track, "Rename mixer track", [n](MixerTrack& x) { renameTrack(x, n); });
+        if (auto n = askName(this, "Rename track", t->name, true))
+            m_app.edit<MixerTrack>(m_track, "Rename mixer track", [n = *n](MixerTrack& x) { renameTrack(x, n); });
     });
     m.addAction("Color...", [this, t] {
         QColor c = QColorDialog::getColor(t->color, this);
-        if (c.isValid()) m_app.editMixerTrack(m_track, "Track color", [c](MixerTrack& x) { x.color = c; });
+        if (c.isValid()) m_app.edit<MixerTrack>(m_track, "Track color", [c](MixerTrack& x) { x.color = c; });
     });
     m.addAction("Add mixer track", [this] { m_app.addMixerTrack(); });
     {
@@ -600,7 +598,7 @@ void MixerStrip::contextMenuEvent(QContextMenuEvent* e) {
             m.addAction("Color selected tracks...", [this, many, t] {
                 QColor c = QColorDialog::getColor(t->color, this);
                 if (!c.isValid()) return;
-                for (Id id : many) m_app.editMixerTrack(id, "Track color", [c](MixerTrack& x) { x.color = c; });
+                for (Id id : many) m_app.edit<MixerTrack>(id, "Track color", [c](MixerTrack& x) { x.color = c; });
             });
         } else if (!t->isMaster) m.addAction("Delete track", [this] { m_app.deleteMixerTrack(m_track); });
     }

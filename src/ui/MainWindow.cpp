@@ -482,10 +482,8 @@ void MainWindow::buildMenus() {
     file->addAction(reg.add(
         "file.saveTemplate", "Save as template...", "File", QKeySequence(),
         [this] {
-            bool ok;
-            QString n = QInputDialog::getText(this, "Save template", "Template name:", QLineEdit::Normal, m_app.projectTitle(), &ok);
-            if (ok && !n.isEmpty()) {
-                m_app.saveTemplate(n);
+            if (auto n = askName(this, "Save template", m_app.projectTitle())) {
+                m_app.saveTemplate(*n);
                 statusBar()->showMessage("Template saved", 3000);
             }
         },
@@ -555,9 +553,7 @@ void MainWindow::buildMenus() {
         [this] {
             auto* p = m_app.project().pattern(m_app.project().selectedPatternId);
             if (!p) return;
-            bool ok;
-            QString n = QInputDialog::getText(this, "Rename pattern", "Name:", QLineEdit::Normal, p->name, &ok);
-            if (ok && !n.isEmpty()) m_app.renamePattern(p->id, n);
+            if (auto n = askName(this, "Rename pattern", p->name)) m_app.renamePattern(p->id, *n);
         },
         this));
     auto* tr = mb->addMenu("&Transport");

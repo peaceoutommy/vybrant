@@ -375,7 +375,7 @@ QMimeData* BrowserModel::mimeData(const QModelIndexList& indexes) const {
     case AudioFile: payload = "audio|" + path; break;
     default: break;
     }
-    if (!payload.isEmpty()) md->setData("application/x-musicthingy-item", payload.toUtf8());
+    if (!payload.isEmpty()) setDropItem(md, payload);
     return md;
 }
 
@@ -751,12 +751,7 @@ void BrowserPanel::onDoubleClicked(const QModelIndex& idx) {
     switch (kind) {
     case BrowserModel::AudioFile: addSampleChannel(path, QCursor::pos()); break;
     case BrowserModel::NativeInstrument:
-        m_app.addChannel(path == "native.drumsampler" ? ChannelType::DrumSampler
-                : path == "native.midiout"            ? ChannelType::MidiOut
-                : path == "native.tonegen"            ? ChannelType::AudioGenerator
-                : path == "native.sampler"            ? ChannelType::Sampler
-                                                      : ChannelType::Synth,
-            path);
+        m_app.addChannel(channelTypeForKey(path), path);
         break;
     case BrowserModel::NativeEffect: {
         Id sel = m_app.project().selectedChannelId;
@@ -805,20 +800,14 @@ void BrowserPanel::onContext(const QPoint& pos) {
             menu.addAction(
                 "Add as drum channel", [this, path] { m_app.addChannel(ChannelType::DrumSampler, "native.drumsampler", QString(), path); });
             menu.addAction("Add to playlist at playhead", [this, path] {
-                Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
+                Id track = m_app.firstPlaylistTrack();
                 m_app.addAudioClip(track, path, (Tick)m_app.engine().positionTicks());
             });
             menu.addSeparator();
         }
         if (kind == BrowserModel::PatternItem) {
             Id pid = path.toULongLong();
-            menu.addAction("Rename", [this, pid] {
-                bool ok;
-                QString n = QInputDialog::getText(
-                    this, "Rename pattern", "Name:", QLineEdit::Normal, m_app.project().pattern(pid)->name, &ok);
-                if (ok) m_app.renamePattern(pid, n);
-            });
-            menu.addAction("Clone", [this, pid] { m_app.clonePattern(pid); });
+            addPatternActions(&menu, m_app, this, {pid});
             menu.addAction("Delete", [this, pid] { m_app.deletePattern(pid); });
             menu.addSeparator();
         }

@@ -70,12 +70,9 @@ public:
     // async; nullptr until ready. One render per file at a time: requests made meanwhile return nullptr and are re-made after
     // assetLoaded, so a knob or tempo drag renders only its settled value instead of queueing a render per step
     AudioAssetPtr getStretched(const QString& path, double ratio, double pitch, int mode = StretchGeneral);
-    bool isLoading(const QString& path) const;
     void clear();
-    int pendingCount() const { return m_pending.load(); }
 Q_SIGNALS:
     void assetLoaded(const QString& path);
-    void loadFailed(const QString& path, const QString& error);
 
 private:
     QString keyFor(const QString& path) const;

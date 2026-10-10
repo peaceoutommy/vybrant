@@ -38,7 +38,6 @@ public:
     void newTake(Tick startTick);   // finalise current files and begin a new pass (loop recording)
     std::vector<RecordedTake> stop();   // finalise, returns takes
     bool isActive() const { return m_active.load(); }
-    int takeCounter() const { return m_takeCounter; }
 Q_SIGNALS:
     void takesFinished(const std::vector<RecordedTake>& takes);
 

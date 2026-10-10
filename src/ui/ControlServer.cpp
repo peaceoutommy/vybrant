@@ -1,5 +1,8 @@
+#include <QKeySequence>
+#include <QKeyEvent>
 #include <QNativeGestureEvent>
 #include "ui/ControlServer.h"
+#include "ui/InAppDrag.h"
 #include "ui/App.h"
 #include "ui/Theme.h"
 #include "ui/MainWindow.h"
@@ -24,6 +27,25 @@
 #include <QWheelEvent>
 
 namespace mt {
+
+// Simulated input for the UI test: press at 'from', 'moves' steps towards 'to' (sent even when they are equal: some views
+// react to the move itself), release at 'to'. A click is a drag with no moves.
+static void sendDrag(QWidget* w, QPoint from, QPoint to, int moves = 1, Qt::MouseButton b = Qt::LeftButton, Qt::KeyboardModifiers mods = {}) {
+    QMouseEvent pr(QEvent::MouseButtonPress, from, w->mapToGlobal(from), b, b, mods);
+    QCoreApplication::sendEvent(w, &pr);
+    for (int i = 1; i <= moves; ++i) {
+        QPoint q = from + (to - from) * i / moves;
+        QMouseEvent mv(QEvent::MouseMove, q, w->mapToGlobal(q), b, b, mods);
+        QCoreApplication::sendEvent(w, &mv);
+    }
+    QMouseEvent rl(QEvent::MouseButtonRelease, to, w->mapToGlobal(to), b, Qt::NoButton, mods);
+    QCoreApplication::sendEvent(w, &rl);
+}
+static void sendPinch(QWidget* w, double value) {   // trackpad pinch at the centre of w
+    QPointF pt(w->width() / 2.0, w->height() / 2.0);
+    QNativeGestureEvent g(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, pt, pt, w->mapToGlobal(pt), value, QPointF());
+    QCoreApplication::sendEvent(w, &g);
+}
 
 QString ControlServer::socketPath() {
     QString env = qEnvironmentVariable("MT_CONTROL_SOCKET");
@@ -192,7 +214,7 @@ QString ControlServer::handle(const QString& line) {
         int pitch = a[2].toInt(), count = a[3].toInt();
         Tick len = a[4].toLongLong();
         Id pid = m_app.project().selectedPatternId;
-        m_app.editPattern(pid, "test notes", [cid, pitch, count, len](Pattern& pat) {
+        m_app.edit<Pattern>(pid, "test notes", [cid, pitch, count, len](Pattern& pat) {
             pat.ensureChannel(cid);
             auto* d = pat.channelData(cid);
             for (int i = 0; i < count; ++i) {
@@ -240,7 +262,7 @@ QString ControlServer::handle(const QString& line) {
     if (c == "droptest" && a.size() >= 2) {   // simulate a browser drop of a file on the rack (view or panel)
         auto* md = new QMimeData();
         md->setUrls({QUrl::fromLocalFile(a[1])});
-        md->setData("application/x-musicthingy-item", ("audio|" + a[1]).toUtf8());
+        setDropItem(md, "audio|" + a[1]);
         QWidget* target = a.size() > 2 && a[2] == "panel" ? (QWidget*)m_win.rackPanel() : (QWidget*)m_win.rackPanel()->view();
         QPointF pos(target->width() / 2.0, target->height() - 5.0);
         QDragEnterEvent en(pos.toPoint(), Qt::CopyAction, md, Qt::LeftButton, Qt::NoModifier);
@@ -259,26 +281,14 @@ QString ControlServer::handle(const QString& line) {
     if (c == "prclick" && a.size() >= 3) {   // click a piano-roll cell: prclick <tick> <pitch> [right]
         auto* v = m_win.pianoRoll()->view();
         QPoint pt = v->debugPoint(a[1].toLongLong(), a[2].toInt());
-        Qt::MouseButton b = a.size() > 3 && a[3] == "right" ? Qt::RightButton : Qt::LeftButton;
-        QMouseEvent pr(QEvent::MouseButtonPress, pt, v->mapToGlobal(pt), b, b, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &pr);
-        QMouseEvent rl(QEvent::MouseButtonRelease, pt, v->mapToGlobal(pt), b, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &rl);
+        sendDrag(v, pt, pt, 0, a.size() > 3 && a[3] == "right" ? Qt::RightButton : Qt::LeftButton);
         return QString("ok %1,%2").arg(pt.x()).arg(pt.y());
     }
     if (c == "prdrag" && a.size() >= 5) {   // drag in the piano roll: prdrag <tick> <pitch> <toTick> <toPitch> [xoffset of the press]
         auto* v = m_win.pianoRoll()->view();
         QPoint p1 = v->debugPoint(a[1].toLongLong(), a[2].toInt()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0),
                p2 = v->debugPoint(a[3].toLongLong(), a[4].toInt());
-        QMouseEvent pr(QEvent::MouseButtonPress, p1, v->mapToGlobal(p1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &pr);
-        for (int i = 1; i <= 4; ++i) {
-            QPoint m = p1 + (p2 - p1) * i / 4;
-            QMouseEvent mv(QEvent::MouseMove, m, v->mapToGlobal(m), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-            QCoreApplication::sendEvent(v, &mv);
-        }
-        QMouseEvent rl(QEvent::MouseButtonRelease, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &rl);
+        sendDrag(v, p1, p2, 4);
         return "ok";
     }
     if (c == "prwheel" && a.size() >= 2) {   // vertical wheel over the piano-roll grid: prwheel <ticks> [alt]
@@ -298,33 +308,19 @@ QString ControlServer::handle(const QString& line) {
         QString m = a.size() > 5 ? a[5] : QString();
         Qt::KeyboardModifiers mods = (m.contains('c') ? Qt::ControlModifier : Qt::NoModifier) |
             (m.contains('s') ? Qt::ShiftModifier : Qt::NoModifier) | (m.contains('a') ? Qt::AltModifier : Qt::NoModifier);
-        QMouseEvent pr(QEvent::MouseButtonPress, p1, v->mapToGlobal(p1), Qt::LeftButton, Qt::LeftButton, mods);
-        QCoreApplication::sendEvent(v, &pr);
-        for (int i = 1; i <= 4; ++i) {
-            QPoint q = p1 + (p2 - p1) * i / 4;
-            QMouseEvent mv(QEvent::MouseMove, q, v->mapToGlobal(q), Qt::LeftButton, Qt::LeftButton, mods);
-            QCoreApplication::sendEvent(v, &mv);
-        }
-        QMouseEvent rl(QEvent::MouseButtonRelease, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::NoButton, mods);
-        QCoreApplication::sendEvent(v, &rl);
+        sendDrag(v, p1, p2, 4, Qt::LeftButton, mods);
         return v->debugScroll();
     }
     if (c == "prpinch" && a.size() >= 2) {   // trackpad pinch over the piano roll: prpinch <value>
         auto* v = m_win.pianoRoll()->view();
-        QPointF pt(v->width() / 2.0, v->height() / 2.0);
-        QNativeGestureEvent g(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, pt, pt, v->mapToGlobal(pt), a[1].toDouble(), QPointF());
-        QCoreApplication::sendEvent(v, &g);
+        sendPinch(v, a[1].toDouble());
         return v->debugScroll();
     }
     if (c == "prinfo") return m_win.pianoRoll()->view()->debugScroll();
     if (c == "rackclick" && a.size() >= 3) {   // click a rack step cell: rackclick <row> <step> [right]
         auto* v = m_win.rackPanel()->view();
         QPoint pt = v->debugStepPoint(a[1].toInt(), a[2].toInt());
-        Qt::MouseButton b = a.size() > 3 && a[3] == "right" ? Qt::RightButton : Qt::LeftButton;
-        QMouseEvent pr(QEvent::MouseButtonPress, pt, v->mapToGlobal(pt), b, b, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &pr);
-        QMouseEvent rl(QEvent::MouseButtonRelease, pt, v->mapToGlobal(pt), b, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &rl);
+        sendDrag(v, pt, pt, 0, a.size() > 3 && a[3] == "right" ? Qt::RightButton : Qt::LeftButton);
         return "ok";
     }
     if (c == "patdata") {   // dump the selected pattern's per-channel steps / notes
@@ -371,7 +367,7 @@ QString ControlServer::handle(const QString& line) {
         return QString("new=%1 patterns: %2 | clips: %3").arg(ids.size()).arg(l.join(", ")).arg(cl.join(", "));
     }
     if (c == "audioclip" && a.size() >= 2) {
-        Id track = m_app.project().playlistTracks.empty() ? m_app.addPlaylistTrack() : m_app.project().playlistTracks.front().id;
+        Id track = m_app.firstPlaylistTrack();
         Id id = m_app.addAudioClip(track, a[1], 0);
         return id ? "ok" : "err";
     }
@@ -381,7 +377,7 @@ QString ControlServer::handle(const QString& line) {
         if (it == cl.end()) return "err no audio clip";
         Tick fi = a[1].toLongLong(), fo = a[2].toLongLong();
         float sh = a[3].toFloat(), g = a[4].toFloat();
-        m_app.editClip(it->id, "test fade", [fi, fo, sh, g](Clip& x) {
+        m_app.edit<Clip>(it->id, "test fade", [fi, fo, sh, g](Clip& x) {
             x.fadeIn = fi;
             x.fadeOut = fo;
             x.fadeInShape = sh;
@@ -393,27 +389,20 @@ QString ControlServer::handle(const QString& line) {
     if (c == "pldrag" && a.size() >= 5) {   // left drag in the playlist: pldrag <track> <tick> <toTrack> <toTick> [xoffset of the press]
         auto* v = m_win.playlist()->view();
         QPoint p1 = v->debugPoint(a[1].toInt(), a[2].toLongLong()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0), p2 = v->debugPoint(a[3].toInt(), a[4].toLongLong());
-        QMouseEvent pr(QEvent::MouseButtonPress, p1, v->mapToGlobal(p1), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &pr);
-        QMouseEvent mv(QEvent::MouseMove, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &mv);
-        QMouseEvent rl(QEvent::MouseButtonRelease, p2, v->mapToGlobal(p2), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(v, &rl);
+        sendDrag(v, p1, p2);
         return "ok";
     }
     if (c == "plpinch" && a.size() >= 2) {   // trackpad pinch over the playlist: plpinch <value> -> "<ppt before> <ppt after>"
         auto* v = m_win.playlist()->view();
         double before = v->debugPpt();
-        QPointF pt(v->width() / 2.0, v->height() / 2.0);
-        QNativeGestureEvent g(Qt::ZoomNativeGesture, QPointingDevice::primaryPointingDevice(), 2, pt, pt, v->mapToGlobal(pt), a[1].toDouble(), QPointF());
-        QCoreApplication::sendEvent(v, &g);
+        sendPinch(v, a[1].toDouble());
         return QString("%1 %2").arg(before).arg(v->debugPpt());
     }
     if (c == "patsteps" && a.size() >= 2) {   // set the selected pattern's step count
         auto* p = m_app.project().pattern(m_app.project().selectedPatternId);
         if (!p) return "err no pattern";
         int n = a[1].toInt();
-        m_app.editPattern(p->id, "Pattern steps", [n](Pattern& pp) {
+        m_app.edit<Pattern>(p->id, "Pattern steps", [n](Pattern& pp) {
             pp.stepCount = n;
             for (auto& c : pp.channels)
                 if ((int)c.steps.size() < n) c.steps.resize(n);
@@ -425,11 +414,7 @@ QString ControlServer::handle(const QString& line) {
         b->debugSearch(a[1]);
         QPoint pt = b->debugAddButton();
         if (pt.x() < 0) return "err no sample";
-        QWidget* vp = b->debugViewport();
-        QMouseEvent pr(QEvent::MouseButtonPress, pt, vp->mapToGlobal(pt), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(vp, &pr);
-        QMouseEvent rl(QEvent::MouseButtonRelease, pt, vp->mapToGlobal(pt), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
-        QCoreApplication::sendEvent(vp, &rl);
+        sendDrag(b->debugViewport(), pt, pt, 0);
         QString toast;
         for (auto* w : QApplication::topLevelWidgets())
             if (auto* l = qobject_cast<QLabel*>(w); l && l->isVisible() && (l->windowFlags() & Qt::ToolTip) == Qt::ToolTip) toast = l->text();
@@ -452,6 +437,11 @@ QString ControlServer::handle(const QString& line) {
                 }
             return QString("clipEditors=%1 clips=%2").arg(n).arg(m_app.project().clips.size());
         }
+        if (a[1] == "remove" || a[1] == "unused") {
+            sp->setTab(ProjectSamplesPanel::Samples);
+            a[1] == "remove" ? sp->debugRemoveFirst() : sp->debugRemoveUnused();
+            return QString("sources=%1 clips=%2").arg(m_app.project().audioSources.size()).arg(m_app.project().clips.size());
+        }
         if (a[1] == "show") {
             sp->setTab(ProjectSamplesPanel::Samples);
             sp->debugShowFirst();
@@ -463,6 +453,37 @@ QString ControlServer::handle(const QString& line) {
         int n = 0;
         for (auto* pw : m_win.findChildren<PluginWindow*>()) n += pw->isVisible();
         return QString::number(n);
+    }
+    if (c == "key" && a.size() >= 3) {   // a key press on a view: key pr|pl <QKeySequence text, e.g. Ctrl+A, Shift+I, PgUp, Del, 1>
+        QWidget* v = a[1] == "pl" ? (QWidget*)m_win.playlist()->view() : (QWidget*)m_win.pianoRoll()->view();
+        QKeyCombination k = QKeySequence(a[2])[0];
+        v->setFocus();   // shortcut overrides go to the focused widget, as with a real key press
+        QKeyEvent ev(QEvent::KeyPress, k.key(), k.keyboardModifiers());
+        QCoreApplication::sendEvent(v, &ev);
+        return "ok";
+    }
+    if (c == "plinfo") return m_win.playlist()->view()->debugInfo();
+    if (c == "prlane" && a.size() >= 2) {   // piano-roll bottom lane: 0 velocity, 1 pan, 2 release, 3 fine pitch
+        m_win.pianoRoll()->view()->setLane(a[1].toInt());
+        return "ok";
+    }
+    if (c == "prrel") {   // release velocities (x100) of the first channel of the selected pattern, like patdata's vel=
+        Pattern* p = m_app.project().pattern(m_app.project().selectedPatternId);
+        if (!p || p->channels.empty()) return "err";
+        QStringList v;
+        for (auto& n : p->channels.front().notes) v << QString::number(qRound(n.releaseVelocity * 100));
+        return v.join(',');
+    }
+    if (c == "plgain" && a.size() >= 2) {   // drag the first audio clip's gain handle up by <dy> px: "gain=<g>"
+        auto& cl = m_app.project().clips;
+        auto it = std::find_if(cl.begin(), cl.end(), [](const Clip& x) { return x.type == ClipType::Audio; });
+        if (it == cl.end()) return "err no audio clip";
+        Id id = it->id;
+        auto* v = m_win.playlist()->view();
+        QPoint p1 = v->debugGainHandle(id), p2 = p1 - QPoint(0, a[1].toInt());
+        sendDrag(v, p1, p2);
+        const Clip* after = m_app.project().clip(id);
+        return after ? QString("gain=%1").arg(after->gain, 0, 'f', 2) : "err clip gone";
     }
     if (c == "clips") {   // clips as track:start+length, then L = loops, A = audio; in project order
         QStringList out;

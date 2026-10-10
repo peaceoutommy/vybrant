@@ -31,7 +31,6 @@ public:
         int n = (availableWidth - m_leftW - 18) / stepW() / 4 * 4;
         return std::max(4, n);
     }   // inverse of widthForSteps(): whole beats that fit
-    int stepsPerBar() const;
     int patternSteps() const;
     void setFitSteps(int n) {
         if (n != m_fitSteps) {

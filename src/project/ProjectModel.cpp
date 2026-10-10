@@ -11,7 +11,6 @@ void ProjectModel::replaceProject(Project p) {
     m_project = std::move(p);
     m_undo.clear();
     m_dirty = false;
-    Q_EMIT projectReplaced();
     Q_EMIT changed(ChangeAll);
     Q_EMIT dirtyChanged(false);
 }

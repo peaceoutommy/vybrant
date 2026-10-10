@@ -291,7 +291,6 @@ AudioAssetPtr SampleCache::get(const QString& path) {
         }
         m_pending--;
         if (a) QMetaObject::invokeMethod(this, [this, path] { Q_EMIT assetLoaded(path); }, Qt::QueuedConnection);
-        else QMetaObject::invokeMethod(this, [this, path, err] { Q_EMIT loadFailed(path, err); }, Qt::QueuedConnection);
     });
     return nullptr;
 }
@@ -345,11 +344,6 @@ AudioAssetPtr SampleCache::getStretched(const QString& path, double ratio, doubl
     return nullptr;
 }
 
-bool SampleCache::isLoading(const QString& path) const {
-    std::lock_guard<std::mutex> lk(m_mutex);
-    auto it = m_loading.find(path);
-    return it != m_loading.end() && it->second;
-}
 void SampleCache::clear() {
     std::lock_guard<std::mutex> lk(m_mutex);
     m_assets.clear();

@@ -1,4 +1,5 @@
 #include "ui/dialogs/Dialogs.h"
+#include "ui/widgets/Controls.h"
 #include <QSignalBlocker>
 #include <QRegularExpression>
 #include <QInputDialog>
@@ -783,13 +784,12 @@ ThemeDialog::ThemeDialog(QWidget* parent)
     });
     connect(reset, &QPushButton::clicked, this, [this] { selectPalette(m_palette.id); });
     connect(m_saveAs, &QPushButton::clicked, this, [this] {
-        bool ok = false;
-        QString name = QInputDialog::getText(this, "New theme", "Name:", QLineEdit::Normal, m_palette.name + " (custom)", &ok).trimmed();
-        if (!ok || name.isEmpty()) return;
+        auto name = askName(this, "New theme", m_palette.name + " (custom)");
+        if (!name) return;
         theme::Palette p = m_palette;
-        p.name = name;
+        p.name = *name;
         // The settings key is derived from the name; saving the same name again just overwrites that theme.
-        QString key = name;
+        QString key = *name;
         key.replace(QRegularExpression("[^A-Za-z0-9_-]"), "_");
         p.id = "user:" + key;
         theme::saveUserTheme(p);

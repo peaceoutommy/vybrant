@@ -29,11 +29,6 @@ int TransportBar::snapDivisionFromIndex(int idx) {
     if (idx == 0) return 0;
     return kSnapItems[idx].div;
 }
-int TransportBar::indexFromSnapDivision(int div) {
-    for (int i = 1; i < 9; ++i)
-        if (kSnapItems[i].div == div) return i;
-    return div == 0 ? 9 : 5;
-}
 
 TransportBar::TransportBar(App& app, QWidget* parent)
     : QWidget(parent)
