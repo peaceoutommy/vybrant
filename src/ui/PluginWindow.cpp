@@ -3,6 +3,7 @@
 #include "ui/widgets/WaveView.h"
 #include "plugins/Vst3Plugin.h"
 #include "plugins/Vst2Plugin.h"
+#include "plugins/ClapPlugin.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -265,6 +266,7 @@ void PluginWindow::build() {
         layout()->addWidget(m_body);
         if (auto* v3 = dynamic_cast<Vst3Plugin*>(m_proc)) v3->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* v2 = dynamic_cast<Vst2Plugin*>(m_proc)) v2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
+        if (auto* c = dynamic_cast<ClapPlugin*>(m_proc)) c->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
     } else {
         auto* sc = new QScrollArea(this);
         sc->setWidgetResizable(true);

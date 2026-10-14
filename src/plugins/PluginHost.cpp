@@ -1,6 +1,7 @@
 #include "plugins/PluginHost.h"
 #include "plugins/Vst3Plugin.h"
 #include "plugins/Vst2Plugin.h"
+#include "plugins/ClapPlugin.h"
 #include "core/Log.h"
 #include <QStandardPaths>
 #include <QDir>
@@ -72,6 +73,11 @@ QString PluginDatabase::databasePath() {
     QDir().mkpath(d);
     return d + "/plugins.json";
 }
+static QStringList clapDirectories() {
+    QStringList d = {QDir::homePath() + "/.clap", "/usr/lib/clap", "/usr/local/lib/clap"};
+    for (auto& p : qEnvironmentVariable("CLAP_PATH").split(':', Qt::SkipEmptyParts)) d << p;
+    return d;
+}
 QStringList PluginDatabase::defaultDirectories() {
     QString home = QDir::homePath();
     QStringList d = {home + "/.vst3", "/usr/lib/vst3", "/usr/local/lib/vst3", home + "/.vst", "/usr/lib/vst", "/usr/local/lib/vst",
@@ -80,6 +86,7 @@ QStringList PluginDatabase::defaultDirectories() {
     for (auto& p : env.split(':', Qt::SkipEmptyParts)) d << p;
     env = qEnvironmentVariable("VST3_PATH");
     for (auto& p : env.split(':', Qt::SkipEmptyParts)) d << p;
+    d << clapDirectories();
     d.removeDuplicates();
     return d;
 }
@@ -115,6 +122,9 @@ void PluginDatabase::load() {
         m_dirs.clear();
         for (auto v : dirs) m_dirs << v.toString();
     }
+    if (root["version"].toInt() < 2)   // saved before CLAP support: add its default folders once
+        for (auto& d : clapDirectories())
+            if (!m_dirs.contains(d)) m_dirs << d;
     Q_EMIT changed();
 }
 void PluginDatabase::save() const {
@@ -127,7 +137,7 @@ void PluginDatabase::save() const {
     QJsonArray dirs;
     for (auto& d : m_dirs) dirs.append(d);
     QFile f(databasePath());
-    if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(QJsonObject{{"plugins", arr}, {"directories", dirs}}).toJson());
+    if (f.open(QIODevice::WriteOnly)) f.write(QJsonDocument(QJsonObject{{"version", 2}, {"plugins", arr}, {"directories", dirs}}).toJson());
 }
 const PluginInfo* PluginDatabase::find(const QString& format, const QString& uid) const {
     for (auto& p : m_plugins)
@@ -164,7 +174,7 @@ void PluginDatabase::markFailed(const QString& path, const QString& reason) {
         PluginInfo p;
         p.path = path;
         p.name = QFileInfo(path).completeBaseName();
-        p.format = path.endsWith(".vst3") ? "vst3" : "vst2";
+        p.format = path.endsWith(".vst3") ? "vst3" : path.endsWith(".clap") ? "clap" : "vst2";
         p.failed = true;
         p.failReason = reason;
         p.lastScanned = QDateTime::currentDateTime().toString(Qt::ISODate);
@@ -206,6 +216,7 @@ QStringList PluginScanner::candidateFiles(const QStringList& dirs) {
                 else walk(fi.absoluteFilePath(), depth + 1);
             } else if (fi.suffix() == "so" && !dir.contains("/Contents/")) out << fi.absoluteFilePath();
             else if (fi.suffix().compare("vst3", Qt::CaseInsensitive) == 0) out << fi.absoluteFilePath();
+            else if (fi.suffix().compare("clap", Qt::CaseInsensitive) == 0) out << fi.absoluteFilePath();
         }
     };
     for (auto& d : dirs) walk(d, 0);
@@ -300,6 +311,29 @@ int PluginScanner::scanChildMain(const QString& path) {
         out << QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact)) << "\n";
         out.flush();
     };
+    if (path.endsWith(".clap", Qt::CaseInsensitive)) {
+        QString err;
+        auto mod = ClapModule::load(path, &err);
+        if (!mod) {
+            QTextStream(stderr) << err << "\n";
+            return 2;
+        }
+        for (auto* d : mod->descriptors()) {
+            QStringList features;
+            for (auto* f = d->features; f && *f; ++f) features << QString::fromUtf8(*f);
+            auto inst = ClapPlugin::create(path, QString::fromUtf8(d->id), &err);   // instantiate to validate & learn editor info
+            if (!inst) {
+                QTextStream(stderr) << err << "\n";
+                continue;
+            }
+            bool synth = inst->kind() == ProcessorKind::Instrument;
+            emitJson(QJsonObject{{"format", "clap"}, {"uid", QString::fromUtf8(d->id)}, {"name", QString::fromUtf8(d->name)},
+                {"vendor", QString::fromUtf8(d->vendor)}, {"category", synth ? "Instrument" : "Effect"},
+                {"subCategories", features.join('|')}, {"version", QString::fromUtf8(d->version)}, {"hasEditor", inst->hasCustomEditor()},
+                {"numInputs", synth ? 0 : 2}, {"numOutputs", 2}});
+        }
+        return 0;
+    }
     bool isVst3 = path.endsWith(".vst3", Qt::CaseInsensitive) || QFileInfo(path).isDir();
     if (isVst3) {
         QString err;
@@ -400,6 +434,10 @@ std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData&
             if (!st.isEmpty()) p->restoreState(st);
             proc = std::move(p);
         }
+    } else if (data.format == "clap") {
+        auto p = ClapPlugin::create(path, data.identifier, &err);
+        if (p && !data.state.isEmpty()) p->restoreState(QJsonObject{{"pluginState", QString::fromLatin1(data.state.toBase64())}});
+        proc = std::move(p);
     } else err = "Unknown plugin format " + data.format;
     if (!proc) {
         if (error) *error = err;
