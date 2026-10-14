@@ -137,6 +137,7 @@ public:
         m_punch.store(on);
     }
     void setSelectedPattern(Id id) { m_selectedPattern.store(id); }
+    void setRenderTap(Id mixerTrackId) { m_renderTap.store(mixerTrackId); }   // offline stems: output this track instead of the master
     TransportView transport() const;
     double positionTicks() const { return m_posTicks.load(); }
     bool isPlaying() const { return m_playing.load(); }
@@ -231,7 +232,7 @@ private:
     double m_clockAccum = 0;
     bool m_clockRunning = false;
     std::atomic<Tick> m_punchIn{0}, m_punchOut{0};
-    std::atomic<Id> m_selectedPattern{0};
+    std::atomic<Id> m_selectedPattern{0}, m_renderTap{0};
     std::atomic<Tick> m_patternLength{PPQ * 4};
     double m_countInRemaining = 0;
     int64_t m_lastBeatIndex = -1;

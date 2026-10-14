@@ -720,12 +720,14 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
                     dr[i] += R[i] * lv;
                 }
         }
-    if (t.isMaster) {
+    Id tap = m_renderTap.load();
+    if (tap ? t.id == tap : t.isMaster) {
         for (int i = 0; i < n; ++i) {
             outL[i] += L[i];
             outR[i] += R[i];
         }
-    } else if (t.outputIdx >= 0) {
+    }
+    if (!t.isMaster && t.outputIdx >= 0) {
         auto& dst = s.tracks[t.outputIdx];
         for (int i = 0; i < n; ++i) {
             dst.inL[i] += L[i];

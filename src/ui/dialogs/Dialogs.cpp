@@ -475,6 +475,9 @@ ExportDialog::ExportDialog(App& app, QWidget* parent)
     form->addRow(m_mono);
     form->addRow(m_normalize);
     form->addRow(m_dither);
+    m_stems = new QCheckBox("Split mixer tracks (one file per used track)", this);
+    m_stems->setToolTip("Stems: every mixer track something plays into, as heard there (after its effects and fader), plus the master");
+    form->addRow(m_stems);
     m_tail = new QDoubleSpinBox(this);
     m_tail->setRange(0, 60);
     m_tail->setValue(3);
@@ -504,6 +507,7 @@ void ExportDialog::doExport() {
     o.normalize = m_normalize->isChecked();
     o.dither = m_dither->isChecked();
     o.tailSeconds = m_tail->value();
+    o.stems = m_stems->isChecked();
     int range = m_range->currentIndex();
     o.songMode = range != 1;
     if (range == 2) {
@@ -523,7 +527,7 @@ void ExportDialog::doExport() {
         &err);
     setEnabled(true);
     if (ok) {
-        QMessageBox::information(this, "Export", "Exported to " + o.path);
+        QMessageBox::information(this, "Export", (o.stems ? "Exported stems to " + QFileInfo(o.path).absolutePath() : "Exported to " + o.path));
         accept();
     } else QMessageBox::warning(this, "Export failed", err);
 }

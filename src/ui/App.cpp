@@ -1646,7 +1646,35 @@ bool App::applyAudioConfig(const AudioConfig& cfg, QString* error) {
 bool App::exportAudio(const RenderOptions& opt, std::function<bool(double)> progress, QString* error) {
     m_engine->stop();
     m_engine->syncStateToProject(project());
-    bool ok = RenderEngine::render(*m_engine, project(), opt, std::move(progress), error);
+    if (!opt.stems) {
+        bool ok = RenderEngine::render(*m_engine, project(), opt, std::move(progress), error);
+        syncTransportToEngine();
+        return ok;
+    }
+    // FL's "split mixer tracks": every insert something plays into, as heard there (post effects and fader), plus the master
+    auto& p = project();
+    std::set<Id> used{p.masterId()};
+    for (auto& c : p.channels) used.insert(c.mixerTrackId);
+    for (auto& c : p.clips)
+        if (auto* t = p.track(c.trackId); t && c.type == ClipType::Audio) used.insert(t->mixerTrackId);
+    for (auto& t : p.mixerTracks) {
+        if (t.inputChannel >= 0) used.insert(t.id);
+        for (auto& s : t.sends) used.insert(s.targetTrackId);
+        if (t.outputTrackId) used.insert(t.outputTrackId);
+    }
+    std::vector<const MixerTrack*> tracks;
+    for (auto& t : p.mixerTracks)
+        if (used.count(t.id)) tracks.push_back(&t);
+    QFileInfo fi(opt.path);
+    bool ok = true;
+    for (size_t i = 0; i < tracks.size() && ok; ++i) {
+        RenderOptions o = opt;
+        o.tapTrack = tracks[i]->id;
+        QString name = tracks[i]->isMaster ? "Master" : tracks[i]->name;
+        name.replace(QRegularExpression("[^A-Za-z0-9 _.-]"), "_");
+        o.path = QString("%1/%2_%3 %4.%5").arg(fi.absolutePath(), fi.completeBaseName()).arg(p.mixerIndex(o.tapTrack), 2, 10, QChar('0')).arg(name, o.format);
+        ok = RenderEngine::render(*m_engine, p, o, [&](double v) { return !progress || progress((i + v) / tracks.size()); }, error);
+    }
     syncTransportToEngine();
     return ok;
 }

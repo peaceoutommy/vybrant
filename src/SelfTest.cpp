@@ -160,6 +160,19 @@ int runSelfTest(App& app) {
         CHECK(r && frames > 44100 && ch == 2, "offline render produces a stereo file of the song length");
         auto asset = AudioFile::load(o.path, 0);
         CHECK(asset && asset->peakValue > 0.1f, "rendered audio is not silent");
+        o.stems = true;
+        o.path = tmp.path() + "/stems/s.wav";
+        QDir().mkpath(tmp.path() + "/stems");
+        r = app.exportAudio(o, nullptr, &err);
+        QStringList files = QDir(tmp.path() + "/stems").entryList({"*.wav"}, QDir::Files, QDir::Name);
+        auto peak = [&](const QString& part) {
+            for (auto& f : files)
+                if (f.contains(part))
+                    if (auto a = AudioFile::load(tmp.path() + "/stems/" + f, 0)) return a->peakValue;
+            return -1.f;
+        };
+        CHECK(r && files.size() >= 5 && peak("_00 Master") > 0.1f && peak(" Kick") > 0.1f && peak(" Snare") >= 0 && peak(" Snare") < 1e-4f,
+            "stems: one file per used mixer track, each holding only what plays there (the demo snare has no steps)");
     }
     // ---- sample modes: tempo from names, clip speed, stretch flavours, sampler tempo fit
     {

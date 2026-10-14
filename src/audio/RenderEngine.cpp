@@ -28,6 +28,7 @@ bool RenderEngine::render(
     engine.setMetronome(false);
     engine.setCountIn(false, 1);
     engine.setRecording(false);
+    engine.setRenderTap(opt.tapTrack);
     engine.seek(start);
     engine.play();
     double sr = opt.sampleRate;
@@ -70,6 +71,7 @@ bool RenderEngine::render(
         }
     }
     engine.stop();
+    engine.setRenderTap(0);
     engine.offlineEnd();
     if (!wasRunning) engine.stopDevice();
     if (cancelled) {

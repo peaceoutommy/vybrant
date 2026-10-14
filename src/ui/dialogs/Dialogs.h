@@ -74,7 +74,7 @@ private:
     App& m_app;
     QLineEdit* m_path;
     QComboBox *m_format, *m_sr, *m_bits, *m_range;
-    QCheckBox *m_mono, *m_normalize, *m_dither;
+    QCheckBox *m_mono, *m_normalize, *m_dither, *m_stems;
     QDoubleSpinBox* m_tail;
     QProgressBar* m_progress;
     bool m_cancel = false;
