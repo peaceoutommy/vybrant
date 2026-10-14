@@ -1,7 +1,7 @@
 # MusicThingy
 
 A Linux-native digital audio workstation with a pattern-based workflow: Channel Rack + step sequencer, Piano Roll,
-Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP hosting,
+Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP/LV2 hosting,
 automation, audio/MIDI recording and offline rendering. Original UI, original DSP.
 
 ## Building
@@ -18,6 +18,7 @@ Dependencies (all available from common distro repositories):
 | MP3 export | LAME |
 | Spectrum analyzer | FFTW3 (single precision) |
 | Plugin GUIs | libX11 |
+| LV2 hosting | lilv (+ LV2 headers) |
 
 ```bash
 qmake6 MusicThingy.pro && make -j$(nproc)      # primary build
@@ -62,7 +63,7 @@ src/
              (lock-free rings -> disk thread), RenderEngine (offline export), AudioFile (loading, stretching,
              multiresolution waveform cache)
   midi/      MidiEngine (ALSA sequencer I/O thread, clock, controller learn)
-  plugins/   Vst3Abi.h / Vst2Abi.h / ClapAbi.h (self-written binary interface declarations), Vst3Plugin, Vst2Plugin, ClapPlugin adapters,
+  plugins/   Vst3Abi.h / Vst2Abi.h / ClapAbi.h (self-written binary interface declarations), Vst3Plugin, Vst2Plugin, ClapPlugin, Lv2Plugin adapters,
              PluginHost / PluginDatabase / PluginScanner (out-of-process), PluginEmbedWidget (X11 editor host)
   ui/        App (wires everything; every UI action is a command), MainWindow (dockable workspace), TransportBar,
              BrowserPanel, ChannelRackPanel, PianoRollPanel, PlaylistPanel, MixerPanel, PluginWindow (generic
@@ -134,6 +135,11 @@ added in the Plugin Manager. CLAP plugins (`*.clap`) are found in `~/.clap`, `/u
 interfaces (`src/plugins/Vst3Abi.h`, `Vst2Abi.h`, `ClapAbi.h`); no SDK code is included, so redistribution is not bound by the
 SDK licences. Plugin state, parameters (by stable id), latency, editors (X11 embedded with a host run loop for VST3)
 and MIDI mapping are supported. Failed plugins are listed with the reason and can be hidden or rescanned.
+
+LV2 plugins are found through lilv in `$LV2_PATH`, `~/.lv2`, `/usr/local/lib/lv2` and `/usr/lib/lv2` (read in-process: lilv only
+parses the bundles' Turtle). Control ports become parameters; MIDI, transport (`time:Position`), latency, the worker, options and
+state (`state:interface`, else the control port values) are supported. X11 UIs are embedded directly; plugins without one get
+the generic parameter editor. Mono plugins process the sum of the stereo pair and their output goes to both channels.
 
 ## Project format
 

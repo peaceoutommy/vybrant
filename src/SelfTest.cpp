@@ -11,6 +11,11 @@
 #include "ui/widgets/Controls.h"
 #include "ui/AudioEditor.h"
 #include "ui/PlaylistPanel.h"
+#include "plugins/Lv2Plugin.h"
+#include <QProcess>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
 #include <QMouseEvent>
 #include <QMenu>
 #include <QInputDialog>
@@ -152,6 +157,55 @@ int runSelfTest(App& app) {
         app.engine().rebuild(app.project());
         CHECK(app.engine().registry().track(app.project().mixerTracks[2].id).generatorDelay.delay == 0,
             "PDC updates when the effect is removed");
+    }
+    // ---- LV2 hosting: the gain plugin in tests/lv2, built with the system C compiler into a temporary bundle
+    {
+        QString src = QCoreApplication::applicationDirPath() + "/../tests/lv2/test-gain";
+        QString lv2Dir = tmp.path() + "/lv2", bundle = lv2Dir + "/mt-test-gain.lv2";
+        QString cc = QStandardPaths::findExecutable("cc");
+        bool built = !cc.isEmpty() && QDir().mkpath(bundle) && QFile::copy(src + "/manifest.ttl", bundle + "/manifest.ttl") &&
+            QFile::copy(src + "/plugin.ttl", bundle + "/plugin.ttl") &&
+            QProcess::execute(cc, {"-shared", "-fPIC", "-O2", "-o", bundle + "/mt-test-gain.so", src + "/gain.c"}) == 0;
+        if (!built) std::printf("  skip LV2 checks (no C compiler or LV2 headers, or tests/lv2 not next to bin/)\n");
+        else {
+            qputenv("LV2_PATH", lv2Dir.toLocal8Bit());
+            PluginInfo info;
+            for (auto& p : Lv2Plugin::scan())
+                if (p.uid == "urn:musicthingy:test-gain") info = p;
+            CHECK(info.format == "lv2" && info.category == "Effect" && info.numInputs == 2 && info.numOutputs == 2 && !info.hasEditor &&
+                    !info.failed && info.path == bundle,
+                "LV2 scan finds the test plugin");
+            auto gainOut = [&](IProcessor* p) {
+                std::fill(L.begin(), L.end(), 0.5f);
+                std::fill(R.begin(), R.end(), -0.5f);
+                midi.clear();
+                p->process(L.data(), R.data(), 512, midi, ctx);
+                return std::fabs(L[100] - 0.25f) < 1e-6f && std::fabs(R[100] + 0.25f) < 1e-6f;
+            };
+            auto a = Lv2Plugin::create(info.uid, info.path, &err);
+            if (a) {
+                a->prepare(44100, 512);
+                a->params().set(4, 0.5f);   // the gain port
+            }
+            CHECK(a && gainOut(a.get()), "LV2 plugin applies its control port (gain 0.5)");
+            CHECK(a && a->latencySamples() == 64, "LV2 latency port is read");
+            auto b = Lv2Plugin::create(info.uid, info.path, &err);
+            if (a && b) {
+                b->restoreState(QJsonObject{{"pluginState", a->saveState()["pluginState"]}});   // as PluginHost::createInstance does
+                b->prepare(44100, 512);
+            }
+            CHECK(a && b && std::fabs(b->params().get(4) - 0.5f) < 1e-6f && gainOut(b.get()), "LV2 state round-trips into a new instance");
+            app.pluginDb().addOrUpdate(info);
+            Id t1 = app.project().mixerTracks[1].id;
+            Id slot = app.addPluginEffect(t1, info);
+            app.engine().rebuild(app.project());
+            IProcessor* fx = app.processor(slot);
+            CHECK(fx && fx->pluginFormat() == "lv2" &&
+                    app.engine().registry().track(app.project().mixerTracks[2].id).generatorDelay.delay == 64,
+                "an LV2 effect on a mixer track drives delay compensation");
+            app.removeEffect(t1, slot);
+            app.engine().rebuild(app.project());
+        }
     }
     // ---- offline render of the default beat
     {
