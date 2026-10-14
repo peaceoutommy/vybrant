@@ -1,6 +1,7 @@
 #include "plugins/PluginHost.h"
 #include "plugins/Vst3Plugin.h"
 #include "plugins/Vst2Plugin.h"
+#include "plugins/Lv2Plugin.h"
 #include "core/Log.h"
 #include <QStandardPaths>
 #include <QDir>
@@ -14,6 +15,7 @@
 #include <dlfcn.h>
 #include <QTimer>
 #include <QFileInfo>
+#include <QSignalBlocker>
 #include <functional>
 
 namespace mt {
@@ -203,7 +205,7 @@ QStringList PluginScanner::candidateFiles(const QStringList& dirs) {
         for (auto& fi : d.entryInfoList(QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot)) {
             if (fi.isDir()) {
                 if (fi.fileName().endsWith(".vst3", Qt::CaseInsensitive)) out << fi.absoluteFilePath();
-                else walk(fi.absoluteFilePath(), depth + 1);
+                else if (!fi.fileName().endsWith(".lv2")) walk(fi.absoluteFilePath(), depth + 1);   // LV2 bundles: Lv2Plugin::scan
             } else if (fi.suffix() == "so" && !dir.contains("/Contents/")) out << fi.absoluteFilePath();
             else if (fi.suffix().compare("vst3", Qt::CaseInsensitive) == 0) out << fi.absoluteFilePath();
         }
@@ -218,6 +220,11 @@ void PluginScanner::scan(bool rescanAll) {
     m_cancel = false;
     m_queue.clear();
     m_done = 0;
+    {   // LV2: lilv only reads the bundles' Turtle (no plugin code runs), so this is done in-process; one change signal for all
+        const QSignalBlocker block(&m_db);
+        for (auto& p : Lv2Plugin::scan()) m_db.addOrUpdate(p);
+    }
+    Q_EMIT m_db.changed();
     for (auto& f : candidateFiles(m_db.directories())) {
         if (!rescanAll) {
             if (auto* p = m_db.findByPath(f)) {
@@ -230,6 +237,7 @@ void PluginScanner::scan(bool rescanAll) {
     }
     m_total = m_queue.size();
     if (m_queue.isEmpty()) {
+        m_db.save();
         Q_EMIT finished();
         return;
     }
@@ -394,6 +402,14 @@ std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData&
         }
     } else if (data.format == "vst2") {
         auto p = Vst2Plugin::create(path, &err);
+        if (p) {
+            QJsonObject st;
+            if (!data.state.isEmpty()) st["pluginState"] = QString::fromLatin1(data.state.toBase64());
+            if (!st.isEmpty()) p->restoreState(st);
+            proc = std::move(p);
+        }
+    } else if (data.format == "lv2") {
+        auto p = Lv2Plugin::create(data.identifier, path, &err);
         if (p) {
             QJsonObject st;
             if (!data.state.isEmpty()) st["pluginState"] = QString::fromLatin1(data.state.toBase64());
