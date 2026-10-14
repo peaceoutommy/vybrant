@@ -35,15 +35,18 @@ public:
     QStringList enabledOutputs() const { return m_enabledOutputs; }
     void setEnabledOutputs(const QStringList& ids);
     void setLearning(bool on) { m_learning.store(on); }
+    void setClockFollow(bool on) { m_clockIn.store(on); }   // follow incoming MIDI clock: tempo, start / stop, song position
     int activityCounter() const { return m_activity.load(); }
     void loadSettings();
     void saveSettings() const;
 Q_SIGNALS:
     void ccReceived(int cc, int channel, int value);
+    void clockTransport(int what, double tick);   // MIDI clock in: 0 start, 1 continue, 2 stop, 3 song position at 'tick' (UI thread)
 
 private:
     void threadLoop();
     void handleAlsaEvent(void* ev);
+    void handleClock(int type, int songPos);
     void flushOutput();
     void connectInput(const MidiPortInfo& p, bool connect);
     void connectOutput(const MidiPortInfo& p, bool connect);
@@ -51,7 +54,13 @@ private:
     void* m_seq = nullptr;
     int m_inPort = -1, m_outPort = -1;
     std::thread m_thread;
-    std::atomic<bool> m_running{false}, m_learning{false};
+    std::atomic<bool> m_running{false}, m_learning{false}, m_clockIn{false};
+    // MIDI clock in (MIDI thread only)
+    static constexpr int kClockWindow = 96;   // tempo = average over the last 4 beats of clocks
+    double m_clockTimes[kClockWindow] = {};
+    int64_t m_clockN = 0, m_clockCount = 0;
+    double m_clockBase = 0;
+    bool m_clockRunning = false;
     std::atomic<int> m_activity{0};
     QStringList m_enabledInputs, m_enabledOutputs;
     std::vector<std::pair<int, int>> m_outputTargets;

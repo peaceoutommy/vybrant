@@ -1,6 +1,7 @@
 #include <QMenu>
 #include <QColorDialog>
 #include "ui/App.h"
+#include "audio/JackTransport.h"
 #include "ui/widgets/Controls.h"
 #include <QRegularExpression>
 #include <cstdio>
@@ -39,6 +40,12 @@ App::App(QObject* parent)
     connect(m_engine.get(), &AudioEngine::transportStateChanged, this, &App::onTransportStateChanged);
     connect(m_engine.get(), &AudioEngine::pluginCrashed, this, &App::onPluginCrashed);
     connect(m_midi.get(), &MidiEngine::ccReceived, this, &App::onCcReceived);
+    connect(m_midi.get(), &MidiEngine::clockTransport, this, [this](int what, double tick) {
+        if (what == 0) seek(0);
+        if (what == 0 || what == 1) play();
+        else if (what == 2) pause();   // MIDI Stop: a Continue resumes from here
+        else seek((Tick)tick);
+    });
     connect(&m_autosaveTimer, &QTimer::timeout, this, &App::autosave);
     connect(&m_stretchTimer, &QTimer::timeout, this, &App::updateSamplerStretch);
     m_stretchTimer.start(250);
@@ -83,6 +90,8 @@ void App::initialize() {
     m_recorder->setSampleRate(m_engine->sampleRate());
     m_midi->start();
     m_engine->setMidiClockOut(QSettings().value("midi/clockOut", false).toBool());
+    m_midi->setClockFollow(QSettings().value("midi/clockIn", false).toBool());
+    if (QSettings().value("sync/jack", false).toBool()) setJackSync(true);
     m_model.replaceProject(makeDefaultProject());
     m_engine->rebuild(project());
 }
@@ -389,20 +398,24 @@ void App::play() {
     if (!m_previewPath.isEmpty()) stopPreview();
     if (m_engine->isRecording() && !m_engine->isPlaying()) beginRecordPass();
     m_engine->play();
+    if (m_jack) m_jack->play();
 }
 void App::stop() {
     bool playing = m_engine->isPlaying();
     if (m_engine->isRecording()) record(false);
     endRecordPass();
+    if (m_jack) m_jack->stop();
     if (!playing) {
-        m_engine->seek(0);
+        seek(0);
         return;
     }   // FL: Stop while stopped jumps to the song start
     m_engine->stop();
+    if (m_jack) m_jack->locate(project().transport.songMode && project().transport.loopEnabled ? project().transport.loopStart : 0);
 }
 void App::pause() {
     m_engine->pause();
     endRecordPass();
+    if (m_jack) m_jack->stop();
 }
 void App::togglePlay() {
     if (m_engine->isPlaying()) stop();
@@ -415,9 +428,29 @@ void App::record(bool on) {
     m_engine->setRecording(on);
     if (!on) endRecordPass();
 }
-void App::seek(Tick t) { m_engine->seek(t); }
+void App::seek(Tick t) {
+    m_engine->seek(t);
+    if (m_jack) m_jack->locate(t);
+}
+bool App::setJackSync(bool on, QString* error) {
+    QSettings().setValue("sync/jack", on);
+    m_jack.reset();
+    if (!on) return true;
+    JackTransport::Host h;
+    h.playing = [this] { return m_engine->isPlaying(); };
+    h.positionTicks = [this] { return m_engine->positionTicks(); };
+    h.bpm = [this] { return m_engine->transport().bpm; };
+    h.looping = [this] { return !project().transport.songMode || project().transport.loopEnabled; };
+    h.setPlaying = [this](bool b) { b ? play() : pause(); };
+    h.seek = [this](Tick t) { seek(t); };
+    h.setBpm = [this](double b) { m_engine->setBpm(b); };
+    m_jack = std::make_unique<JackTransport>(std::move(h));
+    if (m_jack->open(error)) return true;
+    m_jack.reset();
+    return false;
+}
 void App::seekToStart() {
-    m_engine->seek(project().transport.songMode && project().transport.loopEnabled ? project().transport.loopStart : 0);
+    seek(project().transport.songMode && project().transport.loopEnabled ? project().transport.loopStart : 0);
 }
 void App::setBpm(double bpm, bool commit) {
     bpm = clamp(bpm, 20.0, 999.0);

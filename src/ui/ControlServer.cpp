@@ -117,6 +117,8 @@ QString ControlServer::handle(const QString& line) {
         for (auto& ch : m_app.project().channels) l << ch.name;
         return l.join(" | ");
     }
+    if (c == "pos") return QString::number(m_app.engine().positionTicks(), 'f', 0);
+    if (c == "bpm") return QString::number(m_app.engine().transport().bpm, 'f', 2);
     if (c == "stats")
         return QString("device=%1 playing=%2 xruns=%3 sr=%4 cpu=%5")
             .arg(m_app.engine().deviceRunning())

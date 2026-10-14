@@ -5,6 +5,8 @@
 #include <poll.h>
 #include <QSettings>
 #include <QMetaObject>
+#include <chrono>
+#include <cmath>
 
 namespace mt {
 
@@ -142,11 +144,61 @@ void MidiEngine::threadLoop() {
     }
 }
 
+void MidiEngine::handleClock(int type, int songPos) {
+    auto transport = [this](int what, double tick) {
+        QMetaObject::invokeMethod(this, [this, what, tick] { Q_EMIT clockTransport(what, tick); }, Qt::QueuedConnection);
+    };
+    switch (type) {
+    case SND_SEQ_EVENT_CLOCK: {
+        double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        m_clockTimes[m_clockN++ % kClockWindow] = now;
+        int64_t n = std::min<int64_t>(m_clockN, kClockWindow);
+        if (n < 2) return;
+        double bpm = 60.0 / ((now - m_clockTimes[(m_clockN - n) % kClockWindow]) / (n - 1) * 24.0);
+        if (m_clockRunning) {
+            // phase lock: nudge the tempo until the playhead's place in the beat matches the clock's (loops are beat-aligned)
+            double expect = std::fmod(m_clockBase + m_clockCount++ * (PPQ / 24.0), PPQ);
+            double err = std::remainder(expect - std::fmod(m_engine.positionTicks(), PPQ), PPQ);
+            bpm *= 1.0 + std::clamp(err / PPQ, -0.03, 0.03);
+        }
+        if (bpm >= 20 && bpm <= 999) m_engine.setBpm(bpm);
+        break;
+    }
+    case SND_SEQ_EVENT_START:
+        m_clockRunning = true;
+        m_clockBase = 0;
+        m_clockCount = 0;
+        transport(0, 0);
+        break;
+    case SND_SEQ_EVENT_CONTINUE:
+        m_clockRunning = true;
+        m_clockBase = m_engine.positionTicks();
+        m_clockCount = 0;
+        transport(1, 0);
+        break;
+    case SND_SEQ_EVENT_STOP:
+        m_clockRunning = false;
+        transport(2, 0);
+        break;
+    case SND_SEQ_EVENT_SONGPOS:   // in MIDI beats (sixteenths)
+        m_clockBase = songPos * (PPQ / 4.0);
+        m_clockCount = 0;
+        transport(3, m_clockBase);
+        break;
+    }
+}
 void MidiEngine::handleAlsaEvent(void* evp) {
     auto* ev = (snd_seq_event_t*)evp;
     MidiEvent e;
     bool ok = true;
     switch (ev->type) {
+    case SND_SEQ_EVENT_CLOCK:
+    case SND_SEQ_EVENT_START:
+    case SND_SEQ_EVENT_CONTINUE:
+    case SND_SEQ_EVENT_STOP:
+    case SND_SEQ_EVENT_SONGPOS:
+        if (m_clockIn.load()) handleClock(ev->type, ev->data.control.value);
+        return;
     case SND_SEQ_EVENT_NOTEON:
         e.type = ev->data.note.velocity ? MidiEvent::NoteOn : MidiEvent::NoteOff;
         e.channel = ev->data.note.channel;

@@ -88,6 +88,8 @@ public:
     void setCountIn(bool c);
     void setPunch(bool on, Tick in, Tick out);
     void setLoopRecord(bool on);
+    bool setJackSync(bool on, QString* error = nullptr);   // remembered; false when JACK isn't running
+    bool jackSync() const { return m_jack != nullptr; }
     Tick snapTicks() const;
     Tick snapTick(Tick t, bool force = false) const;
     void selectPattern(Id id);
@@ -224,6 +226,7 @@ private:
     std::unique_ptr<AudioEngine> m_engine;
     std::unique_ptr<RecordingEngine> m_recorder;
     std::unique_ptr<MidiEngine> m_midi;
+    std::unique_ptr<class JackTransport> m_jack;
     PluginDatabase m_pluginDb;
     std::unique_ptr<PluginScanner> m_scanner;
     std::unique_ptr<PluginHost> m_pluginHost;

@@ -93,6 +93,17 @@ AudioSettingsDialog::AudioSettingsDialog(App& app, QWidget* parent)
     form->addRow("Input channels", m_inCh);
     form->addRow("Output channels", m_outCh);
     form->addRow(m_monitor);
+    auto* jack = new QCheckBox("Sync transport with JACK (play, stop and position follow other JACK apps)", this);
+    jack->setChecked(m_app.jackSync());
+    form->addRow(jack);
+    connect(jack, &QCheckBox::toggled, this, [this, jack](bool b) {
+        QString err;
+        if (!m_app.setJackSync(b, &err)) {
+            QSignalBlocker sb(jack);
+            jack->setChecked(false);
+            m_status->setText(err);
+        }
+    });
     m_status = new QLabel(this);
     m_status->setWordWrap(true);
     form->addRow(m_status);
@@ -167,6 +178,14 @@ MidiSettingsDialog::MidiSettingsDialog(App& app, QWidget* parent)
     connect(m_clock, &QCheckBox::toggled, this, [this](bool b) {
         QSettings().setValue("midi/clockOut", b);
         m_app.engine().setMidiClockOut(b);
+    });
+    auto* clockIn = new QCheckBox("Follow incoming MIDI clock (tempo, start / stop, song position)", this);
+    clockIn->setChecked(QSettings().value("midi/clockIn", false).toBool());
+    lay->addWidget(clockIn);
+    connect(clockIn, &QCheckBox::toggled, this, [this](bool b) {
+        QSettings().setValue("midi/clockIn", b);
+        m_app.midi().setClockFollow(b);
+        if (!b) m_app.engine().setBpm(m_app.project().transport.bpm);   // back to the project's own tempo
     });
     lay->addWidget(new QLabel("Controller links (right-click any knob/fader > Link to MIDI controller):", this));
     m_mappings = new QTableWidget(this);

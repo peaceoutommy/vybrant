@@ -17,7 +17,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config qmake6 qt6-base-dev libgl1-mesa-dev \
             portaudio19-dev libasound2-dev libsndfile1-dev libsamplerate0-dev \
-            librubberband-dev libmp3lame-dev libfftw3-dev libx11-dev python3
+            librubberband-dev libmp3lame-dev libfftw3-dev libx11-dev libjack-jackd2-dev python3
 
       - name: Build
         run: |
@@ -35,6 +35,11 @@ jobs:
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}
         run: python3 tests/ui_test.py ./bin/musicthingy
+
+      - name: Sync test (JACK transport, MIDI clock in; skips what the runner lacks)
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}
+        run: python3 tests/sync_test.py ./bin/musicthingy
 
   format-check:
     # Advisory: clang-format output differs slightly between versions, so a mismatch here doesn't fail the build
