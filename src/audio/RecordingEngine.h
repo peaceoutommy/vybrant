@@ -1,5 +1,6 @@
 // Audio recording: RT thread writes input samples into per-track lock-free rings; a writer thread drains them to
-// WAV files. Takes are finalised on stop (or per loop pass when loop-recording) and turned into audio clips.
+// WAV files, one continuous file per armed track per recording pass. The UI splits a pass into takes afterwards
+// (AudioEngine::recordSegment says where each loop pass / punch-in starts in the file).
 #pragma once
 #include "core/RingBuffer.h"
 #include "core/Types.h"
@@ -14,13 +15,12 @@
 
 namespace mt {
 
-struct RecordedTake {
+struct RecordedFile {
     Id mixerTrackId = 0;
     QString filePath;
-    Tick startTick = 0;
     int64_t frames = 0;
     int channels = 1;
-    int takeIndex = 0;
+    double sampleRate = 44100;
 };
 
 class RecordingEngine : public QObject {
@@ -33,13 +33,10 @@ public:
     void setSampleRate(double sr) { m_sr = sr; }
     void setRecordDirectory(const QString& dir) { m_dir = dir; }
     QString recordDirectory() const { return m_dir; }
-    // Begin writing files for the given armed tracks
-    void start(const std::vector<std::pair<Id, int>>& armedTracks, Tick startTick);
-    void newTake(Tick startTick);   // finalise current files and begin a new pass (loop recording)
-    std::vector<RecordedTake> stop();   // finalise, returns takes
+    // Begin writing files for the given armed tracks. Call before the engine starts recording: it empties the rings.
+    void start(const std::vector<std::pair<Id, int>>& armedTracks);
+    std::vector<RecordedFile> stop();   // finalise, returns the files
     bool isActive() const { return m_active.load(); }
-Q_SIGNALS:
-    void takesFinished(const std::vector<RecordedTake>& takes);
 
 private:
     struct Writer {
@@ -48,13 +45,11 @@ private:
         FloatRing* ring;
         void* sndfile = nullptr;
         QString path;
-        Tick startTick;
         int64_t frames = 0;
-        int take = 0;
+        double sr = 44100;
     };
     void writerLoop();
     void flushWriter(Writer& w, bool all);
-    std::vector<RecordedTake> finalise();
     std::map<Id, std::unique_ptr<FloatRing>> m_rings;
     std::map<Id, int> m_ringChannels;
     std::vector<Writer> m_writers;
@@ -65,7 +60,6 @@ private:
     QString m_dir;
     int m_takeCounter = 0;
     std::vector<float> m_tmp;
-    std::vector<RecordedTake> m_finished;
 };
 
 }   // namespace mt

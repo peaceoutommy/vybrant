@@ -44,6 +44,7 @@ public:
     const AudioConfig& config() const { return m_cfg; }
     double actualSampleRate() const { return m_actualSr; }
     double reportedOutputLatency() const { return m_outLatency; }
+    double reportedInputLatency() const { return m_inLatency; }
     int xruns() const { return m_xruns.load(); }
     static std::vector<int> standardBufferSizes() { return {32, 64, 128, 256, 512, 1024, 2048}; }
     static std::vector<double> standardSampleRates() { return {44100, 48000, 88200, 96000, 176400, 192000}; }
@@ -60,7 +61,7 @@ private:
     Callback m_cb;
     bool m_paInit = false;
     double m_actualSr = 44100;
-    double m_outLatency = 0;
+    double m_outLatency = 0, m_inLatency = 0;
     std::atomic<int> m_xruns{0};
     std::vector<float> m_silence;
 };

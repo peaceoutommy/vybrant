@@ -293,6 +293,97 @@ int runSelfTest(App& app) {
         app.deleteMixerTrack(t2);
         app.deleteMixerTrack(t1);
     }
+    // ---- recording passes, FL style: Record only arms and Play starts the pass; in song mode every loop pass of the input is a
+    // take of one file, stacked on the insert's playlist tracks with the older ones muted; notes recorded outside the pattern's
+    // clips get a clip where the pass started; each pass is one undo step
+    {
+        auto& pr = app.project();
+        auto& eng = app.engine();
+        QTemporaryDir recDir;
+        app.recorder().setRecordDirectory(recDir.path());
+        Id ins = app.addMixerTrack("Mic");
+        model.edit<MixerTrack>(ins, "", [](MixerTrack& t) { t.inputChannel = 0, t.armed = true; });
+        TransportSettings saved = pr.transport;
+        Tick bar = pr.transport.timeSig.ticksPerBar();
+        model.editTransport("", [bar](TransportSettings& t) {
+            t.songMode = t.loopEnabled = t.loopRecord = true;
+            t.punchEnabled = t.countIn = false;
+            t.recordMode = 2;
+            t.loopStart = 0;
+            t.loopEnd = bar;
+        });
+        const int B = 512;
+        eng.offlineBegin(44100, B);
+        std::vector<float> l(B), r(B), in(B * 2, 0.25f);
+        auto run = [&](int blocks) {
+            for (int i = 0; i < blocks; ++i) {
+                eng.offlineProcess(l.data(), r.data(), B, in.data(), 2);
+                eng.poll();
+            }
+        };
+        size_t clips0 = pr.clips.size(), tracks0 = pr.playlistTracks.size(), undo0 = model.undoStack().count();
+        app.record(true);
+        run(1);
+        CHECK(eng.isRecording() && !eng.isPlaying(), "Record only arms the transport");
+        app.play();
+        double barFrames = (double)bar / PPQ * 60.0 / pr.transport.bpm * 44100;
+        int blocks = (int)(barFrames * 2.5 / B);
+        run(blocks);
+        app.stop();
+        std::vector<const Clip*> takes;
+        for (auto& c : pr.clips)
+            if (c.type == ClipType::Audio && pr.track(c.trackId) && pr.track(c.trackId)->mixerTrackId == ins) takes.push_back(&c);
+        const AudioSource* src = takes.empty() ? nullptr : pr.audioSource(takes[0]->sourceId);
+        CHECK(src && src->frames == (int64_t)blocks * B, "the pass is one file with every recorded frame");
+        CHECK(takes.size() == 3, QString("2.5 loop passes make 3 takes (%1)").arg(takes.size()).toUtf8().constData());
+        if (takes.size() == 3) {
+            bool atLoop = true, offsets = true, tracks = takes[0]->trackId != takes[1]->trackId && takes[1]->trackId != takes[2]->trackId;
+            for (int i = 0; i < 3; ++i) {
+                atLoop = atLoop && takes[i]->start == 0;
+                if (i) offsets = offsets && std::abs(takes[i]->sourceOffset - takes[i - 1]->sourceOffset - bar) <= 1;
+            }
+            CHECK(atLoop && offsets, "each take starts at the loop start, a loop length further into the file");
+            CHECK(tracks && takes[0]->muted && takes[1]->muted && !takes[2]->muted, "takes stack on their own tracks, only the newest audible");
+        }
+        model.undoStack().undo();
+        CHECK(pr.clips.size() == clips0 && pr.playlistTracks.size() == tracks0 && model.undoStack().count() == undo0,
+            "one undo removes the whole pass");
+        // notes in song mode, starting mid-bar outside any clip of the pattern
+        Id pat = app.addPattern("RecTest");
+        app.selectPattern(pat);
+        model.editTransport("", [](TransportSettings& t) { t.recordMode = 1, t.loopEnabled = false; });
+        app.seek(bar * 2 + PPQ);
+        app.record(true);
+        run(1);
+        app.play();
+        run(4);
+        MidiEvent on;
+        on.type = MidiEvent::NoteOn;
+        on.data1 = 64;
+        eng.pushUiMidi(on);
+        run(20);
+        MidiEvent off = on;
+        off.type = MidiEvent::NoteOff;
+        eng.pushUiMidi(off);
+        run(4);
+        size_t undo1 = model.undoStack().count();
+        app.stop();
+        const Pattern* p = pr.pattern(pat);
+        int notes = 0;
+        for (auto& cd : p->channels) notes += (int)cd.notes.size();
+        auto clip = std::find_if(pr.clips.begin(), pr.clips.end(), [&](const Clip& c) { return c.type == ClipType::Pattern && c.sourceId == pat; });
+        CHECK(notes == 1 && clip != pr.clips.end() && clip->start == bar * 2, "song-mode notes get a pattern clip at the bar the pass started in");
+        model.undoStack().undo();
+        notes = 0;
+        for (auto& cd : pr.pattern(pat)->channels) notes += (int)cd.notes.size();
+        CHECK(notes == 0 && model.undoStack().count() == undo1 &&
+                std::none_of(pr.clips.begin(), pr.clips.end(), [&](const Clip& c) { return c.sourceId == pat; }),
+            "one undo removes the recorded notes and their clip");
+        eng.offlineEnd();
+        app.deletePattern(pat);
+        model.editTransport("", [saved](TransportSettings& t) { t = saved; });
+        app.deleteMixerTrack(ins);
+    }
     // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
     {
         auto& pr = app.project();

@@ -72,7 +72,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_play = mkIcon(theme::Glyph::Play, "Play / Stop (Space)", true);
     m_play->setStyleSheet("QToolButton:checked { background: #1f3a24; border-color: #2f5a36; }");
     m_stop = mkIcon(theme::Glyph::Stop, "Stop (press twice to return to the start)", false);
-    m_record = mkIcon(theme::Glyph::Record, "Record (R)", true, theme::red());
+    m_record = mkIcon(theme::Glyph::Record, "Record (R): arms recording - press Play to start", true, theme::red());
     m_record->setStyleSheet("QToolButton:checked { background: #4a1f1f; border-color: #7a2c2c; }");
     sep();
     m_bpm = new DragValue(this);
@@ -109,7 +109,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true);
     m_countIn = mkIcon(theme::Glyph::CountIn, "Count-in: one bar of clicks before recording starts (Ctrl+P)", true);
     m_punch = mkIcon(theme::Glyph::Punch, "Punch in/out: only record between the loop points", true);
-    m_loopRec = mkIcon(theme::Glyph::Takes, "Loop recording: every pass of the loop becomes a new take", true);
+    m_loopRec = mkIcon(theme::Glyph::Takes, "Loop recording: keep looping the song loop while recording, every pass a new take (off: recording plays on past the loop end)", true);
     m_loop = nullptr;
     sep();
     m_typing = mkIcon(theme::Glyph::TypingKeys,

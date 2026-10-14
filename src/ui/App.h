@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <QStringList>
 #include <map>
+#include <set>
 
 class QMenu;
 
@@ -31,6 +32,7 @@ public:
     Project& project() { return m_model.project(); }
     const Project& project() const { return m_model.project(); }
     AudioEngine& engine() { return *m_engine; }
+    RecordingEngine& recorder() { return *m_recorder; }
     AudioDeviceManager& devices() { return m_devices; }
     SampleCache& cache() { return m_cache; }
     MidiEngine& midi() { return *m_midi; }
@@ -196,10 +198,10 @@ Q_SIGNALS:
 private:
     void onModelChanged(uint32_t flags);
     void onRecordedMidi(const MidiEvent& e, double tick);
-    void onRecordStarted(double tick);
-    void onLoopWrapped();
+    void onRecordSegment(double tick, int64_t frame);
     void onTransportStateChanged();
-    void onTakesFinished(const std::vector<RecordedTake>& takes);
+    void beginRecordPass();
+    void endRecordPass();
     void onPluginCrashed(Id slotId);
     void onCcReceived(int cc, int channel, int value);
     void autosave();
@@ -229,8 +231,12 @@ private:
     ParamTarget m_learnTarget;
     QString m_learnName;
     std::map<uint32_t, float> m_paramDragStart;
-    bool m_wasRecording = false;
-    double m_recordStartTick = 0;
+    // the recording pass in progress (Record armed while the transport plays)
+    bool m_recPass = false, m_recSong = false;
+    Id m_recPatternId = 0;
+    Tick m_recClipStart = 0;   // song mode: where notes that land outside the pattern's clips get a new clip
+    std::set<Id> m_recNoteIds;
+    std::vector<std::pair<double, int64_t>> m_recSegments;   // (tick, recorded frame) from AudioEngine::recordSegment
     QString m_previewPath;
     std::shared_ptr<PreviewBuffer> m_previewBuffer;
     PreviewLoader m_previewLoader;

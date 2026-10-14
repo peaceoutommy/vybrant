@@ -116,6 +116,7 @@ bool AudioDeviceManager::open(const AudioConfig& cfgIn, Callback cb, QString* er
     const PaStreamInfo* si = Pa_GetStreamInfo(s);
     m_actualSr = si ? si->sampleRate : cfg.sampleRate;
     m_outLatency = si ? si->outputLatency : 0;
+    m_inLatency = si && m_cfg.inputChannels > 0 ? si->inputLatency : 0;
     e = Pa_StartStream(s);
     if (e != paNoError) {
         Pa_CloseStream(s);

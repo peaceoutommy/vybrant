@@ -418,7 +418,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
     connect(m_input, &QToolButton::clicked, this, [this] {
         QMenu m;
         auto* none = m.addAction(
-            "None", [this] { m_app.edit<MixerTrack>(m_track, "Track input", [](MixerTrack& t) { t.inputChannel = -1; }); });
+            "None", [this] { m_app.edit<MixerTrack>(m_track, "Track input", [](MixerTrack& t) { t.inputChannel = -1, t.armed = false; }); });
         none->setCheckable(true);
         const auto& cfg = m_app.devices().config();
         const MixerTrack* t = m_app.project().mixerTrack(m_track);
@@ -426,7 +426,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
         for (int i = 0; i < cfg.inputChannels; ++i) {
             auto* a = m.addAction(
                 QString("Input %1%2").arg(i + 1).arg(i + 1 < cfg.inputChannels ? QString(" (+%1 stereo)").arg(i + 2) : ""),
-                [this, i] { m_app.edit<MixerTrack>(m_track, "Track input", [i](MixerTrack& t) { t.inputChannel = i; }); });
+                [this, i] { m_app.edit<MixerTrack>(m_track, "Track input", [i](MixerTrack& t) { t.inputChannel = i, t.armed = true; }); });   // FL: picking an input arms the track
             a->setCheckable(true);
             a->setChecked(t && t->inputChannel == i);
         }

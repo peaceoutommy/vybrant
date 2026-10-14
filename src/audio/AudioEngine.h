@@ -123,6 +123,7 @@ public:
         m_loopEnabled.store(on);
     }
     void setSongMode(bool s) { m_songMode.store(s); }
+    void setLoopRecord(bool on) { m_loopRecord.store(on); }   // FL: off, recording plays through the song loop instead of repeating it
     void setMetronome(bool m) { m_metronome.store(m); }
     void setCountIn(bool c, int bars) {
         m_countIn.store(c);
@@ -162,7 +163,7 @@ public:
 
     // ---- Offline rendering (device must be stopped) ----
     void offlineBegin(double sampleRate, int blockSize);
-    void offlineProcess(float* outL, float* outR, int n);
+    void offlineProcess(float* outL, float* outR, int n, const float* in = nullptr, int inCh = 0);
     void offlineEnd();
 
     // Pump: drains RT->UI messages. Called from a UI timer.
@@ -172,8 +173,9 @@ Q_SIGNALS:
     void recordedMidi(const MidiEvent& e, double tick);
     void pluginCrashed(Id pluginInstanceId);
     void transportStateChanged();
-    void recordStarted(double tick);
-    void loopWrapped();
+    // Recorded input (one continuous run of frames per pass) restarts at 'tick' from recorded frame 'frame': at the start, after
+    // a count-in, punch-in, loop wrap or seek. The frame counter never resets, so a pass's first segment is its frame 0.
+    void recordSegment(double tick, int64_t frame);
 
 private:
     void rtCallback(const float* in, float* out, int frames, int inCh, int outCh, bool xrun);
@@ -221,7 +223,7 @@ private:
     std::atomic<double> m_posTicks{0};
     std::atomic<double> m_bpm{140};
     std::atomic<int> m_tsNum{4}, m_tsDen{4};
-    std::atomic<bool> m_loopEnabled{false}, m_songMode{false}, m_metronome{false}, m_countIn{false}, m_monitorInputs{true};
+    std::atomic<bool> m_loopEnabled{false}, m_loopRecord{false}, m_songMode{false}, m_metronome{false}, m_countIn{false}, m_monitorInputs{true};
     std::atomic<Tick> m_loopStart{0}, m_loopEnd{PPQ * 16};
     std::atomic<int> m_countInBars{1};
     std::atomic<bool> m_punch{false};
@@ -234,6 +236,8 @@ private:
     double m_countInRemaining = 0;
     int64_t m_lastBeatIndex = -1;
     bool m_transportJumped = true;
+    int64_t m_recFrames = 0;   // RT: input frames written to the record rings so far
+    bool m_recWriting = false;   // RT: the previous block was recorded
     // metronome
     double m_clickPhase = 0;
     float m_clickEnv = 0;

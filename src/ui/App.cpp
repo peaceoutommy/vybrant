@@ -35,11 +35,9 @@ App::App(QObject* parent)
     m_engine->setPluginFactory([this](const PluginInstanceData& d) { return m_pluginHost->createInstance(d); });
     connect(&m_model, &ProjectModel::changed, this, &App::onModelChanged);
     connect(m_engine.get(), &AudioEngine::recordedMidi, this, &App::onRecordedMidi);
-    connect(m_engine.get(), &AudioEngine::recordStarted, this, &App::onRecordStarted);
-    connect(m_engine.get(), &AudioEngine::loopWrapped, this, &App::onLoopWrapped);
+    connect(m_engine.get(), &AudioEngine::recordSegment, this, &App::onRecordSegment);
     connect(m_engine.get(), &AudioEngine::transportStateChanged, this, &App::onTransportStateChanged);
     connect(m_engine.get(), &AudioEngine::pluginCrashed, this, &App::onPluginCrashed);
-    connect(m_recorder.get(), &RecordingEngine::takesFinished, this, &App::onTakesFinished);
     connect(m_midi.get(), &MidiEngine::ccReceived, this, &App::onCcReceived);
     connect(&m_autosaveTimer, &QTimer::timeout, this, &App::autosave);
     connect(&m_stretchTimer, &QTimer::timeout, this, &App::updateSamplerStretch);
@@ -136,6 +134,7 @@ void App::syncTransportToEngine() {
     m_engine->setTimeSig(t.timeSig.numerator, t.timeSig.denominator);
     m_engine->setLoop(t.loopEnabled, t.loopStart, t.loopEnd);
     m_engine->setSongMode(t.songMode);
+    m_engine->setLoopRecord(t.loopRecord);
     m_engine->setMetronome(t.metronome);
     m_engine->setCountIn(t.countIn, t.countInBars);
     m_engine->setPunch(t.punchEnabled, t.punchIn, t.punchOut);
@@ -172,7 +171,8 @@ QStringList App::templates() const {
 void App::newProject(bool demo) {
     m_engine->stop();
     m_engine->unloadProject();
-    m_recorder->stop();
+    m_recorder->stop();   // the pass belongs to the project being closed: its files are left on disk, unplaced
+    m_recPass = false;
     m_model.setFilePath(QString());
     m_model.replaceProject(makeDefaultProject(demo));
     m_engine->rebuild(project());
@@ -195,7 +195,8 @@ bool App::openProject(const QString& path) {
     }
     m_engine->stop();
     m_engine->unloadProject();
-    m_recorder->stop();
+    m_recorder->stop();   // the pass belongs to the project being closed: its files are left on disk, unplaced
+    m_recPass = false;
     m_model.setFilePath(path);
     m_model.replaceProject(std::move(p));
     m_recorder->setRecordDirectory(QFileInfo(path).absolutePath() + "/Recordings");
@@ -386,25 +387,33 @@ void App::collectSamples() {
 // ---------------------------------------------------------------- transport
 void App::play() {
     if (!m_previewPath.isEmpty()) stopPreview();
+    if (m_engine->isRecording() && !m_engine->isPlaying()) beginRecordPass();
     m_engine->play();
 }
 void App::stop() {
+    bool playing = m_engine->isPlaying();
     if (m_engine->isRecording()) record(false);
-    if (!m_engine->isPlaying()) {
+    endRecordPass();
+    if (!playing) {
         m_engine->seek(0);
         return;
     }   // FL: Stop while stopped jumps to the song start
     m_engine->stop();
 }
-void App::pause() { m_engine->pause(); }
+void App::pause() {
+    m_engine->pause();
+    endRecordPass();
+}
 void App::togglePlay() {
     if (m_engine->isPlaying()) stop();
     else play();
 }
+// FL: Record only arms - Play starts the pass. Arming while playing punches in on the fly, disarming punches out.
 void App::record(bool on) {
     if (on && !m_previewPath.isEmpty()) stopPreview();
+    if (on && m_engine->isPlaying()) beginRecordPass();   // before the engine records: the recorder empties its rings
     m_engine->setRecording(on);
-    if (on && !m_engine->isPlaying()) play();
+    if (!on) endRecordPass();
 }
 void App::seek(Tick t) { m_engine->seek(t); }
 void App::seekToStart() {
@@ -1426,82 +1435,162 @@ void App::stopPreview() {
 void App::panic() { m_engine->allNotesOff(); }
 
 // ---------------------------------------------------------------- recording
-void App::onRecordStarted(double tick) {
-    m_recordStartTick = tick;
-    if (project().transport.recordMode == 1 || project().transport.recordMode == 3) return;
+// A pass runs while the transport plays with Record armed. Like FL Studio: audio goes into the playlist (song mode) on the
+// track linked to its mixer insert, every loop pass a take stacked under the last; notes go into the selected pattern, in song
+// mode with a pattern clip placed where the pass started; and the whole pass is one undo step.
+void App::beginRecordPass() {
+    if (m_recPass) return;
+    m_recPass = true;
+    m_recSegments.clear();
+    m_recNoteIds.clear();
+    m_pendingNotes.clear();
+    auto& tr = project().transport;
+    m_recSong = tr.songMode;
+    m_recPatternId = (tr.recordMode == 0 || tr.recordMode == 1) ? project().selectedPatternId : 0;
+    Tick at = (Tick)m_engine->positionTicks();
+    if (tr.loopEnabled && tr.loopRecord && at >= tr.loopStart && at < tr.loopEnd) at = tr.loopStart;   // the loop wraps back before 'at'
+    m_recClipStart = at / tr.timeSig.ticksPerBar() * tr.timeSig.ticksPerBar();
+    if (tr.recordMode != 0 && tr.recordMode != 2) return;
     std::vector<std::pair<Id, int>> armed;
     for (auto& t : project().mixerTracks)
         if (t.armed && t.inputChannel >= 0) armed.push_back({t.id, 2});
-    if (!armed.empty()) {
-        if (m_recorder->recordDirectory().isEmpty())
-            m_recorder->setRecordDirectory(QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Recordings");
-        m_recorder->setSampleRate(m_engine->sampleRate());
-        m_recorder->start(armed, (Tick)tick);
-    }
+    if (armed.empty()) return;
+    if (m_recorder->recordDirectory().isEmpty())
+        m_recorder->setRecordDirectory(QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Recordings");
+    m_recorder->setSampleRate(m_engine->sampleRate());
+    m_recorder->start(armed);
 }
-void App::onLoopWrapped() {
-    if (m_recorder->isActive() && project().transport.loopRecord)
-        m_recorder->newTake(project().transport.loopEnabled ? project().transport.loopStart : 0);
+void App::onRecordSegment(double tick, int64_t frame) {
+    if (m_recPass) m_recSegments.push_back({tick, frame});
 }
 void App::onTransportStateChanged() {
-    bool rec = m_engine->isRecording();
-    if (!m_engine->isPlaying() && m_recorder->isActive()) m_recorder->stop();
-    if (!m_engine->isPlaying()) m_pendingNotes.clear();
-    m_wasRecording = rec;
+    if (!m_engine->isPlaying()) endRecordPass();
 }
-void App::onTakesFinished(const std::vector<RecordedTake>& takes) {
+void App::endRecordPass() {
+    if (!m_recPass) return;
+    m_recPass = false;
+    m_pendingNotes.clear();
+    std::vector<RecordedFile> files = m_recorder->stop();
     std::vector<std::unique_ptr<Command>> cmds;
-    int n = 0;
-    for (auto& t : takes) {
-        if (t.frames <= 0) {
-            QFile::remove(t.filePath);
+    std::vector<Clip> placed;   // clips of this pass, not in the project yet
+    std::vector<PlaylistTrack> newTracks;
+    auto busy = [&](Id track, Tick s, Tick e) {
+        auto hit = [&](const Clip& c) { return c.trackId == track && c.start < e && s < c.start + project().clipLength(c); };
+        return std::any_of(project().clips.begin(), project().clips.end(), hit) || std::any_of(placed.begin(), placed.end(), hit);
+    };
+    // the first track with room for [s, e) - for audio one routed to the recording insert (FL's linked audio track), made if needed
+    auto trackFor = [&](const MixerTrack* mt, Tick s, Tick e) -> Id {
+        for (auto* v : {&project().playlistTracks, &newTracks})
+            for (auto& t : *v)
+                if ((!mt || t.mixerTrackId == mt->id) && !busy(t.id, s, e)) return t.id;
+        PlaylistTrack t;
+        t.id = project().newId();
+        t.name = mt ? mt->name : QString("Track %1").arg(project().playlistTracks.size() + newTracks.size() + 1);
+        if (mt) {
+            t.mixerTrackId = mt->id;
+            t.color = QColor("#d9775c");
+        }
+        newTracks.push_back(t);
+        return t.id;
+    };
+    // ---- notes: back out what the pass added so restoring it is the undo step
+    Pattern* pat = m_recNoteIds.empty() ? nullptr : project().pattern(m_recPatternId);
+    if (pat) {
+        Pattern after = *pat;
+        for (auto& cd : pat->channels) std::erase_if(cd.notes, [&](const Note& n) { return m_recNoteIds.count(n.id) > 0; });
+        cmds.push_back(std::make_unique<EditObjectCommand<Pattern>>(m_model, pat->id, "", [after](Pattern& p) { p = after; }, 0));
+        bool covered = std::any_of(project().clips.begin(), project().clips.end(), [&](const Clip& c) {
+            return c.type == ClipType::Pattern && c.sourceId == pat->id && m_recClipStart >= c.start && m_recClipStart < c.start + project().clipLength(c);
+        });
+        if (m_recSong && !covered) {
+            Clip c;
+            c.id = project().newId();
+            c.type = ClipType::Pattern;
+            c.sourceId = pat->id;
+            c.start = m_recClipStart;
+            c.length = 0;   // follows the pattern, so it grows with what was recorded
+            c.name = pat->name;
+            c.trackId = trackFor(nullptr, c.start, c.start + after.effectiveLength(project().transport.timeSig));
+            placed.push_back(c);
+        }
+    }
+    // ---- audio: each file is the whole pass; segments (loop passes, punch-ins) become takes. The device's reported buffer
+    // latency is cut from the front (FL's latency compensation): what was played to the beat arrived that much later.
+    int takes = 0;
+    std::vector<std::pair<QString, Id>> channelTakes;   // pattern mode: (file, insert)
+    for (auto& f : files) {
+        const MixerTrack* mt = project().mixerTrack(f.mixerTrackId);
+        if (f.frames <= 0 || m_recSegments.empty()) {
+            QFile::remove(f.filePath);
             continue;
         }
+        if (!m_recSong) {   // FL: pattern mode records into a channel (playlist audio only plays in song mode)
+            channelTakes.push_back({f.filePath, f.mixerTrackId});
+            continue;
+        }
+        double sr = f.sampleRate, bpm = project().transport.bpm;
+        int64_t latency = std::llround((m_devices.reportedInputLatency() + m_devices.reportedOutputLatency()) * sr);
         AudioSource a;
         a.id = project().newId();
-        a.filePath = t.filePath;
-        a.name = QFileInfo(t.filePath).completeBaseName();
-        a.sampleRate = m_engine->sampleRate();
-        a.channels = t.channels;
-        a.frames = t.frames;
-        const MixerTrack* mt = project().mixerTrack(t.mixerTrackId);
-        QString trackName = QString("%1 take %2").arg(mt ? mt->name : "Rec").arg(t.takeIndex);
-        PlaylistTrack pt;
-        pt.id = project().newId();
-        pt.name = trackName;
-        pt.color = QColor("#d9775c");
-        pt.mixerTrackId = t.mixerTrackId;
-        Clip c;
-        c.id = project().newId();
-        c.type = ClipType::Audio;
-        c.trackId = pt.id;
-        c.sourceId = a.id;
-        c.start = t.startTick;
-        c.length = std::max<Tick>(secondsToTicks(t.frames / a.sampleRate, project().transport.bpm), PPQ / 8);
-        c.name = trackName;
-        c.loopSource = false;
+        a.filePath = f.filePath;
+        a.name = QFileInfo(f.filePath).completeBaseName();
+        a.sampleRate = sr;
+        a.channels = f.channels;
+        a.frames = f.frames;
+        size_t first = placed.size();
+        int64_t base = m_recSegments.front().second;
+        for (size_t i = 0; i < m_recSegments.size(); ++i) {
+            int64_t from = m_recSegments[i].second - base + latency;
+            int64_t to = std::min(f.frames, i + 1 < m_recSegments.size() ? m_recSegments[i + 1].second - base + latency : f.frames);
+            if (to - from < sr / 10) continue;   // a sliver after the last wrap: not a take
+            Clip c;
+            c.id = project().newId();
+            c.type = ClipType::Audio;
+            c.sourceId = a.id;
+            c.start = std::llround(m_recSegments[i].first);
+            c.sourceOffset = secondsToTicks(from / sr, bpm);
+            c.length = std::max<Tick>(secondsToTicks((to - from) / sr, bpm), 1);
+            c.loopSource = false;
+            c.name = QString("%1 take %2").arg(mt ? mt->name : "Rec").arg(placed.size() - first + 1);
+            c.trackId = trackFor(mt, c.start, c.start + c.length);
+            placed.push_back(c);
+        }
+        if (placed.size() == first) {
+            QFile::remove(f.filePath);
+            continue;
+        }
+        takes += (int)(placed.size() - first);
+        // Blend recording off: of takes that overlap only the newest is heard, the earlier ones stay muted under it
+        for (size_t i = first; i < placed.size(); ++i)
+            for (size_t j = i + 1; j < placed.size(); ++j)
+                if (placed[j].start < placed[i].start + placed[i].length && placed[i].start < placed[j].start + placed[j].length)
+                    placed[i].muted = true;
         cmds.push_back(std::make_unique<InsertObjectCommand<AudioSource>>(m_model, a, "", -1));
-        cmds.push_back(std::make_unique<InsertObjectCommand<PlaylistTrack>>(m_model, pt, "", -1));
-        cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
-        ++n;
-        m_cache.get(t.filePath);
+        m_cache.get(f.filePath);
     }
-    if (!cmds.empty()) m_model.macro(QString("Record %1 take(s)").arg(n), std::move(cmds));
-    if (n) Q_EMIT statusMessage(QString("Recorded %1 take(s)").arg(n), 4000);
+    for (auto& t : newTracks) cmds.push_back(std::make_unique<InsertObjectCommand<PlaylistTrack>>(m_model, t, "", -1));
+    for (auto& c : placed) cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
+    if (!cmds.empty()) m_model.macro("Record", std::move(cmds));
+    for (auto& [path, insert] : channelTakes) {
+        Id ch = addChannel(ChannelType::Sampler, "native.sampler", QString(), path);
+        m_model.edit<Channel>(ch, "Route recording", [insert](Channel& c) { c.mixerTrackId = insert; });   // plays through the insert it was monitored on
+    }
+    if (takes || channelTakes.size()) Q_EMIT statusMessage(QString("Recorded %1 take(s)").arg(takes + (int)channelTakes.size()), 4000);
 }
 void App::onRecordedMidi(const MidiEvent& e, double tick) {
-    if (project().transport.recordMode == 2 || project().transport.recordMode == 3) return;
-    Id pid = project().selectedPatternId;
+    if (!m_recPass || project().transport.recordMode == 2 || project().transport.recordMode == 3) return;
+    Id pid = m_recPatternId;
     Id cid = project().selectedChannelId;
-    if (!pid || !cid) return;
-    Tick patLen = project().pattern(pid) ? project().pattern(pid)->effectiveLength(project().transport.timeSig) : PPQ * 4;
+    if (!pid || !cid || !project().pattern(pid)) return;
+    Tick patLen = project().pattern(pid)->effectiveLength(project().transport.timeSig);
     Tick local = (Tick)tick;
-    if (project().transport.songMode) {
-        for (auto& c : project().clips)
-            if (c.type == ClipType::Pattern && c.sourceId == pid && local >= c.start && local < c.start + c.length) {
-                local = (local - c.start + c.sourceOffset) % std::max<Tick>(patLen, 1);
-                break;
-            }
+    if (m_recSong) {
+        auto clip = std::find_if(project().clips.begin(), project().clips.end(), [&](const Clip& c) {
+            return c.type == ClipType::Pattern && c.sourceId == pid && local >= c.start && local < c.start + project().clipLength(c);
+        });
+        if (clip != project().clips.end()) local = (local - clip->start + clip->sourceOffset) % std::max<Tick>(patLen, 1);
+        else local -= m_recClipStart;   // into the clip the pass places on stop
+        if (local < 0) return;
     }
     if (e.type == MidiEvent::NoteOn) {
         m_pendingNotes[e.data1] = {(double)local, e};
@@ -1522,9 +1611,8 @@ void App::onRecordedMidi(const MidiEvent& e, double tick) {
     n.start = snapTick(start);
     n.duration = std::max<Tick>(dur, PPQ / 16);
     n.velocity = vel;
-    auto* p = project().pattern(pid);
-    if (!p) return;
-    p->ensureChannel(cid).notes.push_back(n);
+    project().pattern(pid)->ensureChannel(cid).notes.push_back(n);
+    m_recNoteIds.insert(n.id);
     m_model.notify(ChangePatterns);
 }
 void App::onPluginCrashed(Id slotId) {

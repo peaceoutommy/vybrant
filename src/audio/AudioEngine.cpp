@@ -166,7 +166,7 @@ void AudioEngine::offlineBegin(double sampleRate, int blockSize) {
     if (m_lastProject) rebuild(*m_lastProject);
     drainCommands();
 }
-void AudioEngine::offlineProcess(float* outL, float* outR, int n) { processFrames(nullptr, 0, outL, outR, n); }
+void AudioEngine::offlineProcess(float* outL, float* outR, int n, const float* in, int inCh) { processFrames(in, inCh, outL, outR, n); }
 void AudioEngine::offlineEnd() {
     m_offline = false;
     drainCommands();
@@ -222,8 +222,7 @@ void AudioEngine::poll() {
         }
         case EngineMessage::RecordedMidi: Q_EMIT recordedMidi(m.midi, m.tick); break;
         case EngineMessage::PluginCrashed: Q_EMIT pluginCrashed(m.id); break;
-        case EngineMessage::LoopWrapped: Q_EMIT loopWrapped(); break;
-        case EngineMessage::RecordStarted: Q_EMIT recordStarted(m.tick); break;
+        case EngineMessage::RecordSegment: Q_EMIT recordSegment(m.tick, m.sample); break;
         default: break;
         }
     }
@@ -321,12 +320,6 @@ void AudioEngine::drainCommands() {
             } else {
                 m_countInRemaining = 0;
                 m_countingIn.store(false);
-                if (m_recordingFlag.load()) {
-                    EngineMessage m;
-                    m.type = EngineMessage::RecordStarted;
-                    m.tick = m_posTicks.load();
-                    m_messages.push(m);
-                }
             }
             break;
         }
@@ -416,7 +409,7 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
         bool loop = false;
         if (playing && !countIn) {
             if (m_songMode.load()) {
-                loop = m_loopEnabled.load();
+                loop = m_loopEnabled.load() && (m_loopRecord.load() || !m_recordingFlag.load());
                 loopS = m_loopStart.load();
                 loopE = m_loopEnd.load();
             } else {
@@ -439,15 +432,7 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
             t1 = (Tick)std::floor(endPos);
             if (t1 <= t0) t1 = t0 + 1;
         } else if (playing && countIn) {
-            double dt = n / spt;
-            m_countInRemaining -= dt;
-            if (m_countInRemaining <= 0) {
-                m_countingIn.store(false);
-                EngineMessage m;
-                m.type = EngineMessage::RecordStarted;
-                m.tick = m_posTicks.load();
-                m_messages.push(m);
-            }
+            m_countInRemaining -= n / spt;
         }
         processSubBlock(in ? in + (size_t)offset * inCh : nullptr, inCh, outL + offset, outR + offset, n, snap, t0, t1);
         if (playing && countIn) {
@@ -455,6 +440,7 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
             Tick total = ts.ticksPerBar() * m_countInBars.load();
             Tick c0 = total - (Tick)(m_countInRemaining + n / spt), c1 = total - (Tick)m_countInRemaining;
             renderMetronome(outL + offset, outR + offset, n, c0, c1, true);
+            if (m_countInRemaining <= 0) m_countingIn.store(false);   // after the block: the last count-in block must not play or record
         } else if (playing && m_metronome.load()) renderMetronome(outL + offset, outR + offset, n, t0, t1, false);
         if (m_midiClock.load()) {
             // MIDI clock: 24 pulses per quarter note while the transport runs
@@ -494,9 +480,6 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
             if (loop && loopE > loopS && newPos >= loopE - 1e-6) {
                 newPos = (double)loopS;
                 m_transportJumped = true;
-                EngineMessage m;
-                m.type = EngineMessage::LoopWrapped;
-                m_messages.push(m);
             } else m_transportJumped = false;
             m_posTicks.store(newPos);
         }
@@ -605,6 +588,7 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
     if (ctx.playing && m_songMode.load())
         renderAudioClips(s, t0, t1, n);   // playlist clips belong to song mode; pattern mode plays the pattern only
     // Hardware inputs -> tracks (monitoring + recording)
+    bool recWrite = false;
     if (in && inCh > 0) {
         bool rec = ctx.recording && ctx.playing;
         bool monitor = m_monitorInputs.load();
@@ -621,6 +605,14 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
                     t.genR[i] += in[i * inCh + chR];
                 }
             if (rec && t.armed && t.recordRing) {
+                if (!recWrite && (!m_recWriting || m_transportJumped)) {   // the take restarts here: tell the UI where
+                    EngineMessage m;
+                    m.type = EngineMessage::RecordSegment;
+                    m.tick = m_posTicks.load();
+                    m.sample = m_recFrames;
+                    m_messages.push(m);
+                }
+                recWrite = true;
                 for (int i = 0; i < n; ++i) {
                     float f[2] = {in[i * inCh + chL], in[i * inCh + chR]};
                     t.recordRing->write(f, t.recordChannels);
@@ -628,6 +620,8 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
             }
         }
     }
+    if (recWrite) m_recFrames += n;
+    m_recWriting = recWrite;
     // Mixer graph in topological order
     for (int idx : s.trackOrder) processTrack(s, s.tracks[idx], n, ctx, outL, outR);
 }

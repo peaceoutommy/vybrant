@@ -22,21 +22,19 @@ FloatRing* RecordingEngine::ringFor(Id id, int channels) {
     return r.get();
 }
 
-void RecordingEngine::start(const std::vector<std::pair<Id, int>>& armed, Tick startTick) {
+void RecordingEngine::start(const std::vector<std::pair<Id, int>>& armed) {
     if (m_active.load()) return;
     QDir().mkpath(m_dir);
     std::lock_guard<std::mutex> lk(m_mutex);
     m_writers.clear();
-    m_finished.clear();
     m_takeCounter++;
     for (auto& [id, ch] : armed) {
         Writer w;
         w.trackId = id;
         w.channels = ch;
         w.ring = ringFor(id, ch);
-        w.ring->clear();
-        w.startTick = startTick;
-        w.take = m_takeCounter;
+        w.sr = m_sr;
+        w.ring->clear();   // leftovers from an earlier pass; the engine isn't recording yet, so nothing of this pass is lost
         w.path = QString("%1/rec_%2_track%3_take%4.wav")
                      .arg(m_dir)
                      .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"))
@@ -83,61 +81,22 @@ void RecordingEngine::flushWriter(Writer& w, bool all) {
         if (!all) break;
     }
 }
-std::vector<RecordedTake> RecordingEngine::finalise() {
-    std::vector<RecordedTake> takes;
-    for (auto& w : m_writers) {
-        flushWriter(w, true);
-        if (w.sndfile) sf_close((SNDFILE*)w.sndfile);
-        w.sndfile = nullptr;
-        RecordedTake t;
-        t.mixerTrackId = w.trackId;
-        t.filePath = w.path;
-        t.startTick = w.startTick;
-        t.frames = w.frames;
-        t.channels = w.channels;
-        t.takeIndex = w.take;
-        takes.push_back(t);
-    }
-    return takes;
-}
-void RecordingEngine::newTake(Tick startTick) {
-    if (!m_active.load()) return;
-    std::lock_guard<std::mutex> lk(m_mutex);
-    auto takes = finalise();
-    m_finished.insert(m_finished.end(), takes.begin(), takes.end());
-    m_takeCounter++;
-    for (auto& w : m_writers) {
-        w.startTick = startTick;
-        w.frames = 0;
-        w.take = m_takeCounter;
-        w.ring->clear();
-        w.path = QString("%1/rec_%2_track%3_take%4.wav")
-                     .arg(m_dir)
-                     .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"))
-                     .arg(w.trackId)
-                     .arg(m_takeCounter);
-        SF_INFO info{};
-        info.samplerate = (int)m_sr;
-        info.channels = w.channels;
-        info.format = SF_FORMAT_WAV | SF_FORMAT_FLOAT;
-        w.sndfile = sf_open(w.path.toLocal8Bit().constData(), SFM_WRITE, &info);
-    }
-}
-std::vector<RecordedTake> RecordingEngine::stop() {
+std::vector<RecordedFile> RecordingEngine::stop() {
     if (!m_active.load()) return {};
     m_running.store(false);
     if (m_thread.joinable()) m_thread.join();
-    std::vector<RecordedTake> takes;
+    std::vector<RecordedFile> files;
     {
         std::lock_guard<std::mutex> lk(m_mutex);
-        takes = finalise();
-        takes.insert(takes.begin(), m_finished.begin(), m_finished.end());
+        for (auto& w : m_writers) {
+            flushWriter(w, true);
+            sf_close((SNDFILE*)w.sndfile);
+            files.push_back({w.trackId, w.path, w.frames, w.channels, w.sr});
+        }
         m_writers.clear();
-        m_finished.clear();
     }
     m_active.store(false);
-    Q_EMIT takesFinished(takes);
-    return takes;
+    return files;
 }
 
 }   // namespace mt

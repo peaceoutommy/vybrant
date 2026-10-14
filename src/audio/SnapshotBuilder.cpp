@@ -222,6 +222,7 @@ void AudioEngine::rebuild(const Project& p) {
     m_loopStart.store(p.transport.loopStart);
     m_loopEnd.store(p.transport.loopEnd);
     m_loopEnabled.store(p.transport.loopEnabled);
+    m_loopRecord.store(p.transport.loopRecord);
     m_songMode.store(p.transport.songMode);
     m_metronome.store(p.transport.metronome);
     m_countIn.store(p.transport.countIn);
