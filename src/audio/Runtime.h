@@ -103,6 +103,7 @@ struct RtClip {
     float gain = 1.f;
     bool reverse = false;
     double rate = 1.0;
+    double framesPerTick = 0;   // fit tempo: the source is locked to beats at this speed; 0 = plays at its own speed in seconds
     Tick fadeIn = 0, fadeOut = 0;
     float fadeInShape = 0, fadeOutShape = 0;
     bool muted = false;
@@ -222,6 +223,7 @@ struct Snapshot {
     int selectedPatternIdx = -1;
     int liveChannelIdx = -1;
     Tick songEnd = 0;
+    TempoMap tempo;
     int maxBlock = 512;
     int maxLatency = 0;
     std::vector<AudioAssetPtr> heldAssets;   // keep assets alive for the lifetime of the snapshot

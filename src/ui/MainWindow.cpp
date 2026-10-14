@@ -627,11 +627,10 @@ void MainWindow::buildMenus() {
         b->setChecked(m_typingKeyboard);
     }
     tr->addAction(reg.add(
-        "transport.tempoUp", "Tempo +1", "Transport", QKeySequence("Ctrl+Up"), [this] { m_app.setBpm(m_app.project().transport.bpm + 1); },
-        this));
+        "transport.tempoUp", "Tempo +1", "Transport", QKeySequence("Ctrl+Up"), [this] { m_app.setBpm(m_app.bpmAtPlayhead() + 1); }, this));
     tr->addAction(reg.add(
-        "transport.tempoDown", "Tempo -1", "Transport", QKeySequence("Ctrl+Down"),
-        [this] { m_app.setBpm(m_app.project().transport.bpm - 1); }, this));
+        "transport.tempoDown", "Tempo -1", "Transport", QKeySequence("Ctrl+Down"), [this] { m_app.setBpm(m_app.bpmAtPlayhead() - 1); },
+        this));
     tr->addSeparator();
     tr->addAction(reg.add(
         "transport.panic", "Panic (all notes off)", "Transport", QKeySequence("Ctrl+H"), [this] { m_app.panic(); }, this, false,
@@ -639,16 +638,15 @@ void MainWindow::buildMenus() {
     tr->addAction(reg.add(
         "transport.nextBar", "Next bar", "Transport", QKeySequence(Qt::KeypadModifier | Qt::Key_Asterisk),
         [this] {
-            Tick bar = m_app.project().transport.timeSig.ticksPerBar();
-            m_app.seek(((Tick)m_app.engine().positionTicks() / bar + 1) * bar);
+            TempoMap m = m_app.project().transport.tempoMap();
+            m_app.seek(m.barStart(m.barAt((Tick)m_app.engine().positionTicks()) + 1));
         },
         this));
     tr->addAction(reg.add(
         "transport.prevBar", "Previous bar", "Transport", QKeySequence(Qt::KeypadModifier | Qt::Key_Slash),
         [this] {
-            Tick bar = m_app.project().transport.timeSig.ticksPerBar();
-            Tick pos = (Tick)m_app.engine().positionTicks();
-            m_app.seek(std::max<Tick>(0, ((pos - 1) / bar) * bar));
+            TempoMap m = m_app.project().transport.tempoMap();
+            m_app.seek(std::max<Tick>(0, m.barStart(m.barAt((Tick)m_app.engine().positionTicks() - 1))));
         },
         this));
     tr->addAction(reg.add(

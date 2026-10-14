@@ -54,16 +54,42 @@ Tick TimelineView::snapTicks() const {
 }
 Tick TimelineView::snap(Tick t, bool force) const {
     if (m_altHeld && !force) return t;
-    Tick s = snapTicks();
-    if (s <= 1) return t;
-    return (t / s) * s;
+    if (snapTicks() <= 1) return t;
+    return snapToGrid(t, false);
 }
 Tick TimelineView::snapNear(Tick t) const {
     if (m_altHeld) return t;
-    Tick s = snapTicks();
-    if (s <= 1) return t;
-    return ((t + s / 2) / s) * s;
-}   // nearest grid line, past halfway rounds up
+    if (snapTicks() <= 1) return t;
+    return snapToGrid(t, true);
+}
+Tick TimelineView::snapToGrid(Tick t, bool nearest) const {
+    TempoMap m = m_app.project().transport.tempoMap();
+    int64_t b = m.barAt(t);
+    Tick s = std::max<Tick>(1, snapTicks()), lo, hi;
+    if (m_snapDiv < 0) {   // whole bars
+        b = b / -m_snapDiv * -m_snapDiv;
+        lo = m.barStart(b);
+        hi = m.barStart(b - m_snapDiv);
+    } else {
+        Tick bs = m.barStart(b);
+        lo = bs + (t - bs) / s * s;
+        hi = std::min(lo + s, m.barStart(b + 1));
+    }
+    return nearest && t - lo >= hi - t ? hi : lo;   // past halfway rounds up
+}
+void TimelineView::forEachGridLine(Tick from, Tick to, Tick step, int barEvery, const std::function<void(Tick, int64_t, int)>& fn) const {
+    TempoMap m = m_app.project().transport.tempoMap();
+    step = std::max<Tick>(1, step);
+    for (int64_t b = std::max<int64_t>(0, m.barAt(from));; ++b) {
+        Tick bs = m.barStart(b);
+        if (bs > to) break;
+        TimeSignature ts = m.sigAt(bs);
+        Tick bar = ts.ticksPerBar(), beat = ts.ticksPerBeat();
+        if (bs >= from && b % std::max(1, barEvery) == 0) fn(bs, b, 2);
+        for (Tick o = step; o < bar && bs + o <= to; o += step)
+            if (bs + o >= from) fn(bs + o, b, o % beat == 0 ? 1 : 0);
+    }
+}
 void TimelineView::zoomTimeAt(int x, double factor) {
     Tick anchor = xToTick(x);
     auto [lo, hi] = pptRange();
@@ -197,14 +223,14 @@ void TimelineView::paintRuler(QPainter& p, const QRect& ruler, Tick barStep, Tic
     Tick rstep = beat * m_ppt >= 6 ? beat : barStep;
     Tick lstep = barStep;
     while (lstep * m_ppt < 34) lstep *= 2;
-    for (Tick t = (m_scrollTick / rstep) * rstep; t <= last; t += rstep) {
+    forEachGridLine(m_scrollTick, last, rstep, (int)(rstep / bar), [&](Tick t, int64_t b, int kind) {
         int x = tickToX(t);
-        bool labeled = t % lstep == 0;
+        bool labeled = kind == 2 && b % (lstep / bar) == 0;
         p.setPen(labeled ? theme::text() : theme::textDim());
-        int len = labeled ? 16 : t % bar == 0 ? 11 : 7;   // measured from the bottom, so rulers of any height match
+        int len = labeled ? 16 : kind == 2 ? 11 : 7;   // measured from the bottom, so rulers of any height match
         p.drawLine(x, ruler.top() + ruler.height() - len, x, ruler.bottom());
-        if (labeled) p.drawText(x + 3, ruler.top() + 12, QString::number(t / bar + 1));
-    }
+        if (labeled) p.drawText(x + 3, ruler.top() + 12, QString::number(b + 1));
+    });
 }
 void TimelineView::paintPlayhead(QPainter& p, int top, int bottom) {
     if (m_playTick < 0) return;

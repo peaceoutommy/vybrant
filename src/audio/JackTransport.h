@@ -13,7 +13,8 @@ class JackTransport : public QObject {
 public:
     struct Host {   // the app side, so this file knows nothing about App
         std::function<bool()> playing;
-        std::function<double()> positionTicks, bpm;
+        std::function<double()> positionTicks;
+        std::function<double(double)> secondsAt, tickAt;   // through the tempo map
         std::function<bool()> looping;   // our transport wraps by itself (pattern mode, song loop): JACK positions can't be followed
         std::function<void(bool)> setPlaying;
         std::function<void(Tick)> seek;

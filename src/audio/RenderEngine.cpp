@@ -32,9 +32,9 @@ bool RenderEngine::render(
     engine.seek(start);
     engine.play();
     double sr = opt.sampleRate;
-    double bpm = project.transport.bpm;
+    TempoMap tempo = project.transport.tempoMap();
     int latency = engine.renderLatency();   // rendered on top and cut off the front, so the file lines up with the timeline
-    int64_t totalFrames = (int64_t)(ticksToSeconds(end - start, bpm) * sr) + latency;
+    int64_t totalFrames = (int64_t)((tempo.secondsAt(end) - tempo.secondsAt(start)) * sr) + latency;
     int64_t tailFrames = (int64_t)(opt.tailSeconds * sr);
     std::vector<float> L(opt.blockSize), R(opt.blockSize);
     std::vector<float> outL, outR;

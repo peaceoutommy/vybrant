@@ -35,7 +35,7 @@ void JackTransport::stop() {
 }
 void JackTransport::locate(Tick t) {
     if (m_client && !m_applying)
-        jack_transport_locate((jack_client_t*)m_client, (jack_nframes_t)std::llround(ticksToSeconds(t, m_host.bpm()) * frameRate()));
+        jack_transport_locate((jack_client_t*)m_client, (jack_nframes_t)std::llround(m_host.secondsAt(t) * frameRate()));
 }
 void JackTransport::poll() {
     jack_position_t pos;
@@ -46,7 +46,7 @@ void JackTransport::poll() {
         m_host.setBpm(pos.beats_per_minute);
     }
     bool rolling = st == JackTransportRolling;
-    Tick jackTick = secondsToTicks(pos.frame / (double)(pos.frame_rate ? pos.frame_rate : frameRate()), m_host.bpm());
+    Tick jackTick = (Tick)std::llround(m_host.tickAt(pos.frame / (double)(pos.frame_rate ? pos.frame_rate : frameRate())));
     if (rolling != m_host.playing()) {
         if (rolling && !m_host.looping()) m_host.seek(jackTick);
         m_host.setPlaying(rolling);

@@ -15,6 +15,7 @@
 #include <QStringList>
 #include <map>
 #include <set>
+#include <optional>
 
 class QMenu;
 
@@ -80,7 +81,9 @@ public:
     void record(bool on);
     void seek(Tick t);
     void seekToStart();
-    void setBpm(double bpm, bool commit = true);
+    void setBpm(double bpm, bool commit = true);   // with tempo points: the point in effect at the playhead (or the initial tempo)
+    double bpmAtPlayhead() const;
+    void editTempo(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId = 0);   // tempo map edits
     void setTimeSig(int n, int d);
     void setSongMode(bool s);
     void setLoop(bool on);
@@ -253,6 +256,7 @@ private:
     std::map<Id, std::vector<ControlPoint>> m_recControlsBefore;   // channel -> its controller lanes before the pass recorded into them
     bool m_recNotifyPending = false;   // recorded controller values refresh the views at most every 100 ms
     std::vector<std::pair<double, int64_t>> m_recSegments;   // (tick, recorded frame) from AudioEngine::recordSegment
+    std::optional<TransportSettings> m_tempoDragBefore;   // transport before a live tempo drag (see setBpm)
     QString m_previewPath;
     std::shared_ptr<PreviewBuffer> m_previewBuffer;
     PreviewLoader m_previewLoader;

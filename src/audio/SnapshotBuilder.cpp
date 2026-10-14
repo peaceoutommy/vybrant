@@ -500,6 +500,7 @@ void AudioEngine::rebuild(const Project& p) {
                 rc.gain = c.gain * src->gain * (src->normalize && a->peakValue > 0 ? 1.f / a->peakValue : 1.f);
                 rc.reverse = c.reverse != src->reverse;
                 rc.rate = stretched ? 1.0 : clipSourceSpeed(c, p.transport.bpm);   // resample: pitch, stretch and tempo fit set the speed
+                if (c.fitTempo && c.sourceBpm > 0) rc.framesPerTick = rc.rate * m_sr * 60.0 / (p.transport.bpm * PPQ);
                 rc.fadeIn = c.fadeIn;
                 rc.fadeOut = c.fadeOut;
                 rc.fadeInShape = c.fadeInShape;
@@ -511,6 +512,8 @@ void AudioEngine::rebuild(const Project& p) {
     }
     s.clipStates.resize(s.clips.size());
     s.songEnd = p.songLength();
+    s.tempo = p.transport.tempoMap();
+    m_tempoUi = s.tempo;
     // ---- MIDI mappings
     for (auto& m : p.midiMappings) {
         RtMidiMapping rm;

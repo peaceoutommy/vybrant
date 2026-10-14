@@ -10,6 +10,7 @@
 #include "ui/PianoRollPanel.h"
 #include "ui/widgets/Controls.h"
 #include "ui/AudioEditor.h"
+#include "ui/PlaylistPanel.h"
 #include <QMouseEvent>
 #include <QMenu>
 #include <QInputDialog>
@@ -414,6 +415,27 @@ int runSelfTest(App& app) {
         const AudioSource* mono = pr.audioSources.empty() ? nullptr : &pr.audioSources.back();
         CHECK(mono && mono->channels == 1 && mono->frames == 40 * B, "a mono input records a mono file");
         model.undoStack().undo();
+        // across a tempo jump inside a 2-bar loop: each take still starts its audio where its loop pass began in the file
+        model.editTransport("", [bar](TransportSettings& t) {
+            t.tempoPoints = {{bar, t.bpm * 0.75, false}};
+            t.loopEnd = bar * 2;
+        });
+        TempoMap tm = pr.transport.tempoMap();
+        double pass = tm.secondsAt(bar * 2) - tm.secondsAt(0);
+        app.record(true);
+        run(1);
+        app.play();
+        run((int)(pass * 44100 * 2.5 / B));
+        app.stop();
+        std::vector<const Clip*> tt;
+        for (auto& c : pr.clips)
+            if (c.type == ClipType::Audio && pr.track(c.trackId) && pr.track(c.trackId)->mixerTrackId == ins) tt.push_back(&c);
+        bool mapped = tt.size() == 3;
+        for (size_t i = 1; i < tt.size(); ++i)
+            mapped = mapped && std::fabs(clipSourceSeconds(*tt[i], tt[i]->start, tm) - clipSourceSeconds(*tt[i - 1], tt[i - 1]->start, tm) - pass) < 1e-3;
+        CHECK(mapped && std::abs(tt[0]->length - bar * 2) <= 2, "takes across a tempo change line up through the tempo map");
+        model.undoStack().undo();
+        model.editTransport("", [](TransportSettings& t) { t.tempoPoints.clear(); });
         // notes in song mode, starting mid-bar outside any clip of the pattern
         Id pat = app.addPattern("RecTest");
         app.selectPattern(pat);
@@ -767,6 +789,181 @@ int runSelfTest(App& app) {
         app.model().undoStack().undo();
         CHECK(pr.transport.bpm == bpm0 && pr.clip(a.id)->length == PPQ * 4, "one undo restores the tempo and the clip");
         std::erase_if(pr.clips, [&](const Clip& c) { return c.id == a.id || c.id == f.id || c.id == st.id; });
+    }
+    // ---- tempo map: tempo points (jumps and ramps) and time-signature changes along the song
+    {
+        TempoMap m(120, {{4 * PPQ, 60, false}, {8 * PPQ, 60, true}, {12 * PPQ, 120, false}});   // jump to 60, then glide back to 120
+        double ramp = 4 * std::log(2.0);   // 4 beats gliding from 60 to 120 BPM: the integral of 60 / bpm
+        bool trip = true;
+        for (Tick t : {(Tick)0, (Tick)PPQ * 3, (Tick)PPQ * 4, (Tick)PPQ * 5 + 17, (Tick)PPQ * 9 + 123, (Tick)PPQ * 12, (Tick)PPQ * 20})
+            trip = trip && std::fabs(m.tickAt(m.secondsAt((double)t)) - t) < 1e-6;
+        CHECK(std::fabs(m.secondsAt(4 * PPQ) - 2) < 1e-9 && std::fabs(m.secondsAt(8 * PPQ) - 6) < 1e-9 &&
+                std::fabs(m.secondsAt(12 * PPQ) - (6 + ramp)) < 1e-9 && std::fabs(m.secondsAt(14 * PPQ) - (7 + ramp)) < 1e-9 &&
+                std::fabs(m.bpmAt(10 * PPQ) - 90) < 1e-9 && trip,
+            "tempo map: ticks <-> seconds through a jump and a linear ramp, and back");
+        TempoMap sig(120, {}, {4, 4}, {{2, {7, 8}}});
+        CHECK(sig.barStart(2) == 2 * 3840 && sig.barStart(3) == 2 * 3840 + 3360 && sig.barAt(2 * 3840 + 3359) == 2 &&
+                sig.barAt(2 * 3840 + 3360) == 3 && sig.sigAt(2 * 3840).numerator == 7,
+            "a time-signature change (4/4 -> 7/8 at bar 3) moves every bar line after it");
+    }
+    {
+        auto& pr = app.project();
+        auto& eng = app.engine();
+        TransportSettings saved = pr.transport;
+        pr.transport.bpm = 120;
+        pr.transport.songMode = true;
+        pr.transport.loopEnabled = pr.transport.metronome = pr.transport.countIn = false;
+        // FL resample semantics: a tempo point under an audio clip keeps the clip's audio in seconds; one undo restores both
+        Clip a;
+        a.id = pr.newId();
+        a.type = ClipType::Audio;
+        a.length = 8 * PPQ;   // 4 s at 120 BPM
+        pr.clips.push_back(a);
+        app.editTempo("Add tempo point", [](TransportSettings& t) { t.tempoPoints.push_back({4 * PPQ, 60, false}); });
+        bool kept = pr.clip(a.id)->length == 6 * PPQ && pr.transport.tempoPoints.size() == 1;   // 2 s at 120, then 2 s at 60
+        app.model().undoStack().undo();
+        CHECK(kept && pr.clip(a.id)->length == 8 * PPQ && pr.transport.tempoPoints.empty(),
+            "a tempo point re-measures a resample clip under it (same seconds); one undo restores the map and the clip");
+        std::erase_if(pr.clips, [&](const Clip& c) { return c.id == a.id; });
+        // 1 s at 120 BPM, 2 s at 60, then a ramp back to 120 over two beats; 7/8 from bar 3
+        pr.transport.tempoPoints = {{2 * PPQ, 60, false}, {4 * PPQ, 60, true}, {6 * PPQ, 120, false}};
+        pr.transport.timeSigChanges = {{2, {7, 8}}};
+        Project p7;
+        QJsonObject j = ProjectSerializer::toJson(pr);
+        CHECK(ProjectSerializer::fromJson(j, p7, &err) &&
+                QJsonDocument(ProjectSerializer::toJson(p7)).toJson() == QJsonDocument(j).toJson() &&
+                p7.transport.tempoPoints.size() == 3 && p7.transport.tempoPoints[1].ramp && p7.transport.tempoPoints[0].bpm == 60 &&
+                p7.transport.timeSigChanges.size() == 1 && p7.transport.timeSigChanges[0].bar == 2 &&
+                p7.transport.timeSigChanges[0].sig.denominator == 8,
+            "tempo points and time-signature changes survive save/load");
+        TempoMap tm = pr.transport.tempoMap();
+        // an audio clip across the changes playing a 4 s ramp, so each output sample is the source position played
+        QString rampPath = tmp.path() + "/ramp.wav";
+        std::vector<float> rampData(176400);
+        for (size_t i = 0; i < rampData.size(); ++i) rampData[i] = (float)i / rampData.size();
+        AudioFile::write(rampPath, rampData.data(), 1, (int64_t)rampData.size(), 44100, 32, "wav", &err);
+        eng.offlineBegin(44100, 512);
+        app.cache().getSync(rampPath);
+        Id track = app.addPlaylistTrack("Tempo test");
+        pr.track(track)->solo = true;   // only this clip plays
+        AudioSource src;
+        src.id = pr.newId();
+        src.filePath = rampPath;
+        src.sampleRate = 44100;
+        src.channels = 1;
+        src.frames = (int64_t)rampData.size();
+        pr.audioSources.push_back(src);
+        Clip c;
+        c.id = pr.newId();
+        c.type = ClipType::Audio;
+        c.trackId = track;
+        c.sourceId = src.id;
+        c.length = 12 * PPQ;
+        c.loopSource = false;
+        pr.clips.push_back(c);
+        eng.rebuild(pr);
+        std::vector<float> l(512), r(512);
+        auto run = [&](int64_t frames) {
+            for (int n; frames > 0; frames -= n) eng.offlineProcess(l.data(), r.data(), n = (int)std::min<int64_t>(512, frames));
+        };
+        eng.seek(0);
+        eng.play();
+        run(88200 - 1);
+        run(1);
+        double at2 = eng.positionTicks();
+        float out2 = l[0];   // the output sample at 2 s
+        run(88200);
+        double at4 = eng.positionTicks();
+        CHECK(std::fabs(at2 - 3 * PPQ) < 0.01 && std::fabs(at4 - tm.tickAt(4.0)) < 0.01 &&
+                std::fabs(eng.transport().bpm - tm.bpmAt(at4)) < 1e-6,
+            QString("the transport advances block by block through a jump and a ramp (%1 / %2 ticks after 2 / 4 s)")
+                .arg(at2)
+                .arg(at4)
+                .toUtf8()
+                .constData());
+        CHECK(std::fabs(out2 - 88199.f / 176400) < 1e-3, "an audio clip plays on at its own speed across a tempo change");
+        eng.seek(3 * PPQ);
+        run(1);
+        CHECK(std::fabs(clipSourceSeconds(c, 3 * PPQ, tm) - 2.0) < 1e-9 && std::fabs(l[0] - 0.5f) < 1e-3,
+            QString("an audio clip entered after the change plays the source position the map gives (2 s at beat 4: %1)")
+                .arg(l[0] * 4)
+                .toUtf8()
+                .constData());
+        eng.stop();
+        eng.seek(2 * 3840 + 3360 + 480);
+        run(1);
+        auto tv = eng.transport();
+        CHECK(tv.bar == 4 && tv.beat == 2 && tv.tick == 0 && tv.tsNum == 7,
+            "the BBT position follows the time-signature change (4:2:000 in 7/8)");
+        // the transport bar BPM edits the tempo in effect at the playhead (here the jump at beat 2), the initial tempo before it
+        eng.seek(3 * PPQ);
+        run(1);
+        app.setBpm(90);
+        bool point = pr.transport.tempoPoints[0].bpm == 90 && pr.transport.bpm == 120;
+        eng.seek(PPQ);
+        run(1);
+        app.setBpm(100);
+        CHECK(point && pr.transport.bpm == 100 && pr.transport.tempoPoints[0].bpm == 90,
+            "with a tempo map the BPM box edits the point in effect at the playhead (or the initial tempo)");
+        eng.offlineEnd();
+        std::erase_if(pr.clips, [&](const Clip& x) { return x.id == c.id; });
+        std::erase_if(pr.audioSources, [&](const AudioSource& x) { return x.id == src.id; });
+        std::erase_if(pr.playlistTracks, [&](const PlaylistTrack& x) { return x.id == track; });
+        pr.transport = saved;
+        eng.rebuild(pr);
+    }
+    // ---- the playlist tempo lane: double-click adds a point, dragging it up raises its BPM, right-click > Delete removes it
+    {
+        auto& pr = app.project();
+        TransportSettings saved = pr.transport;
+        pr.transport.bpm = 120;
+        pr.transport.tempoPoints.clear();
+        PlaylistView v(app);
+        v.resize(1200, 500);
+        int x = v.debugPoint(0, 4 * PPQ).x() - 2, y = 34;   // the tempo lane runs under the 24 px ruler
+        auto mouse = [&](QEvent::Type t, int px, int py, Qt::MouseButton b) {
+            QMouseEvent e(
+                t, QPointF(px, py), v.mapToGlobal(QPointF(px, py)), b, t == QEvent::MouseButtonRelease ? Qt::NoButton : b, Qt::NoModifier);
+            QCoreApplication::sendEvent(&v, &e);
+        };
+        mouse(QEvent::MouseButtonDblClick, x + 10, y, Qt::LeftButton);   // snaps to the bar line at beat 4
+        bool added = pr.transport.tempoPoints.size() == 1 && pr.transport.tempoPoints[0].tick == 4 * PPQ;
+        double b0 = added ? pr.transport.tempoPoints[0].bpm : 0;
+        mouse(QEvent::MouseButtonPress, x, y, Qt::LeftButton);
+        mouse(QEvent::MouseMove, x, y - 20, Qt::LeftButton);
+        mouse(QEvent::MouseButtonRelease, x, y - 20, Qt::LeftButton);
+        bool raised = added && pr.transport.tempoPoints[0].bpm == b0 + 10 && pr.transport.tempoPoints[0].tick == 4 * PPQ;
+        app.model().undoStack().undo();
+        bool undone = pr.transport.tempoPoints.size() == 1 && pr.transport.tempoPoints[0].bpm == b0;
+        QTimer::singleShot(0, [] {
+            if (auto* m = qobject_cast<QMenu*>(QApplication::activePopupWidget())) {
+                for (auto* act : m->actions())
+                    if (act->text() == "Delete tempo point") act->trigger();
+                m->close();
+            }
+        });
+        mouse(QEvent::MouseButtonPress, x, y, Qt::RightButton);
+        CHECK(added && raised && undone && pr.transport.tempoPoints.empty(),
+            "tempo lane: double-click adds a point on the bar, dragging it up raises its BPM (one undo step), right-click deletes it");
+        QTimer::singleShot(0, [] {   // ruler right-click > Insert time signature change, typed into its prompt
+            auto* m = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+            if (!m) return;
+            QTimer::singleShot(0, [] {
+                if (auto* d = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                    d->setTextValue("7/8");
+                    d->accept();
+                }
+            });
+            for (auto* act : m->actions())
+                if (act->text().startsWith("Insert time signature change")) act->trigger();
+            m->close();
+        });
+        mouse(QEvent::MouseButtonPress, x + 10, 10, Qt::RightButton);
+        auto& sc = pr.transport.timeSigChanges;
+        bool inserted = sc.size() == 1 && sc[0].bar == 1 && sc[0].sig.numerator == 7 && sc[0].sig.denominator == 8;
+        app.model().undoStack().undo();
+        CHECK(inserted && sc.empty(), "ruler right-click inserts a time signature change at the nearest bar; undo removes it");
+        pr.transport = saved;
     }
     // ---- typing a knob value: double-click the value label, type, Enter applies / Escape cancels
     {
