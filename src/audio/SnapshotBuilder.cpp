@@ -283,10 +283,8 @@ void AudioEngine::rebuild(const Project& p) {
             rs.sidechain = sd.sidechain;
             t.sends.push_back(rs);
         }
-        if (t.armed && t.inputChannel >= 0 && m_recording) {
-            t.recordChannels = 2;
-            t.recordRing = m_recording->ringFor(mt.id, 2);
-        }
+        t.recordChannels = mt.inputStereo ? 2 : 1;   // monitoring too, armed or not
+        if (t.armed && t.inputChannel >= 0 && m_recording) t.recordRing = m_recording->ringFor(mt.id, t.recordChannels);
         t.inL.assign(m_maxBlock, 0.f);
         t.inR.assign(m_maxBlock, 0.f);
         t.scL.assign(m_maxBlock, 0.f);

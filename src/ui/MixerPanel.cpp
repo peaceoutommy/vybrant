@@ -417,19 +417,25 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
     connect(m_sends, &QToolButton::clicked, this, [this] { showSendsMenu(); });
     connect(m_input, &QToolButton::clicked, this, [this] {
         QMenu m;
-        auto* none = m.addAction(
-            "None", [this] { m_app.edit<MixerTrack>(m_track, "Track input", [](MixerTrack& t) { t.inputChannel = -1, t.armed = false; }); });
+        auto* none = m.addAction("None",
+            [this] { m_app.edit<MixerTrack>(m_track, "Track input", [](MixerTrack& t) { t.inputChannel = -1, t.armed = false; }); });
         none->setCheckable(true);
         const auto& cfg = m_app.devices().config();
         const MixerTrack* t = m_app.project().mixerTrack(m_track);
         none->setChecked(t && t->inputChannel < 0);
-        for (int i = 0; i < cfg.inputChannels; ++i) {
+        // FL: every input on its own (mono) and the stereo pairs; picking one arms the track
+        auto add = [&](int i, bool stereo) {
             auto* a = m.addAction(
-                QString("Input %1%2").arg(i + 1).arg(i + 1 < cfg.inputChannels ? QString(" (+%1 stereo)").arg(i + 2) : ""),
-                [this, i] { m_app.edit<MixerTrack>(m_track, "Track input", [i](MixerTrack& t) { t.inputChannel = i, t.armed = true; }); });   // FL: picking an input arms the track
+                stereo ? QString("Input %1+%2 (stereo)").arg(i + 1).arg(i + 2) : QString("Input %1 (mono)").arg(i + 1), [this, i, stereo] {
+                    m_app.edit<MixerTrack>(
+                        m_track, "Track input", [i, stereo](MixerTrack& t) { t.inputChannel = i, t.inputStereo = stereo, t.armed = true; });
+                });
             a->setCheckable(true);
-            a->setChecked(t && t->inputChannel == i);
-        }
+            a->setChecked(t && t->inputChannel == i && t->inputStereo == stereo);
+        };
+        for (int i = 0; i < cfg.inputChannels; ++i) add(i, false);
+        if (cfg.inputChannels > 1) m.addSeparator();
+        for (int i = 0; i + 1 < cfg.inputChannels; i += 2) add(i, true);
         if (cfg.inputChannels == 0) m.addAction("(no input device - see Audio Settings)")->setEnabled(false);
         m.exec(m_input->mapToGlobal(QPoint(0, m_input->height())));
     });
@@ -444,7 +450,9 @@ void MixerStrip::refresh() {
     theme::styled(m_name,
         QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:3px; background:%1; color:%2; border-bottom: 2px solid %3;")
             .arg(m_selected ? "@hover@" : "@panel@", m_selected ? "@accent@" : "@text@", t->color.name()));
-    m_input->setText(t->inputChannel >= 0 ? QString("In %1").arg(t->inputChannel + 1) : "In: -");
+    m_input->setText(t->inputChannel < 0 ? "In: -"
+            : t->inputStereo             ? QString("In %1+%2").arg(t->inputChannel + 1).arg(t->inputChannel + 2)
+                                         : QString("In %1").arg(t->inputChannel + 1));
     m_pan->setValue((t->pan + 1) * 0.5f);
     m_fader->setValue(t->volume / 1.25f);
     m_mute->setChecked(t->mute);

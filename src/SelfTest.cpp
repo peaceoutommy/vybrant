@@ -348,6 +348,15 @@ int runSelfTest(App& app) {
         model.undoStack().undo();
         CHECK(pr.clips.size() == clips0 && pr.playlistTracks.size() == tracks0 && model.undoStack().count() == undo0,
             "one undo removes the whole pass");
+        model.edit<MixerTrack>(ins, "", [](MixerTrack& t) { t.inputStereo = false; });
+        app.record(true);
+        run(1);
+        app.play();
+        run(40);
+        app.stop();
+        const AudioSource* mono = pr.audioSources.empty() ? nullptr : &pr.audioSources.back();
+        CHECK(mono && mono->channels == 1 && mono->frames == 40 * B, "a mono input records a mono file");
+        model.undoStack().undo();
         // notes in song mode, starting mid-bar outside any clip of the pattern
         Id pat = app.addPattern("RecTest");
         app.selectPattern(pat);

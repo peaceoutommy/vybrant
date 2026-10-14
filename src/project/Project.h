@@ -206,6 +206,7 @@ struct MixerTrack {
     float pan = 0.f;
     bool mute = false, solo = false, armed = false;
     int inputChannel = -1;   // hardware input index (-1 none)
+    bool inputStereo = true;   // inputChannel and the next one as a pair; false = mono input on both sides
     Id outputTrackId = 0;   // destination track (0 = hardware output; only master)
     std::vector<EffectSlot> effects;
     std::vector<Send> sends;

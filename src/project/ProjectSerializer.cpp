@@ -98,7 +98,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
             sends.append(QJsonObject{{"target", (double)s.targetTrackId}, {"level", s.level}, {"pre", s.preFader}, {"enabled", s.enabled},
                 {"sidechain", s.sidechain}});
         mixer.append(QJsonObject{{"id", (double)t.id}, {"name", t.name}, {"color", colorJ(t.color)}, {"volume", t.volume}, {"pan", t.pan},
-            {"mute", t.mute}, {"solo", t.solo}, {"armed", t.armed}, {"input", t.inputChannel}, {"output", (double)t.outputTrackId},
+            {"mute", t.mute}, {"solo", t.solo}, {"armed", t.armed}, {"input", t.inputChannel}, {"inputStereo", t.inputStereo}, {"output", (double)t.outputTrackId},
             {"effects", fx}, {"sends", sends}, {"master", t.isMaster}, {"customName", t.customName}});
     }
     root["mixer"] = mixer;
@@ -330,6 +330,7 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         t.solo = o["solo"].toBool();
         t.armed = o["armed"].toBool();
         t.inputChannel = o["input"].toInt(-1);
+        t.inputStereo = o["inputStereo"].toBool(true);
         t.outputTrackId = (Id)o["output"].toDouble();
         t.isMaster = o["master"].toBool();
         if (o.contains("customName")) t.customName = o["customName"].toBool();

@@ -1453,7 +1453,7 @@ void App::beginRecordPass() {
     if (tr.recordMode != 0 && tr.recordMode != 2) return;
     std::vector<std::pair<Id, int>> armed;
     for (auto& t : project().mixerTracks)
-        if (t.armed && t.inputChannel >= 0) armed.push_back({t.id, 2});
+        if (t.armed && t.inputChannel >= 0) armed.push_back({t.id, t.inputStereo ? 2 : 1});
     if (armed.empty()) return;
     if (m_recorder->recordDirectory().isEmpty())
         m_recorder->setRecordDirectory(QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Recordings");
