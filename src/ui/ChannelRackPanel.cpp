@@ -1,4 +1,5 @@
 #include "ui/ChannelRackPanel.h"
+#include "ui/AudioEditor.h"
 #include "ui/InAppDrag.h"
 #include <QCoreApplication>
 #include "ui/Theme.h"
@@ -858,6 +859,8 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
         QObject::connect(cut, &QAction::toggled, this, [this, id](bool on) { m_app.setChannelCutItself(id, on); });
     }
     m.addAction("Open editor", [this, id] { Q_EMIT openEditor(id); });
+    if (c.type == ChannelType::Sampler && !c.samplePath.isEmpty())
+        m.addAction("Edit audio...", [this, id] { openAudioEditor(m_app, this, 0, id); });
     m.addAction("Rename...", [this, id, c] {
         if (auto n = askName(this, "Rename channel", c.name)) m_app.renameChannel(id, *n);
     });

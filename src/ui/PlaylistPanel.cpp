@@ -1,4 +1,5 @@
 #include "ui/PlaylistPanel.h"
+#include "ui/AudioEditor.h"
 #include "ui/InAppDrag.h"
 #include "dsp/DspUtils.h"
 #include <QPainterPath>
@@ -1463,6 +1464,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
     }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
+        m.addAction("Edit audio...", [this, sid = c->sourceId] { openAudioEditor(m_app, this, sid, 0); });
         if (std::any_of(proj.clips.begin(), proj.clips.end(),
                 [c](const Clip& x) { return x.type == ClipType::Audio && x.sourceId == c->sourceId && x.trackId != c->trackId; }))
             m.addAction("Use this take here", [this, id] { useTake(id); });

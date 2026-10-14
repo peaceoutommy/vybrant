@@ -337,6 +337,42 @@ void App::relinkSample(Id id, const QString& newPath) {
         a.missing = false;
     });
 }
+// Repoints a sample to an edited copy of its file: the audio source (every clip of it) and/or a sampler channel. The sampler
+// plays its own asset, not the channel's path, so it is swapped too, both ways.
+void App::replaceSampleFile(Id sourceId, Id channelId, const QString& path) {
+    std::vector<std::unique_ptr<Command>> cmds;
+    if (project().audioSource(sourceId)) {
+        double sr = 0;
+        int chans = 0;
+        int64_t frames = 0;
+        AudioFile::probe(path, &sr, &chans, &frames);
+        cmds.push_back(std::make_unique<EditObjectCommand<AudioSource>>(
+            m_model, sourceId, "",
+            [=](AudioSource& a) {
+                if (frames != a.frames) a.trimStart = a.trimEnd = 0, a.slices.clear();   // they counted frames of the old file
+                a.filePath = path;
+                a.sampleRate = sr;
+                a.channels = chans;
+                a.frames = frames;
+                a.missing = false;
+            },
+            0));
+    }
+    if (const Channel* ch = project().channel(channelId)) {
+        auto load = [this, channelId](const QString& p) {
+            if (auto* s = dynamic_cast<Sampler*>(processor(channelId))) {
+                auto a = m_cache.getSync(p);
+                if (a) s->setSample(a, p);
+                s->pendingPath = a ? QString() : p;   // a load still pending for the other file must not land after this
+            }
+        };
+        cmds.push_back(std::make_unique<LambdaCommand>("", [load, path] { load(path); }, [load, old = ch->samplePath] { load(old); }));
+        cmds.push_back(
+            std::make_unique<EditObjectCommand<Channel>>(m_model, channelId, "", [path](Channel& c) { c.samplePath = path; }, 0));
+    }
+    m_cache.getSync(path);
+    if (!cmds.empty()) m_model.macro("Edit audio", std::move(cmds));
+}
 int App::searchMissingIn(const QString& dir) {
     int n = 0;
     for (auto* a : missingSamples()) {
@@ -1447,10 +1483,13 @@ void App::previewFile(const QString& path) {
         Q_EMIT statusMessage("Cannot preview " + path + ": " + err, 4000);
         return;
     }
-    m_previewPath = path;
+    playPreview(b);
+}
+void App::playPreview(std::shared_ptr<PreviewBuffer> b) {
+    m_previewPath = b->path;
     m_previewBuffer = b;
     m_engine->previewPlay(b);
-    Q_EMIT previewChanged(path);
+    Q_EMIT previewChanged(b->path);
 }
 void App::stopPreview() {
     m_engine->previewStop();

@@ -57,6 +57,7 @@ public:
     void collectSamples();
     std::vector<AudioSource*> missingSamples();
     void relinkSample(Id sourceId, const QString& newPath);
+    void replaceSampleFile(Id sourceId, Id channelId, const QString& newPath);   // the sample editor's Apply (one undo step)
     int searchMissingIn(const QString& dir);
     QString projectTitle() const;
     // Autosave / backups (FL-style): every N minutes a numbered copy goes to <project folder>/Backup, keeping the newest M
@@ -180,6 +181,7 @@ public:
     void noteOn(int pitch, float vel = 0.8f);
     void noteOff(int pitch);
     void previewFile(const QString& path);
+    void playPreview(std::shared_ptr<PreviewBuffer> b);   // an already filled buffer (the sample editor's selection)
     void stopPreview();
     QString previewPath() const { return m_previewPath; }   // file currently previewed
     std::shared_ptr<const PreviewBuffer> previewBuffer() const { return m_previewBuffer; }
