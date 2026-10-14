@@ -52,14 +52,15 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
     for (auto& pat : p.patterns) {
         QJsonArray chans;
         for (auto& c : pat.channels) {
-            QJsonArray notes, steps;
+            QJsonArray notes, steps, controls;
             for (auto& n : c.notes)
                 notes.append(QJsonObject{{"id", (double)n.id}, {"p", n.pitch}, {"s", (double)n.start}, {"d", (double)n.duration},
                     {"v", n.velocity}, {"rv", n.releaseVelocity}, {"pan", n.pan}, {"fp", n.finePitch}, {"ch", n.channel}, {"m", n.muted}});
             for (auto& s : c.steps)
                 steps.append(QJsonObject{
                     {"e", s.enabled}, {"v", s.velocity}, {"pan", s.pan}, {"pi", s.pitch}, {"pr", s.probability}, {"o", s.offset}});
-            chans.append(QJsonObject{{"channelId", (double)c.id}, {"notes", notes}, {"steps", steps}});
+            for (auto& cp : c.controls) controls.append(QJsonObject{{"t", (double)cp.tick}, {"c", cp.controller}, {"v", cp.value}});
+            chans.append(QJsonObject{{"channelId", (double)c.id}, {"notes", notes}, {"steps", steps}, {"controls", controls}});
         }
         QJsonArray lanes;
         for (Id l : pat.automationLaneIds) lanes.append((double)l);
@@ -247,6 +248,10 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
                 c.steps.push_back(st);
             }
             if ((int)c.steps.size() < pat.stepCount) c.steps.resize(pat.stepCount);
+            for (auto kv : co["controls"].toArray()) {
+                auto k = kv.toObject();
+                c.controls.push_back({(Tick)k["t"].toDouble(), k["c"].toInt(), k["v"].toInt()});
+            }
             pat.channels.push_back(c);
         }
         for (auto lv : o["automation"].toArray()) pat.automationLaneIds.push_back((Id)lv.toDouble());

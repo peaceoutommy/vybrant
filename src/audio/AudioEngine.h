@@ -188,7 +188,7 @@ private:
     void processFrames(const float* in, int inCh, float* outL, float* outR, int frames);
     void processSubBlock(const float* in, int inCh, float* outL, float* outR, int n, Snapshot* snap, Tick t0, Tick t1);
     void runSequencer(Snapshot& s, Tick t0, Tick t1, int n);
-    void scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart, Tick winEnd, Tick tickOffset, int n, Tick t0, Tick t1);
+    void scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart, Tick winEnd, Tick tickOffset, int n, Tick t0, Tick t1, bool chase);
     void renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n);
     void routeLiveMidi(Snapshot& s, Tick t0);
     void drainCommands();

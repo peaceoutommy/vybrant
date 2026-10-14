@@ -380,6 +380,10 @@ void AudioEngine::releaseAllNotes(bool resetInstruments) {
         MidiEvent e;
         e.type = MidiEvent::AllNotesOff;
         ch.midi.add(e);
+        e.type = MidiEvent::CC;   // pedal up too: a sustain lane may have left it down, holding every released note
+        e.data1 = 64;
+        e.data2 = 0;
+        ch.midi.add(e);
         if (resetInstruments && ch.instrument) ch.instrument->reset();
     }
 }
@@ -787,10 +791,13 @@ void AudioEngine::routeLiveMidi(Snapshot& s, Tick t0) {
     auto handle = [&](MidiEvent ev, bool fromHardware) {
         ev.sampleOffset = 0;
         // controller mappings
+        bool mapped = false;
         if (ev.type == MidiEvent::CC) {
             for (auto& m : s.midiMappings)
-                if (!m.isNote && m.cc == ev.data1 && (m.midiChannel < 0 || m.midiChannel == ev.channel))
+                if (!m.isNote && m.cc == ev.data1 && (m.midiChannel < 0 || m.midiChannel == ev.channel)) {
                     m.target.setNormalized(ev.data2 / 127.f);
+                    mapped = true;
+                }
         }
         if (s.liveChannelIdx >= 0 && s.liveChannelIdx < (int)s.channels.size()) {
             auto& c = s.channels[s.liveChannelIdx];
@@ -804,7 +811,9 @@ void AudioEngine::routeLiveMidi(Snapshot& s, Tick t0) {
             c.midi.add(ev);
             if (ev.type == MidiEvent::NoteOn && c.instrument && c.instrument->kind() == ProcessorKind::Instrument) {}
         }
-        if (rec && (ev.type == MidiEvent::NoteOn || ev.type == MidiEvent::NoteOff)) {
+        // recorded: notes and controller lanes (a CC linked to a control drives that control, it isn't a lane)
+        bool lane = (ev.type == MidiEvent::CC && !mapped) || ev.type == MidiEvent::PitchBend || ev.type == MidiEvent::ChannelPressure;
+        if (rec && (ev.type == MidiEvent::NoteOn || ev.type == MidiEvent::NoteOff || lane)) {
             EngineMessage m;
             m.type = EngineMessage::RecordedMidi;
             m.midi = ev;
@@ -845,7 +854,7 @@ void AudioEngine::runSequencer(Snapshot& s, Tick t0, Tick t1, int n) {
     if (!m_songMode.load()) {
         if (s.selectedPatternIdx < 0) return;
         const RtPattern& pat = s.patterns[s.selectedPatternIdx];
-        scheduleNotes(s, pat, t0, t1, 0, n, t0, t1);
+        scheduleNotes(s, pat, t0, t1, 0, n, t0, t1, m_transportJumped);
         for (int li : pat.laneIndices) {
             auto& lane = s.lanes[li];
             if (lane.target.valid()) lane.target.setNormalized(lane.valueAt(t0));
@@ -867,7 +876,8 @@ void AudioEngine::runSequencer(Snapshot& s, Tick t0, Tick t1, int n) {
                 if (wh <= wl) continue;
                 // tickOffset: pattern-local tick -> global tick
                 Tick off = clip.start - clip.sourceOffset + k * len;
-                scheduleNotes(s, pat, wl, wh, off, n, t0, t1);
+                scheduleNotes(s, pat, wl, wh, off, n, t0, t1,
+                    k == kStart && (m_transportJumped || clip.start >= t0));   // chase lanes on a jump or where the clip starts
                 for (int li : pat.laneIndices) {
                     auto& lane = s.lanes[li];
                     if (lane.target.valid()) lane.target.setNormalized(lane.valueAt(std::max(wl, std::min(t0 - off, wh))));
@@ -886,13 +896,33 @@ void AudioEngine::runSequencer(Snapshot& s, Tick t0, Tick t1, int n) {
     (void)n;
 }
 
-void AudioEngine::scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart, Tick winEnd, Tick tickOffset, int n, Tick t0, Tick t1) {
+void AudioEngine::scheduleNotes(
+    Snapshot& s, const RtPattern& pat, Tick winStart, Tick winEnd, Tick tickOffset, int n, Tick t0, Tick t1, bool chase) {
     double spt = samplesPerTick();
     double pos = m_posTicks.load();
     for (auto& pc : pat.channels) {
         if (pc.channelIndex < 0 || pc.channelIndex >= (int)s.channels.size()) continue;
         auto& ch = s.channels[pc.channelIndex];
         if (!ch.instrument || !ch.enabled) continue;
+        // controller lanes go before the notes so a value on a note's tick applies to it; lanes hold their value, so playback
+        // starting inside the pattern (play, seek, loop jump, a clip entered mid-way) first sends each lane's last earlier value
+        const auto& cs = pc.controls;
+        size_t c0 = std::lower_bound(cs.begin(), cs.end(), winStart, [](const RtControl& c, Tick t) { return c.tick < t; }) - cs.begin();
+        if (chase) {
+            bool sent[kCtrlPitchBend + 1] = {};
+            for (size_t i = c0; i-- > 0;) {
+                if (sent[cs[i].controller]) continue;
+                sent[cs[i].controller] = true;
+                MidiEvent e = cs[i].event;
+                e.sampleOffset = clamp((int)std::floor((winStart + tickOffset - pos) * spt), 0, n - 1);
+                ch.midi.add(e);
+            }
+        }
+        for (size_t i = c0; i < cs.size() && cs[i].tick < winEnd; ++i) {
+            MidiEvent e = cs[i].event;
+            e.sampleOffset = clamp((int)std::floor((cs[i].tick + tickOffset - pos) * spt), 0, n - 1);
+            ch.midi.add(e);
+        }
         // notes sorted by start: binary search first note with start >= winStart
         const auto& notes = pc.notes;
         size_t lo = 0, hi = notes.size();

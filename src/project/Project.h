@@ -37,10 +37,31 @@ struct Note {
     bool operator==(const Note&) const = default;   // every field: an edit to any of them is an edit
 };
 
+// Controller lane point (piano roll event lanes): a CC number 0..127, channel pressure or pitch bend, held until the next point
+constexpr int kCtrlPressure = 128, kCtrlPitchBend = 129;
+inline int controlMax(int controller) { return controller == kCtrlPitchBend ? 16383 : 127; }
+struct ControlPoint {
+    Tick tick = 0;
+    int controller = 0;
+    int value = 0;   // raw MIDI value: 0..127, pitch bend 0..16383 (8192 = centre)
+    bool operator==(const ControlPoint&) const = default;
+};
+// set the controller's value at t (one point per controller and tick), keeping the points sorted by tick
+inline void setControl(std::vector<ControlPoint>& points, Tick t, int controller, int value) {
+    auto it = std::upper_bound(points.begin(), points.end(), t, [](Tick x, const ControlPoint& p) { return x < p.tick; });
+    for (auto j = it; j != points.begin() && (j - 1)->tick == t; --j)
+        if ((j - 1)->controller == controller) {
+            (j - 1)->value = value;
+            return;
+        }
+    points.insert(it, {t, controller, value});
+}
+
 struct PatternChannelData {
     Id id = 0;   // channel id
     std::vector<Note> notes;   // piano-roll notes
     std::vector<Step> steps;   // step-sequencer grid
+    std::vector<ControlPoint> controls;   // controller lanes, sorted by tick
 };
 
 struct Pattern {
@@ -66,7 +87,7 @@ struct Pattern {
     }
     PatternChannelData& ensureChannel(Id ch) {
         if (auto* c = channelData(ch)) return *c;
-        channels.push_back({ch, {}, std::vector<Step>(stepCount)});
+        channels.push_back({ch, {}, std::vector<Step>(stepCount), {}});
         return channels.back();
     }
     Tick stepTicks() const { return (Tick)PPQ / stepsPerBeat; }

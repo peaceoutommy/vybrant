@@ -1,5 +1,6 @@
 #include "ui/ChannelRackPanel.h"
 #include "ui/AudioEditor.h"
+#include "project/MidiFile.h"
 #include "ui/InAppDrag.h"
 #include <QCoreApplication>
 #include "ui/Theme.h"
@@ -946,6 +947,7 @@ void RackView::handleDrop(const QMimeData* mime, const QPoint& at) {
     if (mime->hasUrls()) {
         for (auto& u : mime->urls()) {
             QString p = u.toLocalFile();
+            if (MidiFile::isMidiFile(p)) m_app.importMidiFile(p);
             if (!AudioFile::isAudioFile(p)) continue;
             if (target) {
                 m_app.setChannelSample(target, p);

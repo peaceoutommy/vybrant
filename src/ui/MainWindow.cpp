@@ -500,6 +500,20 @@ void MainWindow::buildMenus() {
             d.exec();
         },
         this, false, QKeySequence("Ctrl+Shift+R")));
+    file->addAction(reg.add(
+        "file.importMidi", "Import MIDI file...", "File", QKeySequence(),
+        [this] {
+            QString p = QFileDialog::getOpenFileName(this, "Import MIDI file", QString(), "MIDI files (*.mid *.midi)");
+            if (!p.isEmpty()) m_app.importMidiFile(p);
+        },
+        this));
+    file->addAction(reg.add(
+        "file.exportMidi", "Export MIDI file...", "File", QKeySequence(),
+        [this] {
+            QString p = QFileDialog::getSaveFileName(this, "Export MIDI file", m_app.projectTitle() + ".mid", "MIDI file (*.mid)");
+            if (!p.isEmpty()) m_app.exportMidiFile(p);
+        },
+        this));
     file->addAction(reg.add("file.collect", "Collect project samples", "File", QKeySequence(), [this] { m_app.collectSamples(); }, this));
     file->addAction(reg.add(
         "file.missing", "Find missing samples...", "File", QKeySequence(),
