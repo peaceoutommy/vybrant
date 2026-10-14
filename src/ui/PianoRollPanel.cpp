@@ -296,14 +296,12 @@ void PianoRollView::renderCache() {
     Tick barStep = bar;
     while (barStep * m_ppt < 10) barStep *= 2;
     if (bar * m_ppt < 10) step = barStep;
-    Tick first = (m_scrollTick / step) * step;
     Tick last = xToTick(L.grid.right());
-    for (Tick t = first; t <= last; t += step) {
+    forEachGridLine(m_scrollTick, last, step, (int)std::max<Tick>(1, step / bar), [&](Tick t, int64_t, int kind) {
         int x = tickToX(t);
-        QColor c = (t % bar == 0) ? theme::gridStrong().lighter(130) : (t % beat == 0) ? theme::gridStrong() : theme::grid();
-        p.setPen(c);
+        p.setPen(kind == 2 ? theme::gridStrong().lighter(130) : kind == 1 ? theme::gridStrong() : theme::grid());
         p.drawLine(x, L.grid.top(), x, L.grid.bottom());
-    }
+    });
     if (patLen > 0) {
         int x = tickToX(patLen);
         p.fillRect(QRect(x, L.grid.top(), L.grid.right() - x, L.grid.height()), QColor(0, 0, 0, 60));

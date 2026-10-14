@@ -216,8 +216,7 @@ void Vst2Plugin::process(float* L, float* R, int n, const MidiEventList& midi, c
     t.sampleRate = m_sr;
     t.ppqPos = ctx.positionBeats;
     t.tempo = ctx.bpm;
-    double bpb = 4.0 * ctx.tsNum / ctx.tsDen;
-    t.barStartPos = std::floor(ctx.positionBeats / bpb) * bpb;
+    t.barStartPos = ctx.barStartBeats;
     t.cycleStartPos = ctx.loopStartBeats;
     t.cycleEndPos = ctx.loopEndBeats;
     t.timeSigNumerator = ctx.tsNum;

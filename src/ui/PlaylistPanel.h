@@ -77,7 +77,8 @@ private:
         FadeIn,
         FadeOut,
         Gain,
-        Erasing
+        Erasing,
+        TempoPointDrag
     };
     // audio clip handles: 1 = fade-in, 2 = fade-out, 3 = gain (0 = none); positions in view coordinates
     int clipHandleAt(const Clip& c, const QPoint& pos, QPoint* where = nullptr) const;
@@ -85,10 +86,17 @@ private:
     QRect fadeIconRect(const Clip& c, int which) const;
     QRect gainIconRect(const Clip& c) const;
     struct Layout {
-        int headerW = 170, rulerH = 24;
-        QRect ruler, headers, area;
+        int headerW = 170, rulerH = 44;   // everything above the tracks: the ruler and the tempo lane under it
+        QRect ruler, tempo, headers, area;
     };
     Layout layout() const;
+    // tempo lane: the tempo curve with its points (double-click adds, drag moves / changes the BPM, right-click deletes / ramps)
+    std::pair<double, double> tempoRange() const;   // BPM shown at the lane's bottom and top
+    int tempoY(double bpm) const;
+    int tempoPointAt(const QPoint& p) const;   // index into transport.tempoPoints, -1 = none
+    void paintTempoLane(QPainter& p, const Layout& L);
+    void showTempoMenu(int idx, const QPoint& global);
+    void addTimeSigActions(QMenu& m, int x);   // the ruler menu's time-signature entries for a right-click at x
     QColor clipColor(const Clip& c) const;
     int trackAtY(int y) const;
     int trackTop(int idx) const;
@@ -129,6 +137,9 @@ private:
     Id m_autoLane = 0;
     int m_autoPoint = -1;
     AutomationLane m_laneBefore;
+    int m_tempoPoint = -1;
+    std::vector<TempoPoint> m_tempoBefore;
+    std::pair<double, double> m_tempoRange;   // frozen while a point is dragged
     Tick m_loopDragStart = 0;
     bool m_placed = false;
     // FL: the last clicked (or resized) clip is the brush - the draw tool places a copy of it: the same pattern / sample /

@@ -4,6 +4,7 @@
 #include <csetjmp>
 #include <csignal>
 #include <chrono>
+#include <limits>
 #include <thread>
 
 namespace mt {
@@ -138,19 +139,22 @@ TransportView AudioEngine::transport() const {
     v.paused = m_paused.load();
     v.countingIn = m_countingIn.load();
     v.positionTicks = m_posTicks.load();
-    v.bpm = m_bpm.load();
-    v.tsNum = m_tsNum.load();
-    v.tsDen = m_tsDen.load();
+    const TempoMap& m = m_tempoUi;
+    v.bpm = m.hasTempoPoints() ? m.bpmAt(v.positionTicks) : m_bpm.load();
+    v.seconds = m.hasTempoPoints() ? m.secondsAt(v.positionTicks) : v.positionTicks * 60.0 / (v.bpm * PPQ);
     v.songMode = m_songMode.load();
     v.loop = m_loopEnabled.load();
     v.loopStart = m_loopStart.load();
     v.loopEnd = m_loopEnd.load();
-    TimeSignature ts{v.tsNum, v.tsDen};
-    Tick pos = (Tick)v.positionTicks;
-    Tick bar = ts.ticksPerBar(), beat = ts.ticksPerBeat();
-    v.bar = (int)(pos / bar) + 1;
-    v.beat = (int)((pos % bar) / beat) + 1;
-    v.tick = (int)(pos % beat);
+    Tick pos = std::max<Tick>(0, (Tick)v.positionTicks);
+    TimeSignature ts = m.sigAt(pos);
+    v.tsNum = ts.numerator;
+    v.tsDen = ts.denominator;
+    int64_t bar = m.barAt(pos);
+    Tick inBar = pos - m.barStart(bar), beat = ts.ticksPerBeat();
+    v.bar = (int)bar + 1;
+    v.beat = (int)(inBar / beat) + 1;
+    v.tick = (int)(inBar % beat);
     return v;
 }
 
@@ -315,8 +319,7 @@ void AudioEngine::drainCommands() {
             m_paused.store(false);
             m_transportJumped = true;
             if (m_countIn.load() && m_recordingFlag.load()) {
-                TimeSignature ts{m_tsNum.load(), m_tsDen.load()};
-                m_countInRemaining = (double)ts.ticksPerBar() * m_countInBars.load();
+                m_countInRemaining = (double)sigAt(m_posTicks.load()).ticksPerBar() * m_countInBars.load();
                 m_countingIn.store(true);
             } else {
                 m_countInRemaining = 0;
@@ -406,10 +409,7 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
     int remaining = frames;
     while (remaining > 0) {
         int n = std::min(remaining, snap ? snap->maxBlock : m_maxBlock);
-        double spt = samplesPerTick();
         double pos = m_posTicks.load();
-        Tick t0 = (Tick)std::floor(pos);
-        Tick t1 = t0;
         bool playing = m_playing.load();
         bool countIn = m_countingIn.load();
         Tick loopS = 0, loopE = 0;
@@ -424,18 +424,28 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
                 loopS = 0;
                 loopE = std::max<Tick>(m_patternLength.load(), PPQ);
             }
-            if (loop && loopE > loopS) {
-                if (pos >= loopE || pos < loopS) {
-                    pos = (double)loopS;
-                    m_posTicks.store(pos);
-                    t0 = loopS;
-                    m_transportJumped = true;
-                }
-                double ticksToEnd = loopE - pos;
-                int samplesToEnd = (int)std::ceil(ticksToEnd * spt);
-                if (samplesToEnd < n) n = std::max(1, samplesToEnd);
+            if (loop && loopE > loopS && (pos >= loopE || pos < loopS)) {
+                pos = (double)loopS;
+                m_posTicks.store(pos);
+                m_transportJumped = true;
             }
-            double endPos = pos + n / spt;
+        }
+        // the tempo at the position: the snapshot's map, or m_bpm (transport bar drag, external sync) when the map has no points
+        m_map = snap && snap->tempo.hasTempoPoints() ? &snap->tempo : nullptr;
+        m_blockBpm = m_map ? m_map->bpmAt(pos) : m_bpm.load();
+        double spt = m_sr * 60.0 / (m_blockBpm * PPQ), endPos = pos;
+        Tick t0 = (Tick)std::floor(pos);
+        Tick t1 = t0;
+        if (playing && !countIn) {
+            // sub-blocks end at the loop end and at tempo points (a jump never falls inside one; ramps are taken per sub-block)
+            Tick lim = loop && loopE > loopS ? loopE : std::numeric_limits<Tick>::max();
+            if (m_map) lim = std::min(lim, m_map->nextTempoPoint(pos));
+            if (lim != std::numeric_limits<Tick>::max()) {
+                int samplesTo = (int)std::ceil(m_map ? (m_map->secondsAt(lim) - m_map->secondsAt(pos)) * m_sr : (lim - pos) * spt);
+                if (samplesTo < n) n = std::max(1, samplesTo);
+            }
+            endPos = m_map ? m_map->tickAt(m_map->secondsAt(pos) + n / m_sr) : pos + n / spt;
+            spt = n / (endPos - pos);
             t1 = (Tick)std::floor(endPos);
             if (t1 <= t0) t1 = t0 + 1;
         } else if (playing && countIn) {
@@ -449,13 +459,15 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
                 m_messages.push(m);
             }
         }
+        m_spt = spt;
         processSubBlock(in ? in + (size_t)offset * inCh : nullptr, inCh, outL + offset, outR + offset, n, snap, t0, t1);
-        if (playing && countIn) {
-            TimeSignature ts{m_tsNum.load(), m_tsDen.load()};
+        if (playing && countIn) {   // count-in bars in the signature of the position recording starts at
+            TimeSignature ts = sigAt(pos);
             Tick total = ts.ticksPerBar() * m_countInBars.load();
             Tick c0 = total - (Tick)(m_countInRemaining + n / spt), c1 = total - (Tick)m_countInRemaining;
-            renderMetronome(outL + offset, outR + offset, n, c0, c1, true);
-        } else if (playing && m_metronome.load()) renderMetronome(outL + offset, outR + offset, n, t0, t1, false);
+            renderMetronome(outL + offset, outR + offset, n, c0, c1, ts, 0);
+        } else if (playing && m_metronome.load() && snap)
+            renderMetronome(outL + offset, outR + offset, n, t0, t1, snap->tempo.sigAt(t0), snap->tempo.barStart(snap->tempo.barAt(t0)));
         if (m_midiClock.load()) {
             // MIDI clock: 24 pulses per quarter note while the transport runs
             bool run = playing && !countIn;
@@ -490,7 +502,7 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
             }
         }
         if (playing && !countIn) {
-            double newPos = pos + n / spt;
+            double newPos = endPos;
             if (loop && loopE > loopS && newPos >= loopE - 1e-6) {
                 newPos = (double)loopS;
                 m_transportJumped = true;
@@ -531,13 +543,15 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
     ProcessContext ctx;
     ctx.sampleRate = m_sr;
     ctx.blockSize = n;
-    ctx.bpm = m_bpm.load();
-    ctx.tsNum = m_tsNum.load();
-    ctx.tsDen = m_tsDen.load();
+    ctx.bpm = m_blockBpm;
+    TimeSignature ts = s.tempo.sigAt(t0);
+    ctx.tsNum = ts.numerator;
+    ctx.tsDen = ts.denominator;
     ctx.playing = m_playing.load() && !m_countingIn.load();
     ctx.recording = m_recordingFlag.load();
     ctx.positionBeats = (double)t0 / PPQ;
-    ctx.positionSamples = (int64_t)(ctx.positionBeats * 60.0 / ctx.bpm * m_sr);
+    ctx.barStartBeats = (double)s.tempo.barStart(s.tempo.barAt(t0)) / PPQ;
+    ctx.positionSamples = (int64_t)(secondsBetween(0, t0) * m_sr);
     ctx.looping = m_loopEnabled.load();
     ctx.loopStartBeats = (double)m_loopStart.load() / PPQ;
     ctx.loopEndBeats = (double)m_loopEnd.load() / PPQ;
@@ -891,7 +905,7 @@ void AudioEngine::scheduleNotes(Snapshot& s, const RtPattern& pat, Tick winStart
             Tick global = nt.start + tickOffset;
             int off = (int)std::floor((global - pos) * spt);
             off = clamp(off, 0, n - 1);
-            int durSamples = std::max(1, (int)((nt.end - nt.start) * spt));
+            int durSamples = std::max(1, (int)(secondsBetween((double)global, (double)(global + nt.end - nt.start)) * m_sr));
             MidiEvent e;
             e.type = MidiEvent::NoteOn;
             e.data1 = (uint8_t)clamp(nt.pitch, 0, 127);
@@ -938,15 +952,14 @@ void AudioEngine::renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n) {
         // block-local start sample where the clip becomes active
         int startOff = clip.start > t0 ? clamp((int)std::floor((clip.start - posTicks) * spt), 0, n - 1) : 0;
         int endOff = clip.end < t1 ? clamp((int)std::ceil((clip.end - posTicks) * spt), 0, n) : n;
-        if (!st.active || m_transportJumped) {
-            double ticksIn = (posTicks + startOff / spt) - clip.start + clip.sourceOffset;
-            st.pos = ticksToSeconds((Tick)ticksIn, m_bpm.load()) * m_sr * clip.rate;
+        if (!st.active || m_transportJumped) {   // the source position at this tick, counted from the clip's anchor (clipSourceSeconds)
+            double at = posTicks + startOff / spt, anchor = (double)(clip.start - clip.sourceOffset);
+            st.pos = clip.framesPerTick > 0 ? (at - anchor) * clip.framesPerTick : secondsBetween(anchor, at) * m_sr * clip.rate;
             st.active = true;
         }
         float g = clip.gain;
-        double fadeInS = clip.fadeIn * spt, fadeOutS = clip.fadeOut * spt;
-        double clipLenS = (clip.end - clip.start) * spt;
-        double clipPosS = (posTicks - clip.start) * spt;
+        double inc = clip.framesPerTick > 0 ? clip.framesPerTick / spt : clip.rate;   // beat-locked clips follow the tempo
+        double clipLen = (double)(clip.end - clip.start), clipPos = posTicks - clip.start;   // fades are in ticks
         for (int i = startOff; i < endOff; ++i) {
             double p = st.pos;
             if (p >= srcLen) {
@@ -958,33 +971,30 @@ void AudioEngine::renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n) {
             double fr = clip.srcStart + rp;
             float l = dsp::readInterp(a->L(), a->frames, fr), r = dsp::readInterp(a->R(), a->frames, fr);
             float env = g;
-            double cp = clipPosS + i;
-            if (fadeInS > 0 && cp < fadeInS) env *= dsp::fadeShape((float)(cp / fadeInS), clip.fadeInShape);
-            if (fadeOutS > 0 && cp > clipLenS - fadeOutS)
-                env *= dsp::fadeShape((float)std::max(0.0, (clipLenS - cp) / fadeOutS), clip.fadeOutShape);
+            double cp = clipPos + i / spt;
+            if (clip.fadeIn > 0 && cp < clip.fadeIn) env *= dsp::fadeShape((float)(cp / clip.fadeIn), clip.fadeInShape);
+            if (clip.fadeOut > 0 && cp > clipLen - clip.fadeOut)
+                env *= dsp::fadeShape((float)std::max(0.0, (clipLen - cp) / clip.fadeOut), clip.fadeOutShape);
             t.genL[i] += l * env;
             t.genR[i] += r * env;
-            st.pos += clip.rate;
+            st.pos += inc;
         }
     }
 }
 
 
 // ---------------------------------------------------------------- RT: metronome & preview
-void AudioEngine::renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, bool countIn) {
-    TimeSignature ts{m_tsNum.load(), m_tsDen.load()};
+void AudioEngine::renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, TimeSignature ts, Tick barStart) {
     Tick beat = ts.ticksPerBeat();
     double spt = samplesPerTick();
-    Tick firstBeat = (t0 + beat - 1) / beat;
-    for (Tick b = firstBeat; b * beat < t1; ++b) {
-        int off = clamp((int)((b * beat - t0) * spt), 0, n - 1);
-        bool down = (b % ts.numerator) == 0;
+    Tick firstBeat = barStart + (t0 - barStart + beat - 1) / beat * beat;   // beats count from the start of t0's bar
+    for (Tick b = firstBeat; b < t1; b += beat) {
+        int off = clamp((int)((b - t0) * spt), 0, n - 1);
+        bool down = (b - barStart) % ts.ticksPerBar() == 0;
         // render the click from 'off' onwards
         m_clickEnv = 1.f;
         m_clickPhase = 0;
         m_clickFreq = down ? 1400.f : 1000.f;
-        (void)off;
-        (void)countIn;
         // note: the click starts at 'off'; for simplicity the tail of a previous click is overwritten
         for (int i = off; i < n; ++i) {
             float s = std::sin((float)(m_clickPhase * dsp::kTwoPi)) * m_clickEnv * 0.5f;

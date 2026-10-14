@@ -923,8 +923,7 @@ void Vst3Plugin::process(float* L, float* R, int n, const MidiEventList& midi, c
     pc.projectTimeSamples = ctx.positionSamples;
     pc.continousTimeSamples = ctx.positionSamples;
     pc.projectTimeMusic = ctx.positionBeats;
-    double beatsPerBar = 4.0 * ctx.tsNum / ctx.tsDen;
-    pc.barPositionMusic = std::floor(ctx.positionBeats / beatsPerBar) * beatsPerBar;
+    pc.barPositionMusic = ctx.barStartBeats;
     pc.cycleStartMusic = ctx.loopStartBeats;
     pc.cycleEndMusic = ctx.loopEndBeats;
     pc.tempo = ctx.bpm;

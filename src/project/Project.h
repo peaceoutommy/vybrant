@@ -2,6 +2,7 @@
 // All cross-references use stable ids (never indexes).
 #pragma once
 #include "core/Types.h"
+#include "core/TempoMap.h"
 #include <QString>
 #include <QColor>
 #include <QJsonObject>
@@ -146,6 +147,13 @@ inline double clipSourceSpeed(const Clip& c, double bpm) {
     double s = 1.0 / clipTimeRatio(c, bpm);
     return c.stretchMode == 0 ? s * std::pow(2.0, c.pitch / 12.0) : s;
 }
+// Seconds into an audio clip's source at song tick t (before trim, reverse and looping), counted from its anchor (start - sourceOffset,
+// which splits and left trims keep). Fit-tempo clips are locked to beats; the rest play at their own speed through the tempo map.
+inline double clipSourceSeconds(const Clip& c, double t, const TempoMap& m) {
+    double a = (double)(c.start - c.sourceOffset);
+    if (c.fitTempo && c.sourceBpm > 0) return (t - a) * 60.0 / (c.sourceBpm * PPQ) * clipSourceSpeed(c, c.sourceBpm);
+    return (m.secondsAt(t) - m.secondsAt(a)) * clipSourceSpeed(c, 0);
+}
 
 // Non-destructive editing state of an audio file reference
 struct AudioSource {
@@ -273,8 +281,10 @@ struct MidiMapping {
 };
 
 struct TransportSettings {
-    double bpm = 140.0;
-    TimeSignature timeSig;
+    double bpm = 140.0;   // the tempo until the first tempo point
+    TimeSignature timeSig;   // the signature until the first signature change
+    std::vector<TempoPoint> tempoPoints;   // sorted by tick
+    std::vector<TimeSigChange> timeSigChanges;   // sorted by bar
     bool metronome = false, countIn = false, loopEnabled = false;
     Tick loopStart = 0, loopEnd = PPQ * 16;
     bool songMode = false;
@@ -286,6 +296,7 @@ struct TransportSettings {
     int recordMode = 0;   // 0 = audio+notes, 1 = notes only, 2 = audio only, 3 = automation
     int countInBars = 1;
     Tick position = 0;
+    TempoMap tempoMap() const { return TempoMap(bpm, tempoPoints, timeSig, timeSigChanges); }
 };
 
 struct ProjectMetadata {

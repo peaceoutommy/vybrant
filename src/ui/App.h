@@ -14,6 +14,7 @@
 #include <QTimer>
 #include <QStringList>
 #include <map>
+#include <optional>
 
 class QMenu;
 
@@ -77,7 +78,9 @@ public:
     void record(bool on);
     void seek(Tick t);
     void seekToStart();
-    void setBpm(double bpm, bool commit = true);
+    void setBpm(double bpm, bool commit = true);   // with tempo points: the point in effect at the playhead (or the initial tempo)
+    double bpmAtPlayhead() const;
+    void editTempo(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId = 0);   // tempo map edits
     void setTimeSig(int n, int d);
     void setSongMode(bool s);
     void setLoop(bool on);
@@ -231,6 +234,7 @@ private:
     std::map<uint32_t, float> m_paramDragStart;
     bool m_wasRecording = false;
     double m_recordStartTick = 0;
+    std::optional<TransportSettings> m_tempoDragBefore;   // transport before a live tempo drag (see setBpm)
     QString m_previewPath;
     std::shared_ptr<PreviewBuffer> m_previewBuffer;
     PreviewLoader m_previewLoader;

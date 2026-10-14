@@ -48,6 +48,14 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
         {"loopEnd", (double)t.loopEnd}, {"songMode", t.songMode}, {"snap", t.snap}, {"snapDivision", t.snapDivision},
         {"recordMode", t.recordMode}, {"countInBars", t.countInBars}, {"position", (double)t.position}, {"punch", t.punchEnabled},
         {"punchIn", (double)t.punchIn}, {"punchOut", (double)t.punchOut}, {"loopRecord", t.loopRecord}};
+    QJsonArray tempoPoints, sigChanges;
+    for (auto& tp : t.tempoPoints) tempoPoints.append(QJsonObject{{"tick", (double)tp.tick}, {"bpm", tp.bpm}, {"ramp", tp.ramp}});
+    for (auto& sc : t.timeSigChanges)
+        sigChanges.append(QJsonObject{{"bar", sc.bar}, {"num", sc.sig.numerator}, {"den", sc.sig.denominator}});
+    QJsonObject tj = root["transport"].toObject();
+    tj["tempoPoints"] = tempoPoints;
+    tj["timeSigChanges"] = sigChanges;
+    root["transport"] = tj;
     QJsonArray pats;
     for (auto& pat : p.patterns) {
         QJsonArray chans;
@@ -191,6 +199,16 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
     tr.bpm = t["bpm"].toDouble(140);
     tr.timeSig.numerator = t["tsNum"].toInt(4);
     tr.timeSig.denominator = t["tsDen"].toInt(4);
+    for (auto v : t["tempoPoints"].toArray()) {
+        auto o = v.toObject();
+        tr.tempoPoints.push_back({(Tick)o["tick"].toDouble(), clamp(o["bpm"].toDouble(tr.bpm), 20.0, 999.0), o["ramp"].toBool()});
+    }
+    for (auto v : t["timeSigChanges"].toArray()) {
+        auto o = v.toObject();
+        tr.timeSigChanges.push_back({std::max(0, o["bar"].toInt()), {clamp(o["num"].toInt(4), 1, 32), clamp(o["den"].toInt(4), 1, 32)}});
+    }
+    std::stable_sort(tr.tempoPoints.begin(), tr.tempoPoints.end(), [](auto& a, auto& b) { return a.tick < b.tick; });
+    std::stable_sort(tr.timeSigChanges.begin(), tr.timeSigChanges.end(), [](auto& a, auto& b) { return a.bar < b.bar; });
     tr.metronome = t["metronome"].toBool();
     tr.countIn = t["countIn"].toBool();
     tr.loopEnabled = t["loop"].toBool();

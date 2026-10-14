@@ -64,6 +64,10 @@ protected:
     Tick snapTicks() const;
     Tick snap(Tick t, bool force = false) const;   // grid line at or before t (Alt = free unless forced)
     Tick snapNear(Tick t) const;   // nearest grid line
+    Tick snapToGrid(Tick t, bool nearest) const;   // the snap grid restarts at every bar, so it follows the time-signature changes
+    // Every grid line from 'from' to 'to' through the time-signature changes: fn(tick, bar, kind), kind 2 = a bar line (every
+    // barEvery-th bar only), 1 = a beat, 0 = a 'step' subdivision (a step of a bar or more draws bar lines only)
+    void forEachGridLine(Tick from, Tick to, Tick step, int barEvery, const std::function<void(Tick, int64_t, int)>& fn) const;
 
     void invalidate() {
         m_cacheValid = false;

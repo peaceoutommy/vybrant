@@ -126,7 +126,6 @@ inline double radiusFor(double h) { return std::min(kRadius, h / 2.5); }
 // Gives a square widget (a scroll area, a painted view) rounded corners and a 1px border: a mouse-transparent overlay
 // covers the corners with the panel background and strokes the frame, so the widget itself needs no changes
 void roundedFrame(QWidget* host);
-QString tickToBBT(int64_t tick, int tsNum, int tsDen);
 // Painted glyph icons (play, stop, record, metronome, loop...) so the toolbar has no text-heavy buttons
 enum class Glyph {
     Play,

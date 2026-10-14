@@ -412,34 +412,58 @@ void App::seekToStart() {
 }
 void App::setBpm(double bpm, bool commit) {
     bpm = clamp(bpm, 20.0, 999.0);
-    m_engine->setBpm(bpm);
-    if (!commit) return;
-    // Audio clips and the tempo (Fit tempo clips follow it through their source BPM and need nothing):
-    //  - Resample: the audio keeps its speed, so the clip keeps its length in seconds - its beat-based length, start offset and
-    //    fades are rescaled (otherwise a slower tempo leaves an empty tail, a faster one cuts the audio)
-    //  - Stretch modes: the clip keeps its size in bars and the audio is re-stretched to fill it, at the same pitch
-    double old = project().transport.bpm, k = bpm / old;
-    std::vector<std::unique_ptr<Command>> cmds;
-    for (auto& c : project().clips) {
-        if (c.type != ClipType::Audio || c.fitTempo || std::fabs(k - 1.0) < 1e-9) continue;
-        if (c.stretchMode != StretchResample) {
-            cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [k](Clip& x) { x.timeStretch /= k; }, 0));
-            continue;
+    auto& tr = project().transport;
+    if (!tr.tempoPoints.empty()) {   // a tempo map: edit the point in effect at the playhead, or the initial tempo before the first
+        auto set = [bpm, pos = (Tick)m_engine->positionTicks()](TransportSettings& t) {
+            auto it = std::upper_bound(
+                t.tempoPoints.begin(), t.tempoPoints.end(), pos, [](Tick v, const TempoPoint& p) { return v < p.tick; });
+            (it == t.tempoPoints.begin() ? t.bpm : std::prev(it)->bpm) = bpm;
+        };
+        if (!commit) {   // live drag: edit in place, one undoable command when it ends
+            if (!m_tempoDragBefore) m_tempoDragBefore = tr;
+            set(tr);
+            m_engine->requestRebuild();
+            return;
         }
-        cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [k](Clip& x) {
-                auto sc = [k](Tick t) { return (Tick)std::llround(t * k); };
-                x.length = std::max<Tick>(1, sc(x.length));
-                x.sourceOffset = sc(x.sourceOffset);
-                x.fadeIn = sc(x.fadeIn);
-                x.fadeOut = sc(x.fadeOut);
-            }, 0));
-    }
-    if (cmds.empty()) {
-        m_model.editTransport("Change tempo", [bpm](TransportSettings& t) { t.bpm = bpm; }, 1001);
+        if (m_tempoDragBefore) tr = *std::exchange(m_tempoDragBefore, std::nullopt);
+        editTempo("Change tempo", set, 1001);
         return;
     }
-    cmds.push_back(m_model.transportCommand("", [bpm](TransportSettings& t) { t.bpm = bpm; }));
-    m_model.macro("Change tempo", std::move(cmds));
+    m_engine->setBpm(bpm);
+    if (commit) editTempo("Change tempo", [bpm](TransportSettings& t) { t.bpm = bpm; }, 1001);
+}
+double App::bpmAtPlayhead() const { return project().transport.tempoMap().bpmAt(m_engine->positionTicks()); }
+void App::editTempo(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId) {
+    // Audio clips and tempo edits (Fit tempo clips are locked to beats and need nothing):
+    //  - Resample: the audio keeps its speed, so the clip keeps its start and its length in seconds - its length, start offset and
+    //    fades are re-measured through the new map (otherwise a slower tempo leaves an empty tail, a faster one cuts the audio)
+    //  - Stretch modes: the clip keeps its size in bars and the audio is re-stretched to fill it, at the same pitch
+    TransportSettings after = project().transport;
+    fn(after);
+    TempoMap m0 = project().transport.tempoMap(), m1 = after.tempoMap();
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (auto& c : project().clips) {
+        if (c.type != ClipType::Audio || c.fitTempo) continue;
+        double s0 = m0.secondsAt(c.start), s1 = m1.secondsAt(c.start);
+        auto remap = [&](Tick t) { return m1.ticksFor(c.start, m0.secondsAt(t) - s0); };   // ticks from start to t's moment, new map
+        Clip x = c;
+        Tick end = c.start + c.length;
+        if (c.stretchMode != StretchResample) x.timeStretch *= (m1.secondsAt(end) - s1) / (m0.secondsAt(end) - s0);
+        else {
+            x.length = std::max<Tick>(1, remap(end));
+            x.sourceOffset = -remap(c.start - c.sourceOffset);
+            x.fadeIn = remap(c.start + c.fadeIn);
+            x.fadeOut = x.length - remap(end - c.fadeOut);
+        }
+        if (x == c) continue;
+        cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [x](Clip& y) { y = x; }, 0));
+    }
+    if (cmds.empty()) {
+        m_model.editTransport(desc, [after](TransportSettings& t) { t = after; }, mergeId);
+        return;
+    }
+    cmds.push_back(m_model.transportCommand("", [after](TransportSettings& t) { t = after; }));
+    m_model.macro(desc, std::move(cmds));
 }
 void App::setTimeSig(int n, int d) {
     m_model.editTransport("Time signature", [n, d](TransportSettings& t) {
@@ -897,21 +921,23 @@ Id App::addAudioClip(Id trackId, const QString& file, Tick start) {
     const AudioSource* a = project().audioSource(src);
     if (!a) return 0;
     double secs = a->sampleRate > 0 ? a->frames / a->sampleRate : 1.0;
-    Tick len = std::max<Tick>(secondsToTicks(secs, project().transport.bpm), PPQ / 4);
+    TempoMap tempo = project().transport.tempoMap();
     Clip c;
     c.id = project().newId();
     c.type = ClipType::Audio;
     c.trackId = trackId;
     c.sourceId = src;
     c.start = std::max<Tick>(0, start);
-    c.length = len;
+    c.length = std::max<Tick>(tempo.ticksFor(c.start, secs), PPQ / 4);
     c.name = a->name;
     c.loopSource = false;
     if (a->hasPlaceDefaults) {   // settings made in the project panel before the sample was placed
         copyClipSettings(a->placeDefaults, c);
         double trimmed = (a->trimEnd > 0 ? a->trimEnd : a->frames) - a->trimStart;
-        if (a->sampleRate > 0)
-            c.length = std::max<Tick>(PPQ / 4, secondsToTicks(trimmed / a->sampleRate / clipSourceSpeed(c, project().transport.bpm), project().transport.bpm));
+        if (a->sampleRate > 0) {   // fit-tempo clips are locked to beats, the rest last 'sec' through the tempo map
+            double bpm = project().transport.bpm, sec = trimmed / a->sampleRate / clipSourceSpeed(c, bpm);
+            c.length = std::max<Tick>(PPQ / 4, c.fitTempo && c.sourceBpm > 0 ? secondsToTicks(sec, bpm) : tempo.ticksFor(c.start, sec));
+        }
     }
     m_model.insert<Clip>(c, "Add audio clip");
     return c.id;
@@ -1280,11 +1306,9 @@ Id App::createAutomationLane(const ParamTarget& target, const QString& name, boo
             }
         }
         if (!track) track = addPlaylistTrack(l.name);
-        addAutomationClip(track, l.id,
-            project().transport.songMode
-                ? (Tick)m_engine->positionTicks() / project().transport.timeSig.ticksPerBar() * project().transport.timeSig.ticksPerBar()
-                : 0,
-            l.length);
+        TempoMap tempo = project().transport.tempoMap();
+        addAutomationClip(
+            track, l.id, project().transport.songMode ? tempo.barStart(tempo.barAt((Tick)m_engine->positionTicks())) : 0, l.length);
     }
     Q_EMIT statusMessage("Automation clip created: " + l.name, 3000);
     return l.id;
@@ -1477,7 +1501,7 @@ void App::onTakesFinished(const std::vector<RecordedTake>& takes) {
         c.trackId = pt.id;
         c.sourceId = a.id;
         c.start = t.startTick;
-        c.length = std::max<Tick>(secondsToTicks(t.frames / a.sampleRate, project().transport.bpm), PPQ / 8);
+        c.length = std::max<Tick>(project().transport.tempoMap().ticksFor(c.start, t.frames / a.sampleRate), PPQ / 8);
         c.name = trackName;
         c.loopSource = false;
         cmds.push_back(std::make_unique<InsertObjectCommand<AudioSource>>(m_model, a, "", -1));

@@ -76,6 +76,7 @@ private:
 struct TransportView {
     bool playing = false, recording = false, paused = false, countingIn = false;
     double positionTicks = 0;
+    double seconds = 0;   // song time at the position, through the tempo map
     double bpm = 120;
     int tsNum = 4, tsDen = 4;
     bool songMode = false;
@@ -187,11 +188,18 @@ private:
     void releaseAllNotes(bool resetInstruments);   // RT: drop scheduled note-offs and send every channel AllNotesOff
     void processTrack(Snapshot& s, RtTrack& t, int n, const ProcessContext& ctx, float* outL, float* outR);
     bool guardedProcess(RtEffect& fx, float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx);
-    void renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, bool countIn);
+    void renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, TimeSignature ts, Tick barStart);
     void renderPreview(float* L, float* R, int n);
     void onAssetLoaded(const QString& path);
     void resolvePendingSamples();
-    double samplesPerTick() const { return m_sr * 60.0 / (m_bpm.load() * PPQ); }
+    double samplesPerTick() const { return m_spt; }
+    // RT: song seconds between two ticks through the block's tempo map, or at the single tempo when the map has no points
+    double secondsBetween(double a, double b) const {
+        return m_map ? m_map->secondsAt(b) - m_map->secondsAt(a) : (b - a) * 60.0 / (m_blockBpm * PPQ);
+    }
+    TimeSignature sigAt(double tick) const {
+        return m_rtSnapshot ? m_rtSnapshot->tempo.sigAt((Tick)tick) : TimeSignature{m_tsNum.load(), m_tsDen.load()};
+    }
 
     AudioDeviceManager& m_devices;
     SampleCache& m_cache;
@@ -231,6 +239,10 @@ private:
     std::atomic<Tick> m_punchIn{0}, m_punchOut{0};
     std::atomic<Id> m_selectedPattern{0};
     std::atomic<Tick> m_patternLength{PPQ * 4};
+    TempoMap m_tempoUi;   // UI-thread copy of the active snapshot's map, for transport()
+    // RT: the current sub-block's tempo (set by processFrames)
+    const TempoMap* m_map = nullptr;   // null: the map has no points and m_bpm rules
+    double m_blockBpm = 140, m_spt = 1;
     double m_countInRemaining = 0;
     int64_t m_lastBeatIndex = -1;
     bool m_transportJumped = true;

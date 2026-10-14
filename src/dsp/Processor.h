@@ -57,6 +57,7 @@ struct ProcessContext {
     int tsNum = 4, tsDen = 4;
     int64_t positionSamples = 0;
     double positionBeats = 0;
+    double barStartBeats = 0;   // where the current bar starts (bars follow the time-signature changes)
     bool playing = false;
     bool recording = false;
     bool looping = false;

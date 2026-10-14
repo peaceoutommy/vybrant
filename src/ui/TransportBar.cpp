@@ -221,7 +221,7 @@ void TransportBar::rebuildPatternCombo() {
 void TransportBar::refresh(uint32_t flags) {
     m_updating = true;
     const auto& t = m_app.project().transport;
-    m_bpm->setValue(t.bpm);
+    m_bpm->setValue(m_app.bpmAtPlayhead());
     m_tsNum->setValue(t.timeSig.numerator);
     m_tsDen->setValue(t.timeSig.denominator);
     m_metro->setChecked(t.metronome);
@@ -238,8 +238,10 @@ void TransportBar::uiTick() {
     m_updating = true;
     m_play->setChecked(tv.playing);
     m_record->setChecked(tv.recording);
-    m_position->setText(tv.countingIn ? "COUNT-IN" : theme::tickToBBT((int64_t)tv.positionTicks, tv.tsNum, tv.tsDen));
-    double secs = ticksToSeconds((Tick)tv.positionTicks, tv.bpm);
+    m_position->setText(
+        tv.countingIn ? "COUNT-IN" : QString("%1:%2:%3").arg(tv.bar, 3, 10, QChar('0')).arg(tv.beat).arg(tv.tick, 3, 10, QChar('0')));
+    if (!m_app.project().transport.tempoPoints.empty()) m_bpm->setValue(m_app.bpmAtPlayhead());   // the tempo at the playhead
+    double secs = tv.seconds;
     m_timeSec->setText(QString("%1:%2").arg((int)secs / 60).arg(secs - (int)secs / 60 * 60, 4, 'f', 1, QChar('0')));
     auto& e = m_app.engine();
     double lat = e.deviceRunning() ? m_app.devices().reportedOutputLatency() * 1000 : 0;
@@ -304,10 +306,10 @@ void TransportBar::setHint(const QString& text) {
 bool TransportBar::eventFilter(QObject* o, QEvent* e) {
     if (o == m_position && e->type() == QEvent::MouseButtonPress) {
         bool ok;
-        const auto& ts = m_app.project().transport.timeSig;
+        TempoMap m = m_app.project().transport.tempoMap();
         int bar = QInputDialog::getInt(
-            this, "Jump to bar", "Bar:", (int)(m_app.engine().positionTicks() / ts.ticksPerBar()) + 1, 1, 9999, 1, &ok);
-        if (ok) m_app.seek((Tick)(bar - 1) * ts.ticksPerBar());
+            this, "Jump to bar", "Bar:", (int)m.barAt((Tick)m_app.engine().positionTicks()) + 1, 1, 9999, 1, &ok);
+        if (ok) m_app.seek(m.barStart(bar - 1));
         return true;
     }
     if (e->type() == QEvent::Enter || e->type() == QEvent::Leave) {

@@ -31,8 +31,8 @@ bool RenderEngine::render(
     engine.seek(start);
     engine.play();
     double sr = opt.sampleRate;
-    double bpm = project.transport.bpm;
-    int64_t totalFrames = (int64_t)(ticksToSeconds(end - start, bpm) * sr);
+    TempoMap tempo = project.transport.tempoMap();
+    int64_t totalFrames = (int64_t)((tempo.secondsAt(end) - tempo.secondsAt(start)) * sr);
     int64_t tailFrames = (int64_t)(opt.tailSeconds * sr);
     std::vector<float> L(opt.blockSize), R(opt.blockSize);
     std::vector<float> outL, outR;

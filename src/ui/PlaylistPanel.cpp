@@ -33,7 +33,8 @@ PlaylistView::PlaylistView(App& app, QWidget* parent)
 PlaylistView::Layout PlaylistView::layout() const {
     Layout l;
     int w = width() - 14, h = height() - 14;
-    l.ruler = QRect(l.headerW, 0, w - l.headerW, l.rulerH);
+    l.ruler = QRect(l.headerW, 0, w - l.headerW, 24);
+    l.tempo = QRect(l.headerW, 24, w - l.headerW, l.rulerH - 24);
     l.headers = QRect(0, l.rulerH, l.headerW, h - l.rulerH);
     l.area = QRect(l.headerW, l.rulerH, w - l.headerW, h - l.rulerH);
     return l;
@@ -58,9 +59,8 @@ int PlaylistView::trackAtY(int y) const {
     return -1;
 }
 Tick PlaylistView::snapRound(Tick t) const {
-    Tick s = snapTicks();
-    if (s <= 1) s = PPQ / 4;
-    return ((t + s / 2) / s) * s;
+    if (snapTicks() > 1) return snapToGrid(t, true);
+    return ((t + PPQ / 8) / (PPQ / 4)) * (PPQ / 4);
 }   // nearest grid line (rounds up past halfway)
 void PlaylistView::selectInRect(const QRect& r) {
     for (auto& c : m_app.project().clips)
@@ -152,6 +152,97 @@ float PlaylistView::autoValueAtY(const Clip& c, int y) const {
 }
 Tick PlaylistView::autoTickAtX(const Clip& c, int x) const {
     return clamp<Tick>(xToTick(x) - c.start + c.sourceOffset, 0, c.length + c.sourceOffset);
+}
+
+// ---------------------------------------------------------------- tempo lane & time signatures
+std::pair<double, double> PlaylistView::tempoRange() const {
+    if (m_drag == TempoPointDrag) return m_tempoRange;
+    const auto& t = m_app.project().transport;
+    double lo = t.bpm, hi = t.bpm;
+    for (auto& p : t.tempoPoints) {
+        lo = std::min(lo, p.bpm);
+        hi = std::max(hi, p.bpm);
+    }
+    double pad = std::max(0.0, 20.0 - (hi - lo)) / 2;   // at least 20 BPM tall
+    return {lo - pad, hi + pad};
+}
+int PlaylistView::tempoY(double bpm) const {
+    QRect r = layout().tempo;
+    auto [lo, hi] = tempoRange();
+    return r.bottom() - 3 - (int)std::lround((bpm - lo) / (hi - lo) * (r.height() - 7));
+}
+int PlaylistView::tempoPointAt(const QPoint& p) const {
+    const auto& pts = m_app.project().transport.tempoPoints;
+    for (int i = 0; i < (int)pts.size(); ++i)
+        if (std::abs(tickToX(pts[i].tick) - p.x()) <= 5) return i;
+    return -1;
+}
+void PlaylistView::paintTempoLane(QPainter& p, const Layout& L) {
+    const auto& tr = m_app.project().transport;
+    TempoMap m = tr.tempoMap();
+    p.save();
+    p.setClipRect(L.tempo);
+    p.fillRect(L.tempo, theme::bg());
+    p.setPen(theme::border());
+    p.drawLine(L.tempo.topLeft(), L.tempo.topRight());
+    p.setRenderHint(QPainter::Antialiasing);
+    QPolygonF curve;   // sampled per pixel: jumps come out as steps, ramps as slopes
+    for (int x = L.tempo.left(); x <= L.tempo.right(); ++x) curve << QPointF(x, tempoY(m.bpmAt((double)xToTick(x))));
+    p.setPen(QPen(theme::accent(), 1.5));
+    p.drawPolyline(curve);
+    p.setFont(theme::smallFont());
+    for (auto& pt : tr.tempoPoints) {
+        int x = tickToX(pt.tick);
+        p.setBrush(pt.ramp ? theme::accent() : theme::bg());   // filled: ramps to the next point
+        p.drawEllipse(QPoint(x, tempoY(pt.bpm)), 3, 3);
+        p.drawText(x + 6, L.tempo.top() + 10, QString::number(pt.bpm, 'f', pt.bpm == std::round(pt.bpm) ? 0 : 1));
+    }
+    p.restore();
+}
+void PlaylistView::showTempoMenu(int idx, const QPoint& global) {
+    const auto& pts = m_app.project().transport.tempoPoints;
+    if (idx < 0 || idx >= (int)pts.size()) return;
+    QMenu m(this);
+    QAction* ramp = m.addAction("Ramp to the next point", [this, idx] {
+        m_app.editTempo("Tempo ramp", [idx](TransportSettings& t) { t.tempoPoints[idx].ramp = !t.tempoPoints[idx].ramp; });
+    });
+    ramp->setCheckable(true);
+    ramp->setChecked(pts[idx].ramp);
+    ramp->setEnabled(idx + 1 < (int)pts.size());
+    m.addAction("Delete tempo point", [this, idx] {
+        m_app.editTempo("Delete tempo point", [idx](TransportSettings& t) { t.tempoPoints.erase(t.tempoPoints.begin() + idx); });
+    });
+    m.exec(global);
+}
+void PlaylistView::addTimeSigActions(QMenu& m, int x) {
+    const auto& tr = m_app.project().transport;
+    TempoMap tm = tr.tempoMap();
+    Tick t = std::max<Tick>(0, xToTick(x));
+    int64_t b = tm.barAt(t);
+    if (t - tm.barStart(b) > (tm.barStart(b + 1) - tm.barStart(b)) / 2) ++b;   // the nearest bar line
+    int bar = (int)std::max<int64_t>(b, 1);   // bar 1's signature is the transport bar's
+    m.addAction(QString("Insert time signature change here (bar %1)...").arg(bar + 1), [this, bar, cur = tm.sigAt(tm.barStart(bar))] {
+        bool ok;
+        QString s = QInputDialog::getText(this, "Time signature", QString("Time signature from bar %1 (beats/unit):").arg(bar + 1),
+            QLineEdit::Normal, QString("%1/%2").arg(cur.numerator).arg(cur.denominator), &ok);
+        QStringList nd = s.split('/');
+        int n = nd.size() == 2 ? nd[0].trimmed().toInt() : 0, d = nd.size() == 2 ? nd[1].trimmed().toInt() : 0;
+        if (!ok || n < 1 || n > 32 || d < 1 || d > 32) return;
+        m_app.model().editTransport("Time signature change", [bar, n, d](TransportSettings& t) {
+            std::erase_if(t.timeSigChanges, [bar](const TimeSigChange& c) { return c.bar == bar; });
+            auto it = std::lower_bound(
+                t.timeSigChanges.begin(), t.timeSigChanges.end(), bar, [](const TimeSigChange& c, int v) { return c.bar < v; });
+            t.timeSigChanges.insert(it, {bar, {n, d}});
+        });
+    });
+    for (auto& c : tr.timeSigChanges)
+        if (std::abs(tickToX(tm.barStart(c.bar)) - x) < 8)
+            m.addAction(QString("Delete time signature %1/%2 (bar %3)").arg(c.sig.numerator).arg(c.sig.denominator).arg(c.bar + 1),
+                [this, bar = c.bar] {
+                    m_app.model().editTransport("Delete time signature change", [bar](TransportSettings& t) {
+                        std::erase_if(t.timeSigChanges, [bar](const TimeSigChange& x) { return x.bar == bar; });
+                    });
+                });
 }
 
 // ---------------------------------------------------------------- painting
@@ -304,8 +395,8 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
         AudioAssetPtr a = src ? m_app.cache().get(src->filePath) : nullptr;
         if (a && a->frames > 0) {
             double sr = a->sampleRate;
-            double bpm = proj.transport.bpm;
-            double framesPerTick = sr * 60.0 / (bpm * PPQ) * clipSourceSpeed(c, bpm);
+            TempoMap tm = proj.transport.tempoMap();   // the waveform sits where the engine plays it (clipSourceSeconds)
+            double framesPerTick = (clipSourceSeconds(c, c.start + PPQ, tm) - clipSourceSeconds(c, c.start, tm)) * sr / PPQ;
             double spp = framesPerTick / m_ppt;
             const WaveformLevel& lv = a->levelFor(spp);
             int mid = body.center().y();
@@ -317,8 +408,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
             float g = c.gain * src->gain * (src->normalize && a->peakValue > 0 ? 1.f / a->peakValue : 1.f);
             int x0 = std::max(r.left() + 1, L.area.left()), x1 = std::min(r.right() - 1, L.area.right());
             for (int x = x0; x <= x1; ++x) {
-                double tick = xToTick(x) - c.start + c.sourceOffset;
-                double frame = tick * framesPerTick;
+                double frame = clipSourceSeconds(c, (double)xToTick(x), tm) * sr;
                 if (frame >= srcLen && !c.loopSource) break;
                 if (c.loopSource && srcLen > 0) frame = std::fmod(frame, (double)srcLen);
                 if (rev) frame = srcLen - 1 - frame;
@@ -441,17 +531,16 @@ void PlaylistView::renderCache() {
     while (barStep * m_ppt < 14) barStep *= 2;
     if (step < barStep && bar * m_ppt < 14) step = barStep;
     Tick last = xToTick(L.area.right());
-    for (Tick t = (m_scrollTick / step) * step; t <= last; t += step) {
+    int barEvery = (int)(barStep / bar);
+    forEachGridLine(m_scrollTick, last, step, barEvery, [&](Tick t, int64_t b, int kind) {
         int x = tickToX(t);
-        bool isBar = t % bar == 0;
-        bool strongBar = t % (barStep * 4) == 0;
-        if (isBar && t % barStep != 0) continue;
-        p.setPen(strongBar && barStep > bar ? theme::gridStrong().lighter(140)
-                : isBar                     ? theme::gridStrong().lighter(120)
-                : t % beat == 0             ? theme::gridStrong()
-                                            : theme::grid());
+        bool strongBar = kind == 2 && b % (barEvery * 4) == 0;
+        p.setPen(strongBar && barEvery > 1 ? theme::gridStrong().lighter(140)
+                : kind == 2                ? theme::gridStrong().lighter(120)
+                : kind == 1                ? theme::gridStrong()
+                                           : theme::grid());
         p.drawLine(x, L.area.top(), x, L.area.bottom());
-    }
+    });
     // loop / punch region
     if (proj.transport.loopEnabled) {
         int x1 = tickToX(proj.transport.loopStart), x2 = tickToX(proj.transport.loopEnd);
@@ -474,7 +563,15 @@ void PlaylistView::renderCache() {
         p.drawPolygon(QPolygon({QPoint(x, L.ruler.bottom()), QPoint(x - 5, L.ruler.bottom() - 7), QPoint(x + 5, L.ruler.bottom() - 7)}));
         p.drawText(x + 7, L.ruler.bottom() - 2, m.name);
     }
+    TempoMap tm = proj.transport.tempoMap();
+    for (auto& c : proj.transport.timeSigChanges) {   // time-signature markers
+        int x = tickToX(tm.barStart(c.bar));
+        p.setPen(theme::accent());
+        p.drawLine(x, L.ruler.top() + 8, x, L.ruler.bottom());
+        p.drawText(x + 3, L.ruler.top() + 21, QString("%1/%2").arg(c.sig.numerator).arg(c.sig.denominator));
+    }
     p.setClipping(false);
+    paintTempoLane(p, L);
     // headers
     p.fillRect(L.headers, theme::panel());
     p.setClipRect(L.headers);
@@ -513,6 +610,9 @@ void PlaylistView::renderCache() {
     p.drawText(QRect(6, y + 4, L.headerW - 12, 14), Qt::AlignLeft, "+ double-click to add track");
     p.setClipping(false);
     p.fillRect(QRect(0, 0, L.headerW, L.rulerH), theme::panel());
+    p.setPen(theme::textDim());
+    p.setFont(theme::smallFont());
+    p.drawText(QRect(10, L.tempo.top(), L.headerW - 14, L.tempo.height()), Qt::AlignVCenter | Qt::AlignLeft, "Tempo");
     p.setPen(theme::border());
     p.drawLine(0, L.rulerH - 1, L.headerW, L.rulerH - 1);
 }
@@ -648,10 +748,22 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         m_drag = Pan;
         return;
     }
+    if (L.tempo.contains(e->pos())) {
+        int idx = tempoPointAt(e->pos());
+        if (e->button() == Qt::RightButton) showTempoMenu(idx, e->globalPosition().toPoint());
+        else if (e->button() == Qt::LeftButton && idx >= 0) {
+            m_tempoRange = tempoRange();
+            m_tempoBefore = proj.transport.tempoPoints;
+            m_tempoPoint = idx;
+            m_drag = TempoPointDrag;
+        }
+        return;
+    }
     if (L.ruler.contains(e->pos())) {
         Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x())));
         if (e->button() == Qt::RightButton) {
             QMenu m;
+            addTimeSigActions(m, e->pos().x());
             m.addAction("Add marker here", [this, t] {
                 if (auto n = askName(this, "Marker", QString("Marker %1").arg(m_app.project().markers.size() + 1), true)) m_app.addMarker(t, *n);
             });
@@ -927,6 +1039,19 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
         invalidate();
         return;
     }
+    if (m_drag == TempoPointDrag) {   // sideways moves the point (kept between its neighbours), up / down changes its BPM
+        auto pts = m_tempoBefore;
+        TempoPoint& pt = pts[m_tempoPoint];
+        if (std::abs(e->pos().x() - m_pressPos.x()) >= 3) {
+            Tick lo = m_tempoPoint > 0 ? pts[m_tempoPoint - 1].tick + 1 : 0;
+            Tick hi = m_tempoPoint + 1 < (int)pts.size() ? pts[m_tempoPoint + 1].tick - 1 : std::numeric_limits<Tick>::max();
+            pt.tick = clamp(snapNear(xToTick(e->pos().x())), lo, hi);
+        }
+        pt.bpm = clamp(std::round((pt.bpm + (m_pressPos.y() - e->pos().y()) * 0.5) * 10) / 10, 20.0, 999.0);
+        proj.transport.tempoPoints = pts;
+        invalidate();
+        return;
+    }
     if (m_drag == Seek) {
         Tick t = std::max<Tick>(0, snapRound(xToTick(e->pos().x())));
         if (t != m_pressTick) {
@@ -1093,6 +1218,14 @@ void PlaylistView::mouseReleaseEvent(QMouseEvent* e) {
     case FadeIn:
     case FadeOut: commitEdit("Edit fade"); break;
     case Gain: commitEdit("Clip gain"); break;
+    case TempoPointDrag: {
+        auto after = proj.transport.tempoPoints;
+        const TempoPoint &a = after[m_tempoPoint], &b = m_tempoBefore[m_tempoPoint];
+        bool moved = a.tick != b.tick || a.bpm != b.bpm;
+        proj.transport.tempoPoints = m_tempoBefore;
+        if (moved) m_app.editTempo("Move tempo point", [after](TransportSettings& t) { t.tempoPoints = after; });
+        break;
+    }
     case LoopRange: {
         if (std::abs(e->pos().x() - m_pressPos.x()) > 3) {
             Tick a = proj.transport.loopStart, b = proj.transport.loopEnd;
@@ -1158,6 +1291,19 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
         }
         auto& t = proj.playlistTracks[idx];
         if (auto n = askName(this, "Rename track", t.name)) m_app.edit<PlaylistTrack>(t.id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
+        return;
+    }
+    if (L.tempo.contains(e->pos())) {   // a new tempo point at the BPM under the pointer (or the point already at that tick)
+        if (e->button() != Qt::LeftButton || tempoPointAt(e->pos()) >= 0) return;
+        Tick t = std::max<Tick>(0, snapNear(xToTick(e->pos().x())));
+        auto [lo, hi] = tempoRange();
+        double bpm = clamp(std::round(lo + (L.tempo.bottom() - 3 - e->pos().y()) * (hi - lo) / (L.tempo.height() - 7)), 20.0, 999.0);
+        m_app.editTempo("Add tempo point", [t, bpm](TransportSettings& tr) {
+            auto it = std::lower_bound(
+                tr.tempoPoints.begin(), tr.tempoPoints.end(), t, [](const TempoPoint& p, Tick v) { return p.tick < v; });
+            if (it != tr.tempoPoints.end() && it->tick == t) it->bpm = bpm;
+            else tr.tempoPoints.insert(it, {t, bpm, false});
+        });
         return;
     }
     if (L.ruler.contains(e->pos())) {
@@ -1484,8 +1630,9 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             const AudioSource* s = m_app.project().audioSource(c->sourceId);
             if (!s || s->sampleRate <= 0) return;
             double secs = s->frames / s->sampleRate;
-            Tick nat = secondsToTicks(secs, m_app.project().transport.bpm);
-            Tick bar = m_app.project().transport.timeSig.ticksPerBar();
+            TempoMap tm = m_app.project().transport.tempoMap();
+            Tick nat = tm.ticksFor(c->start, secs);
+            Tick bar = tm.sigAt(c->start).ticksPerBar();
             Tick target = std::max<Tick>(bar, ((nat + bar / 2) / bar) * bar);
             double ratio = (double)target / nat;
             m_app.edit<Clip>(id, "Stretch to whole bars", [ratio, target](Clip& x) {
@@ -1502,11 +1649,12 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             std::vector<Tick> cuts;
             float env = 0;
             int64_t last = -100000;
+            TempoMap tm = m_app.project().transport.tempoMap();
             for (int64_t i = 0; i < a->frames; ++i) {
                 float x = std::fabs(a->L()[i]);
                 if (x > env * 3.f && x > 0.15f && i - last > a->sampleRate * 0.08) {
                     last = i;
-                    cuts.push_back(secondsToTicks(i / a->sampleRate, m_app.project().transport.bpm));
+                    cuts.push_back(tm.ticksFor(c->start, i / a->sampleRate));
                 }
                 env = env * 0.999f + x * 0.001f;
             }

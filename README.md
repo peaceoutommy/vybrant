@@ -107,6 +107,10 @@ main path. Delays are recomputed whenever an effect is added, removed, bypassed 
 * **Playlist**: click places the selected pattern; slice tool (4) splits, mute tool (5); drag the ruler for the
   loop region; double-click ruler adds markers (right-click); audio clips: fades (handles / dialog), crossfade,
   reverse, normalize, gain, time stretch & pitch (Rubber Band), fit to tempo, transient slicing.
+* **Tempo and time signature changes**: the tempo lane under the playlist ruler - double-click adds a tempo point, drag
+  moves it (sideways) or changes its BPM (up/down), right-click deletes it or ramps it to the next point. Right-click
+  the ruler to insert a time signature change at a bar. With tempo points the BPM box shows and edits the tempo at
+  the playhead.
 * **Mixer**: double-click an empty slot to add an effect, click to open, drag to reorder, first pixels toggle
   bypass. Select a strip, right-click another strip to route / send / sidechain to it. Inputs per strip for
   recording (arm with R). PDC delay shown next to the pan knob.
