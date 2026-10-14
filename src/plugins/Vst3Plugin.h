@@ -62,9 +62,9 @@ public:
     QString formatValue(uint32_t id) const override;
     QString pluginFormat() const override { return "vst3"; }
     const MidiEventList* outputMidi() const override { return &m_outMidi; }
-    int auxOutputCount() const override { return std::max(0, m_numOutputBuses - 1); }
-    const float* auxOutput(int i, int side) const override { return m_outPtrs[i + 1][std::min<int>(side, m_outChans[i + 1] - 1)]; }
-    QString auxOutputName(int i) const override { return m_outNames[i + 1]; }
+    int auxOutputCount() const override { return (int)m_auxBuses.size(); }
+    const float* auxOutput(int i, int side) const override { return m_outPtrs[m_auxBuses[i]][std::min<int>(side, m_outChans[m_auxBuses[i]] - 1)]; }
+    QString auxOutputName(int i) const override { return m_outNames[m_auxBuses[i]]; }
     // Called on the UI thread: push parameter values changed by automation/engine to the controller so the editor follows
     void syncControllerFromParams();
     std::function<void(uint32_t, float)> onParamEdited;   // UI -> app (plugin editor moved a parameter)
@@ -89,6 +89,7 @@ private:
     ParameterSet m_params;
     std::vector<float> m_lastSent;
     std::vector<float> m_lastPushed; /* last values pushed to the edit controller (GUI) */
+    std::unique_ptr<std::atomic<float>[]> m_reported;   // per parameter: the last value the plugin reported itself (audio thread)
     std::vector<uint32_t> m_paramIds;
     int m_bypassParamIndex = -1;
     double m_sr = 44100;
@@ -96,11 +97,13 @@ private:
     std::atomic<int> m_latency{0};
     int m_tail = 0;
     std::atomic<bool> m_latencyDirty{false};
+    std::shared_ptr<int> m_alive = std::make_shared<int>(0);   // for callbacks that may fire after the plugin is gone
     // bus buffers
     int m_numInputBuses = 0, m_numOutputBuses = 0;
     std::vector<vst3::AudioBusBuffers> m_inBuses, m_outBuses;
     std::vector<std::vector<float*>> m_inPtrs, m_outPtrs;
     QStringList m_outNames;
+    std::vector<int> m_auxBuses;   // output buses after the main one that have channels (multi-out)
     std::vector<std::vector<float>> m_scratch;
     std::vector<int> m_inChans, m_outChans;
     std::vector<float> m_inL, m_inR;

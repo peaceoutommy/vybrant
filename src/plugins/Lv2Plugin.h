@@ -60,6 +60,13 @@ public:
     bool latencyChanged() override { return m_latencyDirty.exchange(false); }
     QString formatValue(uint32_t id) const override;
     QString pluginFormat() const override { return "lv2"; }
+    // multi-out: audio outputs after the first two, in pairs (an odd last one is mono)
+    int auxOutputCount() const override { return m_audioOuts.size() > 2 ? ((int)m_audioOuts.size() - 1) / 2 : 0; }
+    const float* auxOutput(int i, int side) const override {
+        size_t k = std::min<size_t>(2 + 2 * i + side, m_audioOuts.size() - 1);
+        return m_audio[m_audioOuts[k]].data();
+    }
+    QString auxOutputName(int i) const override { return m_outNames[2 + 2 * i]; }
     std::function<void(uint32_t, float)> onParamEdited;   // UI -> app (plugin editor moved a parameter)
 
 private:
@@ -100,6 +107,7 @@ private:
     ParameterSet m_params;
     std::vector<Port> m_ports;
     std::vector<uint32_t> m_controlIns, m_controlOuts, m_mainIns, m_sideIns, m_audioOuts, m_atomIns, m_atomOuts;
+    QStringList m_outNames;   // of m_audioOuts
     int m_midiIn = -1, m_latencyPort = -1;
     bool m_wantsTime = false;
     std::vector<float> m_control;   // control port buffers (RT thread only)

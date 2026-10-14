@@ -49,7 +49,7 @@ public:
     bool latencyChanged() override { return m_latency.load() != m_reportedLatency.exchange(m_latency.load()); }
     QString formatValue(uint32_t paramId) const override;
     QString pluginFormat() const override { return m_format; }
-    int auxOutputCount() const override { return (int)m_auxNames.size(); }
+    int auxOutputCount() const override { return m_dead.load() ? 0 : (int)m_auxNames.size(); }   // a dead one must not replay its last block
     const float* auxOutput(int index, int side) const override;
     QString auxOutputName(int index) const override { return m_auxNames[index]; }
     bool dead() const { return m_dead.load(); }

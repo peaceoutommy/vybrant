@@ -1275,6 +1275,15 @@ int runSelfTest(App& app) {
                     .arg(la)
                     .toUtf8()
                     .constData());
+            // freezing the insert the extra output plays on: its render plays there once, the main output stays live
+            QString oldPath = model.filePath(), fe;
+            model.setFilePath(dir.path() + "/f.mtp");
+            bool fz = app.freezeMixerTrack(auxT, nullptr, &fe);
+            float la2 = level(auxT), lm2 = level(mainT);
+            CHECK(fz && std::fabs(la2 - 0.5f) < 1e-3f && std::fabs(lm2 - 0.25f) < 1e-4f,
+                QString("freezing an extra output's insert plays its render once, the main output stays live (%1, %2)").arg(la2).arg(lm2).toUtf8().constData());
+            app.unfreezeMixerTrack(auxT);
+            model.setFilePath(oldPath);
             app.deleteChannel(ch);
             // out of process: the same plugins through the bridge; a crash silences only the plugin
             PluginInstanceData bd = d;
@@ -1493,7 +1502,11 @@ int runDockTest(QMainWindow* win) {
 // `musicthingy --embed-test` (on X11): the CLAP test plugin's editor embeds into our window, in-process and from its own
 // process. The window bypasses the window manager and sits off-screen, so nothing shows.
 #include <QVBoxLayout>
+#include <QJsonDocument>
+#include "plugins/Lv2Plugin.h"
+#include "dsp/DspUtils.h"
 #include <X11/Xlib.h>   // last: its macros clash with Qt
+#include <X11/Xutil.h>
 namespace mt {
 static bool findWindow(Display* d, Window w, const char* name, XWindowAttributes* at) {
     char* n = nullptr;
@@ -1507,6 +1520,193 @@ static bool findWindow(Display* d, Window w, const char* name, XWindowAttributes
     for (unsigned i = 0; i < nk && !found; ++i) found = findWindow(d, kids[i], name, at);
     if (kids) XFree(kids);
     return found;
+}
+// `musicthingy --plugin-test <name> [--no-editor] [--no-bridge]`: every installed plugin whose name contains <name>, in-process
+// and in its own process: it loads, makes sound (instruments: a note; effects: a sine in), reports latency and extra outputs,
+// its state round-trips into a new instance, and (on X11) its editor draws inside our window. The window sits off-screen.
+static double editorVariance(Display* d, Window w, int* depth) {   // how much the pixels differ: 0 = an empty window
+    XWindowAttributes at{};
+    if (!XGetWindowAttributes(d, w, &at) || at.width < 8 || at.height < 8) return 0;
+    XImage* img = XGetImage(d, w, 0, 0, at.width, at.height, AllPlanes, ZPixmap);
+    if (!img) return 0;
+    double sum = 0, sq = 0;
+    int n = 0;
+    for (int y = 0; y < at.height; y += 3)
+        for (int x = 0; x < at.width; x += 3) {
+            unsigned long px = XGetPixel(img, x, y);
+            double v = ((px >> 16) & 255) + ((px >> 8) & 255) + (px & 255);
+            sum += v;
+            sq += v * v;
+            ++n;
+        }
+    XDestroyImage(img);
+    Window root, parent, *kids = nullptr;
+    unsigned nk = 0;
+    *depth = 0;
+    if (XQueryTree(d, w, &root, &parent, &kids, &nk) && nk) *depth = 1;
+    if (kids) XFree(kids);
+    return n ? sq / n - (sum / n) * (sum / n) : 0;
+}
+int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
+    std::printf("MusicThingy plugin test: \"%s\"\n", qPrintable(filter));
+    std::vector<PluginInfo> found;
+    for (auto& f : PluginScanner::candidateFiles(PluginDatabase::defaultDirectories())) {
+        QProcess scan;
+        scan.start(QCoreApplication::applicationFilePath(), {"--scan-plugin", f});
+        scan.waitForFinished(120000);
+        for (auto& line : scan.readAllStandardOutput().split('\n')) {
+            QJsonObject o = QJsonDocument::fromJson(line).object();
+            if (o.isEmpty()) continue;
+            PluginInfo p;
+            p.format = o["format"].toString();
+            p.path = f;
+            p.uid = o["uid"].toString();
+            p.name = o["name"].toString();
+            p.category = o["category"].toString();
+            found.push_back(p);
+        }
+    }
+    for (auto& p : Lv2Plugin::scan()) found.push_back(p);
+    std::erase_if(found, [&](const PluginInfo& p) { return p.failed || !p.name.contains(filter, Qt::CaseInsensitive); });
+    std::printf("  %zu plugin(s)\n", found.size());
+    bool x11 = editors && QGuiApplication::platformName() == "xcb";
+    Display* dpy = x11 ? XOpenDisplay(nullptr) : nullptr;
+    PluginHost host(app.pluginDb());
+    const int sr = 48000, B = 512;
+    int bad = 0;
+    for (auto& info : found)
+        for (bool bridged : {false, true}) {
+            if (bridged && !bridge) continue;
+            QString row = QString("%1 [%2%3]").arg(info.name, info.format, bridged ? ", own process" : "");
+            QElapsedTimer t;
+            t.start();
+            PluginInstanceData d = PluginHost::makeInstanceData(info, app.project().newId());
+            d.bridged = bridged;
+            QString err;
+            auto proc = host.createInstance(d, &err);
+            if (!proc) {
+                std::printf("  FAIL %s: does not load (%s)\n", qPrintable(row), qPrintable(err));
+                ++bad;
+                continue;
+            }
+            proc->prepare(sr, B);
+            qint64 loadMs = t.elapsed();
+            bool inst = proc->kind() == ProcessorKind::Instrument;
+            // a second of audio: a note held for 0.7 s (instruments) or a 440 Hz sine (effects)
+            auto play = [&](IProcessor& p, float* peakOut) {
+                std::vector<float> L(B), R(B);
+                MidiEventList midi;
+                ProcessContext ctx;
+                ctx.sampleRate = sr;
+                ctx.blockSize = B;
+                ctx.playing = true;
+                bool finite = true;
+                float peak = 0;
+                double phase = 0;
+                for (int b = 0; b < sr / B; ++b) {
+                    midi.clear();
+                    if (inst && (b == 0 || b == sr * 7 / 10 / B)) {
+                        MidiEvent e;
+                        e.type = b == 0 ? MidiEvent::NoteOn : MidiEvent::NoteOff;
+                        e.data1 = 60;
+                        e.data2 = 100;
+                        e.velocity = 0.8f;
+                        midi.add(e);
+                    }
+                    for (int i = 0; i < B; ++i, phase += 2 * dsp::kPi * 440 / sr) L[i] = R[i] = inst ? 0.f : 0.3f * (float)std::sin(phase);
+                    ctx.positionSamples = (int64_t)b * B;
+                    ctx.positionBeats = ctx.positionSamples / (double)sr * 2;
+                    p.process(L.data(), R.data(), B, midi, ctx);
+                    QCoreApplication::processEvents();   // plugins finish state loads and report changes from the main thread
+                    for (int i = 0; i < B; ++i) {
+                        finite = finite && std::isfinite(L[i]) && std::isfinite(R[i]);
+                        peak = std::max({peak, std::fabs(L[i]), std::fabs(R[i])});
+                    }
+                }
+                *peakOut = peak;
+                return finite;
+            };
+            float peak = 0;
+            bool finite = play(*proc, &peak);
+            // state: change every continuous parameter a little, save, load into a fresh instance, compare
+            ParameterSet& ps = proc->params();
+            for (int i = 0; i < ps.count(); ++i)
+                if (ps.desc(i).steps == 0 && ps.desc(i).automatable) ps.setNormalized(ps.desc(i).id, 0.37f);
+            float tmp;
+            play(*proc, &tmp);   // let the plugin take the new values
+            QJsonObject st = proc->saveState();
+            auto settle = [] {   // real time for what plugins finish on the main thread after a state load
+                QElapsedTimer w;
+                w.start();
+                while (w.elapsed() < 500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            };
+            proc->restoreState(st);   // the original re-reads what the plugin holds (a type switch can reset other parameters)
+            play(*proc, &tmp);
+            settle();
+            play(*proc, &tmp);   // a plugin in its own process reports its values with the next block
+            auto copy = host.createInstance(d, &err);
+            int mismatched = -1;
+            if (copy) {
+                copy->prepare(sr, B);
+                copy->restoreState(st);
+                play(*copy, &tmp);
+                settle();
+                play(*copy, &tmp);
+                if (qEnvironmentVariableIsSet("MT_PLUGIN_TEST_WAIT"))
+                    for (int k = 0; k < 4; ++k) {
+                        play(*copy, &tmp);
+                        int m = 0;
+                        for (int i = 0; i < ps.count() && i < copy->params().count(); ++i) m += std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f;
+                        std::printf("       after %d more s: %d differ\n", k + 1, m);
+                        if (k == 3) {
+                            copy->restoreState(copy->saveState());
+                            play(*copy, &tmp);
+                            m = 0;
+                            for (int i = 0; i < ps.count() && i < copy->params().count(); ++i) m += std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f;
+                            std::printf("       after the copy re-reads its own state: %d differ\n", m);
+                        }
+                    }
+                mismatched = 0;
+                for (int i = 0; i < ps.count() && i < copy->params().count(); ++i)
+                    if (std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f * std::max(1.f, std::fabs(ps.desc(i).max - ps.desc(i).min))) {
+                        if (++mismatched <= 4 && qEnvironmentVariableIsSet("MT_PLUGIN_TEST_DEBUG"))
+                            std::printf("       %s: %g -> %g (range %g..%g, def %g)\n", ps.desc(i).name.c_str(), ps.getAt(i), copy->params().getAt(i),
+                                ps.desc(i).min, ps.desc(i).max, ps.desc(i).def);
+                    }
+            }
+            QString editor = "-";
+            if (dpy && proc->hasCustomEditor()) {
+                QWidget top(nullptr, Qt::Window | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
+                top.move(-6000, -6000);
+                auto* lay = new QVBoxLayout(&top);
+                lay->setContentsMargins(0, 0, 0, 0);
+                QWidget* ed = proc->createEditor(&top);
+                double var = 0;
+                int depth = 0;
+                if (ed) {
+                    lay->addWidget(ed);
+                    top.show();
+                    QElapsedTimer et;
+                    et.start();
+                    while (et.elapsed() < 6000 && var < 50) {   // plugins draw a moment after they attach
+                        QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+                        XSync(dpy, 0);
+                        if (et.elapsed() > 800) var = editorVariance(dpy, (Window)top.winId(), &depth);
+                    }
+                }
+                double dpr = top.devicePixelRatioF();
+                editor = !ed ? "no editor" : var >= 50 ? QString("ok %1x%2").arg(std::lround(top.width() * dpr)).arg(std::lround(top.height() * dpr)) : "EMPTY";
+            }
+            bool ok = finite && mismatched == 0 && editor != "EMPTY" && editor != "no editor";
+            bool silent = inst && peak <= 1e-4f;   // a sampler with nothing loaded is silent by design: a warning, not a failure
+            bad += !ok;
+            std::printf("  %s %s: load %lld ms, peak %.3f%s, latency %d, extra outputs %d, params %d, state %s, editor %s\n",
+                !ok ? "FAIL" : silent ? "warn" : "ok  ", qPrintable(row), (long long)loadMs, peak, !finite ? " NaN/inf!" : silent ? " (silent)" : "", proc->latencySamples(), proc->auxOutputCount(), ps.count(),
+                mismatched < 0 ? "copy failed" : mismatched == 0 ? "round-trips" : qPrintable(QString("%1 differ").arg(mismatched)), qPrintable(editor));
+        }
+    if (dpy) XCloseDisplay(dpy);
+    std::printf(bad ? "\n%d FAILED\n" : "\nAll plugin checks passed\n", bad);
+    return bad ? 1 : 0;
 }
 int runEmbedTest(App& app) {
     std::printf("MusicThingy editor embedding test\n");

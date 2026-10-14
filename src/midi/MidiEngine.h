@@ -60,7 +60,7 @@ private:
     double m_clockTimes[kClockWindow] = {};
     int64_t m_clockN = 0, m_clockCount = 0;
     double m_clockBase = 0;
-    bool m_clockRunning = false;
+    bool m_clockRunning = false, m_clockSpp = false;
     std::atomic<int> m_activity{0};
     QStringList m_enabledInputs, m_enabledOutputs;
     std::vector<std::pair<int, int>> m_outputTargets;

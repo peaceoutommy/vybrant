@@ -36,6 +36,9 @@ jobs:
           XDG_RUNTIME_DIR: ${{ runner.temp }}
         run: python3 tests/ui_test.py ./bin/musicthingy
 
+      - name: CLAP ABI check (skips without the official headers)
+        run: python3 tests/clap_abi_check.py
+
       - name: Sync test (JACK transport, MIDI clock in; skips what the runner lacks)
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}

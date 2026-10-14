@@ -276,6 +276,12 @@ Lv2Plugin::Lv2Plugin() {
     m_rtMsg.resize(std::max(m_fromUi.capacity(), m_workResponses.capacity()));
 }
 Lv2Plugin::~Lv2Plugin() {
+    if (m_uiWidget) {   // the editor can outlive us by a tick (the window rebuilds on its next timer)
+        m_uiWidget->onAttach = nullptr;
+        m_uiWidget->onDetach = nullptr;
+        m_uiWidget->onIdle = nullptr;
+        m_uiWidget->onResized = nullptr;
+    }
     closeUi();
     freeInstance();
     if (m_uis) lilv_uis_free(m_uis);
@@ -375,7 +381,12 @@ void Lv2Plugin::init(const LilvPlugin* p) {
             m_controlIns.push_back(i);
         } else if (lilv_port_is_a(p, port, audio)) {
             pt.type = PortType::Audio;
-            if (!pt.input) m_audioOuts.push_back(i);
+            if (!pt.input) {
+                m_audioOuts.push_back(i);
+                LilvNode* nm = lilv_port_get_name(p, port);
+                m_outNames << QString::fromUtf8(nm ? lilv_node_as_string(nm) : pt.symbol.c_str());
+                if (nm) lilv_node_free(nm);
+            }
             else (lilv_port_has_property(p, port, sideChain) ? m_sideIns : m_mainIns).push_back(i);
         } else if (lilv_port_is_a(p, port, atom)) {
             pt.type = PortType::Atom;
@@ -504,9 +515,7 @@ void Lv2Plugin::runBlock(float* L, float* R, int n, const MidiEventList& midi, c
         seq->body.pad = 0;
     }
     if (m_wantsTime) {
-        int num = std::max(ctx.tsNum, 1);
-        double beats = ctx.positionBeats * ctx.tsDen / 4.0;   // in the time signature's beat unit
-        double bar = std::floor(beats / num);
+        double barBeat = (ctx.positionBeats - ctx.barStartBeats) * ctx.tsDen / 4.0;   // in the time signature's beat unit
         lv2_atom_forge_set_buffer(&m_forge, (uint8_t*)m_posBuf.data(), m_posBuf.size() * sizeof(uint64_t));
         LV2_Atom_Forge_Frame frame;
         lv2_atom_forge_object(&m_forge, &frame, 0, u.timePosition);
@@ -515,13 +524,13 @@ void Lv2Plugin::runBlock(float* L, float* R, int n, const MidiEventList& midi, c
         lv2_atom_forge_key(&m_forge, u.timeSpeed);
         lv2_atom_forge_float(&m_forge, ctx.playing ? 1.f : 0.f);
         lv2_atom_forge_key(&m_forge, u.timeBar);
-        lv2_atom_forge_long(&m_forge, (int64_t)bar);
+        lv2_atom_forge_long(&m_forge, ctx.barNumber);
         lv2_atom_forge_key(&m_forge, u.timeBarBeat);
-        lv2_atom_forge_float(&m_forge, (float)(beats - bar * num));
+        lv2_atom_forge_float(&m_forge, (float)barBeat);
         lv2_atom_forge_key(&m_forge, u.timeBeatUnit);
         lv2_atom_forge_int(&m_forge, ctx.tsDen);
         lv2_atom_forge_key(&m_forge, u.timeBeatsPerBar);
-        lv2_atom_forge_float(&m_forge, (float)num);
+        lv2_atom_forge_float(&m_forge, (float)std::max(ctx.tsNum, 1));
         lv2_atom_forge_key(&m_forge, u.timeBeatsPerMinute);
         lv2_atom_forge_float(&m_forge, (float)ctx.bpm);
         lv2_atom_forge_pop(&m_forge, &frame);
@@ -678,10 +687,8 @@ QString Lv2Plugin::formatValue(uint32_t id) const {
 QWidget* Lv2Plugin::createEditor(QWidget* parent) {
     if (!m_ui) return nullptr;
     auto* w = new PluginEmbedWidget(parent);
-    w->onAttach = [this, w](unsigned long xid, int& width, int& height) {
-        m_uiWidget = w;
-        return openUi(xid, width, height);
-    };
+    m_uiWidget = w;
+    w->onAttach = [this](unsigned long xid, int& width, int& height) { return openUi(xid, width, height); };
     w->onDetach = [this] { closeUi(); };
     w->onIdle = [this] { idleUi(); };
     w->onResized = [this](int width, int height) {

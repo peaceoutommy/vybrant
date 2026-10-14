@@ -175,6 +175,7 @@ public:
 
     // Pump: drains RT->UI messages. Called from a UI timer.
     void poll();
+    void pollMessages();   // only the messages (safe to call from a handler of one of them)
 
 Q_SIGNALS:
     void recordedMidi(const MidiEvent& e, double tick);
@@ -182,7 +183,7 @@ Q_SIGNALS:
     void transportStateChanged();
     // Recorded input (one continuous run of frames per pass) restarts at 'tick' from recorded frame 'frame': at the start, after
     // a count-in, punch-in, loop wrap or seek. The frame counter never resets, so a pass's first segment is its frame 0.
-    void recordSegment(double tick, int64_t frame);
+    void recordSegment(double tick, int64_t frame, bool contiguous);   // contiguous: recording ran on in real time (a loop wrap)
 
 private:
     void rtCallback(const float* in, float* out, int frames, int inCh, int outCh, bool xrun);
@@ -255,6 +256,8 @@ private:
     double m_countInRemaining = 0;
     int64_t m_lastBeatIndex = -1;
     bool m_transportJumped = true;
+    uint64_t m_retired = 0;   // newest snapshot generation the audio thread gave back since the last poll
+    bool m_anyRetired = false;
     int64_t m_recFrames = 0;   // RT: input frames written to the record rings so far
     bool m_recWriting = false;   // RT: the previous block was recorded
     // metronome

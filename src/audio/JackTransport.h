@@ -35,7 +35,6 @@ private:
     void* m_client = nullptr;
     QTimer m_timer;
     bool m_applying = false;
-    double m_lastBpm = 0;
 };
 
 }   // namespace mt

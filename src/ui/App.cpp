@@ -1621,7 +1621,8 @@ void App::beginRecordPass() {
     m_recPatternId = (tr.recordMode == 0 || tr.recordMode == 1) ? project().selectedPatternId : 0;
     Tick at = (Tick)m_engine->positionTicks();
     if (tr.loopEnabled && tr.loopRecord && at >= tr.loopStart && at < tr.loopEnd) at = tr.loopStart;   // the loop wraps back before 'at'
-    m_recClipStart = at / tr.timeSig.ticksPerBar() * tr.timeSig.ticksPerBar();
+    TempoMap tm = tr.tempoMap();
+    m_recClipStart = tm.barStart(tm.barAt(at));   // on the bar line, also after a time-signature change
     if (tr.recordMode != 0 && tr.recordMode != 2) return;
     std::vector<std::pair<Id, int>> armed;
     for (auto& t : project().mixerTracks)
@@ -1632,14 +1633,15 @@ void App::beginRecordPass() {
     m_recorder->setSampleRate(m_engine->sampleRate());
     m_recorder->start(armed);
 }
-void App::onRecordSegment(double tick, int64_t frame) {
-    if (m_recPass) m_recSegments.push_back({tick, frame});
+void App::onRecordSegment(double tick, int64_t frame, bool contiguous) {
+    if (m_recPass) m_recSegments.push_back({tick, frame, contiguous});
 }
 void App::onTransportStateChanged() {
     if (!m_engine->isPlaying()) endRecordPass();
 }
 void App::endRecordPass() {
     if (!m_recPass) return;
+    m_engine->pollMessages();   // a loop wrap just before the stop: its marker may still be queued
     m_recPass = false;
     m_pendingNotes.clear();
     std::vector<RecordedFile> files = m_recorder->stop();
@@ -1715,16 +1717,18 @@ void App::endRecordPass() {
         a.channels = f.channels;
         a.frames = f.frames;
         size_t first = placed.size();
-        int64_t base = m_recSegments.front().second;
+        int64_t base = m_recSegments.front().frame;
         for (size_t i = 0; i < m_recSegments.size(); ++i) {
-            int64_t from = m_recSegments[i].second - base + latency;
-            int64_t to = std::min(f.frames, i + 1 < m_recSegments.size() ? m_recSegments[i + 1].second - base + latency : f.frames);
+            int64_t from = m_recSegments[i].frame - base + latency;
+            // the next segment's first frames still belong to this take only when recording ran on (a loop wrap, not a punch-in)
+            int64_t to = i + 1 < m_recSegments.size() ? m_recSegments[i + 1].frame - base + (m_recSegments[i + 1].contiguous ? latency : 0) : f.frames;
+            to = std::min(f.frames, to);
             if (to - from < sr / 10) continue;   // a sliver after the last wrap: not a take
             Clip c;
             c.id = project().newId();
             c.type = ClipType::Audio;
             c.sourceId = a.id;
-            c.start = std::llround(m_recSegments[i].first);
+            c.start = std::llround(m_recSegments[i].tick);
             // through the tempo map: the clip's anchor (start - offset) is where the file's first frame would play
             c.sourceOffset = c.start - (Tick)std::llround(tempo.tickAt(tempo.secondsAt(c.start) - from / sr));
             c.length = std::max<Tick>(tempo.ticksFor(c.start, (to - from) / sr), 1);

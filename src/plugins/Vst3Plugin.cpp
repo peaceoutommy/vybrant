@@ -427,8 +427,10 @@ struct PlugFrame : RefCounted<IPlugFrame> {
     RunLoop* runLoop;
     struct RunLoop : IRunLoop {
         PlugFrame* owner;
-        std::map<IEventHandler*, QSocketNotifier*> fds;
-        std::map<ITimerHandler*, QTimer*> timers;
+        // one handler may register several fds (JUCE does): a plain map lost the earlier notifiers, which kept firing after
+        // the editor had freed the handler
+        std::multimap<IEventHandler*, QSocketNotifier*> fds;
+        std::multimap<ITimerHandler*, QTimer*> timers;
         tresult queryInterface(const TUID iid, void** obj) override { return owner->queryInterface(iid, obj); }
         uint32 addRef() override { return owner->addRef(); }
         uint32 release() override { return owner->release(); }
@@ -436,14 +438,14 @@ struct PlugFrame : RefCounted<IPlugFrame> {
             if (!h) return kInvalidArgument;
             auto* n = new QSocketNotifier(fd, QSocketNotifier::Read);
             QObject::connect(n, &QSocketNotifier::activated, [h, fd] { h->onFDIsSet(fd); });
-            fds[h] = n;
+            fds.emplace(h, n);
             return kResultOk;
         }
         tresult unregisterEventHandler(IEventHandler* h) override {
-            auto it = fds.find(h);
-            if (it == fds.end()) return kResultFalse;
-            delete it->second;
-            fds.erase(it);
+            auto [b, e] = fds.equal_range(h);
+            if (b == e) return kResultFalse;
+            for (auto it = b; it != e; ++it) delete it->second;
+            fds.erase(b, e);
             return kResultOk;
         }
         tresult registerTimer(ITimerHandler* h, TimerInterval ms) override {
@@ -452,14 +454,14 @@ struct PlugFrame : RefCounted<IPlugFrame> {
             t->setInterval((int)std::max<TimerInterval>(ms, 1));
             QObject::connect(t, &QTimer::timeout, [h] { h->onTimer(); });
             t->start();
-            timers[h] = t;
+            timers.emplace(h, t);
             return kResultOk;
         }
         tresult unregisterTimer(ITimerHandler* h) override {
-            auto it = timers.find(h);
-            if (it == timers.end()) return kResultFalse;
-            delete it->second;
-            timers.erase(it);
+            auto [b, e] = timers.equal_range(h);
+            if (b == e) return kResultFalse;
+            for (auto it = b; it != e; ++it) delete it->second;
+            timers.erase(b, e);
             return kResultOk;
         }
         void clearAll() {
@@ -693,6 +695,9 @@ void Vst3Plugin::setupBuses() {
     m_outChans.clear();
     for (auto a : ins) m_inChans.push_back(chans(a));
     for (auto a : outs) m_outChans.push_back(chans(a));
+    m_auxBuses.clear();
+    for (int i = 1; i < m_numOutputBuses; ++i)
+        if (outs[i] != 0) m_auxBuses.push_back(i);   // an empty arrangement (setBusArrangements refused) has no channels
     for (int i = 0; i < m_numInputBuses; ++i) m_component->activateBus(kAudio, kInput, i, i < 2);
     for (int i = 0; i < m_numOutputBuses; ++i) m_component->activateBus(kAudio, kOutput, i, true);   // extra outs: multi-out routing
     int evIn = m_component->getBusCount(kEvent, kInput), evOut = m_component->getBusCount(kEvent, kOutput);
@@ -729,6 +734,8 @@ void Vst3Plugin::buildParameterMirror() {
         m_lastSent.push_back(v);
         m_lastPushed.push_back(v);
     }
+    m_reported = std::make_unique<std::atomic<float>[]>(m_paramIds.size());
+    for (size_t i = 0; i < m_paramIds.size(); ++i) m_reported[i].store(-1.f);   // normalized values: -1 = nothing reported
 }
 void Vst3Plugin::refreshParamsFromController() {
     if (!m_controller) return;
@@ -748,6 +755,10 @@ void Vst3Plugin::syncControllerFromParams() {
         float v = m_params.get(m_paramIds[i]);
         if (std::fabs(m_lastPushed[i] - v) > 1e-6f) {
             m_lastPushed[i] = v;
+            // a value the plugin reported itself is not a host change: echoing it back makes some plugins act on it as one
+            // (Surge XT applies a loaded state to its processor a moment late, reports the old values meanwhile, and getting
+            // them back resets the state)
+            if (m_reported && m_reported[i].load(std::memory_order_relaxed) == v) continue;
             m_controller->setParamNormalized(m_paramIds[i], v);
         }
     }
@@ -969,6 +980,7 @@ void Vst3Plugin::process(float* L, float* R, int n, const MidiEventList& midi, c
         if (idx >= 0) {
             m_params.setAt(idx, (float)v);
             m_lastSent[idx] = (float)v;
+            if (m_reported) m_reported[idx].store(m_params.getAt(idx), std::memory_order_relaxed);
         }
     }
     // MIDI out
@@ -1042,8 +1054,16 @@ void Vst3Plugin::restoreState(const QJsonObject& s) {
     if (!applied) return;
     // the processor already holds this state: only parameters the host changes from here on are sent as parameter changes
     // (re-sending all 2000+ parameters of a big plugin in one block can trigger momentary/trigger parameters and reset voices)
-    refreshParamsFromController();
-    for (size_t i = 0; i < m_paramIds.size() && i < m_lastSent.size(); ++i) m_lastSent[i] = m_params.getAt((int)i);
+    auto settle = [this] {
+        refreshParamsFromController();
+        for (size_t i = 0; i < m_paramIds.size() && i < m_lastSent.size(); ++i) m_lastSent[i] = m_params.getAt((int)i);
+    };
+    settle();
+    // JUCE plugins (Surge XT) apply a loaded state on their message thread a moment later and don't announce the values it
+    // changes (an effect-type switch resets its parameters), so the mirror is read once more after that
+    QTimer::singleShot(300, [settle, alive = std::weak_ptr<int>(m_alive)] {
+        if (alive.lock()) settle();
+    });
 }
 
 QWidget* Vst3Plugin::createEditor(QWidget* parent) {

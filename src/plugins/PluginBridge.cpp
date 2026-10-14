@@ -2,6 +2,8 @@
 #include "plugins/PluginHost.h"
 #include "plugins/Vst2Plugin.h"
 #include "plugins/Vst3Plugin.h"
+#include "plugins/ClapPlugin.h"
+#include "plugins/Lv2Plugin.h"
 #include "core/Log.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -29,10 +31,10 @@
 namespace mt {
 
 namespace bridge {
-constexpr int kMaxBlock = 8192, kMaxParams = 16384, kMaxMidi = MidiEventList::kCapacity, kMaxAux = 16;
+constexpr int kMaxBlock = 4096, kMaxParams = 16384, kMaxMidi = MidiEventList::kCapacity, kMaxAux = 64;   // ~2 MB per plugin
 struct Shm {
     sem_t request, done;
-    std::atomic<int> quit, reset;
+    std::atomic<int> quit, reset, edited;   // edited: the plugin's editor moved a parameter (marks the project dirty)
     int frames, numMidi, numOutMidi, numParams, latency;
     bool hasSidechain;
     ProcessContext ctx;   // its sidechain pointers are re-pointed into this block on the plugin side
@@ -266,8 +268,8 @@ void BridgedPlugin::process(float* L, float* R, int n, const MidiEventList& midi
         if (s->paramsOutSet[i]) {
             s->paramsOutSet[i] = 0;
             m_params.setAt(i, s->paramsOut[i]);
-            m_edited = true;
         }
+    if (s->edited.exchange(0)) m_edited = true;
     m_latency.store(s->latency);
     for (int i = 0; i < s->numOutMidi; ++i) m_outMidi.add(s->outMidi[i]);
 }
@@ -323,6 +325,7 @@ QWidget* BridgedPlugin::createEditor(QWidget* parent) {
     c->installEventFilter(rf);
     connect(holder, &QObject::destroyed, this, [this] {
         m_editorSized = nullptr;
+        onParamEdited = nullptr;   // set by the window this editor lived in
         call({{"op", "editorClose"}});
     });
     QTimer::singleShot(0, holder, [this] { send({{"op", "editorShow"}}); });   // shown (and attached) once it sits inside ours
@@ -399,6 +402,11 @@ struct Bridge {
             for (int i = 0; i < proc->params().count(); ++i) descs.append(bridge::descJson(proc->params().desc(i)));
             for (int k = 0; k < std::min(proc->auxOutputCount(), bridge::kMaxAux); ++k) aux.append(proc->auxOutputName(k));
             for (int i = 0; i < proc->params().count(); ++i) lastIn.push_back(proc->params().getAt(i));
+            auto edited = [s = shm](uint32_t, float) { s->edited = 1; };
+            if (auto* v3 = dynamic_cast<Vst3Plugin*>(proc.get())) v3->onParamEdited = edited;
+            if (auto* v2 = dynamic_cast<Vst2Plugin*>(proc.get())) v2->onParamEdited = edited;
+            if (auto* c = dynamic_cast<ClapPlugin*>(proc.get())) c->onParamEdited = edited;
+            if (auto* l2 = dynamic_cast<Lv2Plugin*>(proc.get())) l2->onParamEdited = edited;
             reply(op,
                 {{"ok", true}, {"key", proc->key()}, {"name", proc->displayName()}, {"format", proc->pluginFormat()},
                     {"kind", (int)proc->kind()}, {"editor", proc->hasCustomEditor()}, {"sidechain", proc->wantsSidechain()},
@@ -464,7 +472,6 @@ int pluginBridgeMain(const QString& socketName, const QString& shmName) {
     QTimer ui;   // the main-thread upkeep PluginWindow does for in-process plugins: the editor follows automation
     QObject::connect(&ui, &QTimer::timeout, [&b] {
         if (auto* v3 = dynamic_cast<Vst3Plugin*>(b.proc.get())) v3->syncControllerFromParams();
-        if (auto* v2 = dynamic_cast<Vst2Plugin*>(b.proc.get())) v2->syncFromPlugin();
     });
     ui.start(33);
     int rc = qApp->exec();

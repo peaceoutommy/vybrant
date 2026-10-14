@@ -217,7 +217,7 @@ Q_SIGNALS:
 private:
     void onModelChanged(uint32_t flags);
     void onRecordedMidi(const MidiEvent& e, double tick);
-    void onRecordSegment(double tick, int64_t frame);
+    void onRecordSegment(double tick, int64_t frame, bool contiguous);
     void onTransportStateChanged();
     void beginRecordPass();
     void endRecordPass();
@@ -258,7 +258,12 @@ private:
     std::set<Id> m_recNoteIds;
     std::map<Id, std::vector<ControlPoint>> m_recControlsBefore;   // channel -> its controller lanes before the pass recorded into them
     bool m_recNotifyPending = false;   // recorded controller values refresh the views at most every 100 ms
-    std::vector<std::pair<double, int64_t>> m_recSegments;   // (tick, recorded frame) from AudioEngine::recordSegment
+    struct RecSegment {
+        double tick;
+        int64_t frame;
+        bool contiguous;
+    };
+    std::vector<RecSegment> m_recSegments;   // from AudioEngine::recordSegment
     std::optional<TransportSettings> m_tempoDragBefore;   // transport before a live tempo drag (see setBpm)
     QString m_previewPath;
     std::shared_ptr<PreviewBuffer> m_previewBuffer;

@@ -366,7 +366,7 @@ void AudioEngine::rebuild(const Project& p) {
         RtChannel rc;
         rc.id = c.id;
         rc.instrument = m_registry.ensureInstrument(c, p, m_sr, m_maxBlock, m_pluginFactory, s.generation);
-        if (auto* mt = p.mixerTrack(c.mixerTrackId); mt && mt->freezeTrackId) rc.instrument = nullptr;   // its insert plays a render
+
         rc.ctl = &m_registry.channel(c.id);
         rc.ctl->volume.store(c.volume);
         rc.ctl->pan.store(c.pan);
@@ -377,7 +377,15 @@ void AudioEngine::rebuild(const Project& p) {
         rc.rootNote = c.rootNote;
         rc.isMidiOut = c.type == ChannelType::MidiOut;
         rc.midiOutPort = c.midiOutPort;
-        for (Id t : c.auxOutputTracks) rc.auxTrackIdx.push_back(t && trackIdx.count(t) ? trackIdx[t] : -1);
+        // a frozen insert plays its render: what the channel sends there stops; the instrument stops when nothing else is left
+        auto frozen = [&](Id t) { auto* mt = p.mixerTrack(t); return mt && mt->freezeTrackId; };
+        if (frozen(c.mixerTrackId)) rc.mixerTrackIdx = -1;
+        bool live = rc.mixerTrackIdx >= 0;
+        for (Id t : c.auxOutputTracks) {
+            rc.auxTrackIdx.push_back(t && trackIdx.count(t) && !frozen(t) ? trackIdx[t] : -1);
+            live = live || rc.auxTrackIdx.back() >= 0;
+        }
+        if (!live) rc.instrument = nullptr;
         rc.bufL.assign(m_maxBlock, 0.f);
         rc.bufR.assign(m_maxBlock, 0.f);
         chanIdx[c.id] = (int)s.channels.size();

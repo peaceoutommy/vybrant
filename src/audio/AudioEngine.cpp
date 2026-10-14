@@ -218,15 +218,13 @@ void AudioEngine::unloadProject() {
 }
 
 // ---------------------------------------------------------------- UI pump
-void AudioEngine::poll() {
+void AudioEngine::pollMessages() {
     EngineMessage m;
-    uint64_t retired = 0;
-    bool anyRetired = false;
     while (m_messages.pop(m)) {
         switch (m.type) {
         case EngineMessage::SnapshotRetired: {
-            retired = std::max(retired, m.snapshot->generation);
-            anyRetired = true;
+            m_retired = std::max(m_retired, m.snapshot->generation);
+            m_anyRetired = true;
             for (size_t i = 0; i < m_inFlight.size(); ++i)
                 if (m_inFlight[i].get() == m.snapshot) {
                     m_inFlight.erase(m_inFlight.begin() + i);
@@ -236,12 +234,17 @@ void AudioEngine::poll() {
         }
         case EngineMessage::RecordedMidi: Q_EMIT recordedMidi(m.midi, m.tick); break;
         case EngineMessage::PluginCrashed: Q_EMIT pluginCrashed(m.id); break;
-        case EngineMessage::RecordSegment: Q_EMIT recordSegment(m.tick, m.sample); break;
+        case EngineMessage::RecordSegment: Q_EMIT recordSegment(m.tick, m.sample, m.id != 0); break;
         default: break;
         }
     }
+}
+void AudioEngine::poll() {
+    pollMessages();
     bool idle = !m_devices.isOpen() && !m_offline;
-    if (anyRetired || idle) m_registry.collectGarbage(idle ? m_activeGen.load() + 2 : retired, idle);
+    if (m_anyRetired || idle) m_registry.collectGarbage(idle ? m_activeGen.load() + 2 : m_retired, idle);
+    m_anyRetired = false;
+    m_retired = 0;
     for (auto& [id, p] : m_registry.processors())
         if (auto* ib = dynamic_cast<InstrumentBase*>(p.get())) ib->collectGarbage(idle);
     m_preview.prune(idle);
@@ -547,7 +550,8 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
     ctx.playing = m_playing.load() && !m_countingIn.load();
     ctx.recording = m_recordingFlag.load();
     ctx.positionBeats = (double)t0 / PPQ;
-    ctx.barStartBeats = (double)s.tempo.barStart(s.tempo.barAt(t0)) / PPQ;
+    ctx.barNumber = s.tempo.barAt(t0);
+    ctx.barStartBeats = (double)s.tempo.barStart(ctx.barNumber) / PPQ;
     ctx.positionSamples = (int64_t)(secondsBetween(0, t0) * m_sr);
     ctx.looping = m_loopEnabled.load();
     ctx.loopStartBeats = (double)m_loopStart.load() / PPQ;
@@ -649,6 +653,7 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
                     m.type = EngineMessage::RecordSegment;
                     m.tick = m_posTicks.load();
                     m.sample = m_recFrames;
+                    m.id = m_recWriting;   // recording ran on through a wrap or seek; otherwise it resumes after a gap
                     m_messages.push(m);
                 }
                 recWrite = true;

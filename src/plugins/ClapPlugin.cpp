@@ -343,7 +343,7 @@ void ClapPlugin::restartIfRequested() {
     }
     // no block came for a few ticks: the audio thread isn't running this plugin, so take it over
     if (st == 1 && (++m_restartWait < 4 || !m_rt.compare_exchange_strong(st, 3))) return;
-    if (m_rt == 3 && m_inProcess) return;   // a block that began before the request is still running (or crashed): next tick
+    if (m_inProcess) return;   // a block is still running (inside stop_processing, or one that began before the request): next tick
     deactivate();
     activate();
     m_restartRequested = false;
@@ -433,6 +433,8 @@ void ClapPlugin::process(float* L, float* R, int n, const MidiEventList& midi, c
         m_processing = false;
     }
     if (st == 0 && m_active && !m_processing) m_processing = m_plugin->start_processing(m_plugin);
+    for (auto& port : m_outPtrs)   // also what the extra outputs show when this block doesn't run
+        for (float* ch : port) std::fill(ch, ch + n, 0.f);
     if (st != 0 || !m_processing) {
         std::fill(L, L + n, 0.f);
         std::fill(R, R + n, 0.f);
@@ -465,8 +467,6 @@ void ClapPlugin::process(float* L, float* R, int n, const MidiEventList& midi, c
             else if ((int)p == m_mainIn && c < 2) std::copy(c ? R : L, (c ? R : L) + n, dst);
             else std::fill(dst, dst + n, 0.f);
         }
-    for (auto& port : m_outPtrs)
-        for (float* ch : port) std::fill(ch, ch + n, 0.f);
     // transport
     auto& tr = m_transport;
     tr.header = {sizeof(clap_event_transport), 0, CLAP_CORE_EVENT_SPACE_ID, CLAP_EVENT_TRANSPORT, 0};
@@ -475,7 +475,6 @@ void ClapPlugin::process(float* L, float* R, int n, const MidiEventList& midi, c
         (ctx.recording ? CLAP_TRANSPORT_IS_RECORDING : 0u) | (ctx.looping ? CLAP_TRANSPORT_IS_LOOP_ACTIVE : 0u);
     auto beats = [](double b) { return (clap_beattime)std::llround(b * CLAP_BEATTIME_FACTOR); };
     auto beatSecs = [&](double b) { return (clap_sectime)std::llround(b * 60.0 / ctx.bpm * CLAP_SECTIME_FACTOR); };
-    double beatsPerBar = 4.0 * ctx.tsNum / ctx.tsDen, bar = std::floor(ctx.positionBeats / beatsPerBar);
     tr.song_pos_beats = beats(ctx.positionBeats);
     tr.song_pos_seconds = (clap_sectime)std::llround(ctx.positionSamples / m_sr * CLAP_SECTIME_FACTOR);
     tr.tempo = ctx.bpm;
@@ -484,8 +483,8 @@ void ClapPlugin::process(float* L, float* R, int n, const MidiEventList& midi, c
     tr.loop_end_beats = beats(ctx.loopEndBeats);
     tr.loop_start_seconds = beatSecs(ctx.loopStartBeats);
     tr.loop_end_seconds = beatSecs(ctx.loopEndBeats);
-    tr.bar_start = beats(bar * beatsPerBar);
-    tr.bar_number = (int32_t)bar;
+    tr.bar_start = beats(ctx.barStartBeats);
+    tr.bar_number = (int32_t)ctx.barNumber;
     tr.tsig_num = (uint16_t)ctx.tsNum;
     tr.tsig_denom = (uint16_t)ctx.tsDen;
     clap_process pr{m_steadyTime, (uint32_t)n, &tr, m_inBufs.data(), m_outBufs.data(), (uint32_t)m_inBufs.size(),

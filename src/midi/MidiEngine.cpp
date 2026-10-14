@@ -168,11 +168,13 @@ void MidiEngine::handleClock(int type, int songPos) {
         m_clockRunning = true;
         m_clockBase = 0;
         m_clockCount = 0;
+        m_clockSpp = false;
         transport(0, 0);
         break;
     case SND_SEQ_EVENT_CONTINUE:
         m_clockRunning = true;
-        m_clockBase = m_engine.positionTicks();
+        if (!m_clockSpp) m_clockBase = m_engine.positionTicks();   // after a pointer the seek it queued may not have run yet
+        m_clockSpp = false;
         m_clockCount = 0;
         transport(1, 0);
         break;
@@ -183,6 +185,7 @@ void MidiEngine::handleClock(int type, int songPos) {
     case SND_SEQ_EVENT_SONGPOS:   // in MIDI beats (sixteenths)
         m_clockBase = songPos * (PPQ / 4.0);
         m_clockCount = 0;
+        m_clockSpp = true;
         transport(3, m_clockBase);
         break;
     }

@@ -49,7 +49,7 @@ bool RenderEngine::render(
         int n = (int)std::min<int64_t>(opt.blockSize, totalFrames + tailFrames - done);
         std::fill(L.begin(), L.end(), 0.f);
         std::fill(R.begin(), R.end(), 0.f);
-        if (done >= totalFrames && engine.isPlaying()) engine.stop();   // tail: let effects ring out
+        if (done >= totalFrames - latency && engine.isPlaying()) engine.stop();   // tail: let effects ring out (the latency is still to come)
         engine.offlineProcess(L.data(), R.data(), n);
         float pk = 0;
         for (int i = 0; i < n; ++i) {

@@ -16,6 +16,7 @@
 namespace mt {
 int runSelfTest(App& app);
 int runEmbedTest(App& app);
+int runPluginTest(App& app, const QString& filter, bool editors, bool bridge);
 int runPreviewBench(App& app, const QString& dir);
 int runUiTest(QMainWindow* win, const QString& png);
 int runDuplicateTest(App& app);
@@ -58,6 +59,10 @@ int main(int argc, char** argv) {
         return rc;
     } /* the tests exercise the demo content */
     if (argc >= 2 && std::strcmp(argv[1], "--embed-test") == 0) return mt::runEmbedTest(daw);
+    if (argc >= 3 && std::strcmp(argv[1], "--plugin-test") == 0) {
+        auto has = [&](const char* f) { return std::any_of(argv + 3, argv + argc, [f](const char* a) { return !std::strcmp(a, f); }); };
+        return mt::runPluginTest(daw, argv[2], !has("--no-editor"), !has("--no-bridge"));
+    }
     if (argc >= 2 && std::strcmp(argv[1], "--duptest") == 0) {
         daw.newProject(true);
         return mt::runDuplicateTest(daw);
