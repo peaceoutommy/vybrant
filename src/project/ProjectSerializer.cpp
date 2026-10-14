@@ -99,7 +99,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
                 {"sidechain", s.sidechain}});
         mixer.append(QJsonObject{{"id", (double)t.id}, {"name", t.name}, {"color", colorJ(t.color)}, {"volume", t.volume}, {"pan", t.pan},
             {"mute", t.mute}, {"solo", t.solo}, {"armed", t.armed}, {"input", t.inputChannel}, {"inputStereo", t.inputStereo}, {"output", (double)t.outputTrackId},
-            {"effects", fx}, {"sends", sends}, {"master", t.isMaster}, {"customName", t.customName}});
+            {"effects", fx}, {"sends", sends}, {"master", t.isMaster}, {"customName", t.customName}, {"freezeTrack", (double)t.freezeTrackId}});
     }
     root["mixer"] = mixer;
     QJsonArray plugs;
@@ -333,6 +333,7 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         t.inputStereo = o["inputStereo"].toBool(true);
         t.outputTrackId = (Id)o["output"].toDouble();
         t.isMaster = o["master"].toBool();
+        t.freezeTrackId = (Id)o["freezeTrack"].toDouble();
         if (o.contains("customName")) t.customName = o["customName"].toBool();
         else {   // older files: a name that is neither the default nor a channel's name was typed by the user
             static const QRegularExpression defaultName("^Insert \\d+$");

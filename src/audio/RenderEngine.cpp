@@ -28,12 +28,13 @@ bool RenderEngine::render(
     engine.setMetronome(false);
     engine.setCountIn(false, 1);
     engine.setRecording(false);
-    engine.setRenderTap(opt.tapTrack);
+    engine.setRenderTap(opt.tapTrack, opt.tapPreFader);
     engine.seek(start);
     engine.play();
     double sr = opt.sampleRate;
     double bpm = project.transport.bpm;
-    int64_t totalFrames = (int64_t)(ticksToSeconds(end - start, bpm) * sr);
+    int latency = engine.renderLatency();   // rendered on top and cut off the front, so the file lines up with the timeline
+    int64_t totalFrames = (int64_t)(ticksToSeconds(end - start, bpm) * sr) + latency;
     int64_t tailFrames = (int64_t)(opt.tailSeconds * sr);
     std::vector<float> L(opt.blockSize), R(opt.blockSize);
     std::vector<float> outL, outR;
@@ -78,6 +79,9 @@ bool RenderEngine::render(
         if (error) *error = "Cancelled";
         return false;
     }
+    size_t cut = std::min<size_t>(latency, outL.size());
+    outL.erase(outL.begin(), outL.begin() + cut);
+    outR.erase(outR.begin(), outR.begin() + cut);
     int64_t frames = (int64_t)outL.size();
     // normalise
     if (opt.normalize) {

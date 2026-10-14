@@ -1679,6 +1679,73 @@ bool App::exportAudio(const RenderOptions& opt, std::function<bool(double)> prog
     return ok;
 }
 
+bool App::freezeMixerTrack(Id id, std::function<bool(double)> progress, QString* error) {
+    const MixerTrack* mt = project().mixerTrack(id);
+    if (!mt || mt->isMaster || mt->freezeTrackId) return false;
+    QString dir = m_model.filePath().isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Recordings"
+                                               : QFileInfo(m_model.filePath()).absolutePath() + "/Frozen";
+    QDir().mkpath(dir);
+    RenderOptions o;
+    o.path = QString("%1/%2 frozen %3.wav").arg(dir, QString(mt->name).replace(QRegularExpression("[^A-Za-z0-9 _.-]"), "_"),
+        QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+    o.bitDepth = 32;
+    o.dither = false;
+    o.sampleRate = m_engine->sampleRate();
+    o.tapTrack = id;
+    o.tapPreFader = true;
+    if (!exportAudio(o, std::move(progress), error)) return false;
+    double sr = 0;
+    int ch = 0;
+    int64_t frames = 0;
+    if (!AudioFile::probe(o.path, &sr, &ch, &frames) || frames <= 0) {
+        if (error) *error = "The render is empty";
+        return false;
+    }
+    AudioSource a;
+    a.id = project().newId();
+    a.filePath = o.path;
+    a.name = QFileInfo(o.path).completeBaseName();
+    a.sampleRate = sr;
+    a.channels = ch;
+    a.frames = frames;
+    PlaylistTrack pt;
+    pt.id = project().newId();
+    pt.name = mt->name + " (frozen)";
+    pt.color = mt->color;
+    pt.mixerTrackId = id;
+    Clip c;
+    c.id = project().newId();
+    c.type = ClipType::Audio;
+    c.trackId = pt.id;
+    c.sourceId = a.id;
+    c.length = std::max<Tick>(secondsToTicks(frames / sr, project().transport.bpm), 1);
+    c.loopSource = false;
+    c.name = pt.name;
+    std::vector<std::unique_ptr<Command>> cmds;
+    cmds.push_back(std::make_unique<InsertObjectCommand<AudioSource>>(m_model, a, "", -1));
+    cmds.push_back(std::make_unique<InsertObjectCommand<PlaylistTrack>>(m_model, pt, "", -1));
+    cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
+    cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [t = pt.id](MixerTrack& x) { x.freezeTrackId = t; }, 0));
+    m_cache.getSync(o.path);   // loaded before the clip exists, so it plays at once instead of after an async load
+    m_model.macro("Freeze " + mt->name, std::move(cmds));
+    return true;
+}
+void App::unfreezeMixerTrack(Id id) {
+    const MixerTrack* mt = project().mixerTrack(id);
+    if (!mt || !mt->freezeTrackId) return;
+    std::vector<std::unique_ptr<Command>> cmds;
+    std::set<Id> sources;
+    for (auto& c : project().clips)
+        if (c.trackId == mt->freezeTrackId) {
+            cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, c.id, ""));
+            if (c.type == ClipType::Audio) sources.insert(c.sourceId);
+        }
+    for (Id s : sources) cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_model, s, ""));
+    if (project().track(mt->freezeTrackId)) cmds.push_back(std::make_unique<RemoveObjectCommand<PlaylistTrack>>(m_model, mt->freezeTrackId, ""));
+    cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [](MixerTrack& x) { x.freezeTrackId = 0; }, 0));
+    m_model.macro("Unfreeze " + mt->name, std::move(cmds));
+}
+
 void addPatternActions(QMenu* menu, App& app, QWidget* parent, const std::vector<Id>& ids) {
     if (ids.empty()) return;
     QString many = ids.size() > 1 ? QString(" (%1)").arg(ids.size()) : QString();

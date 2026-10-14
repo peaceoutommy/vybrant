@@ -156,6 +156,10 @@ public:
     bool routeTrack(Id from, Id to);
     void addSend(Id from, Id to, bool sidechain = false);
     void removeSend(Id from, Id to);
+    // Freeze: render the insert (after its effects, before its fader) onto a playlist track routed back into it; what fed it,
+    // and its effects, stop running. Unfreeze puts them back. Both are one undo step.
+    bool freezeMixerTrack(Id id, std::function<bool(double)> progress, QString* error);
+    void unfreezeMixerTrack(Id id);
 
     // ---- processors (instruments / effects / plugins)
     IProcessor* processor(Id ownerId) { return m_engine->registry().processor(ownerId); }

@@ -262,9 +262,11 @@ void AudioEngine::rebuild(const Project& p) {
             ? -1
             : (trackIdx.count(mt.outputTrackId) ? trackIdx[mt.outputTrackId] : (p.masterId() ? trackIdx[p.masterId()] : -1));
         t.audible = !mt.mute && (!anyTrackSolo || audibleTracks.count(mt.id));
+        t.frozen = mt.freezeTrackId != 0;
         for (auto& e : mt.effects) {
             RtEffect fx;
-            fx.proc = m_registry.ensureEffect(e, p, m_sr, m_maxBlock, m_pluginFactory, s.generation);
+            fx.proc = m_registry.ensureEffect(e, p, m_sr, m_maxBlock, m_pluginFactory, s.generation);   // kept alive while frozen
+            if (t.frozen) continue;
             fx.bypass = e.bypass;
             fx.mix = e.mix;
             fx.slotId = e.id;
@@ -360,6 +362,7 @@ void AudioEngine::rebuild(const Project& p) {
         RtChannel rc;
         rc.id = c.id;
         rc.instrument = m_registry.ensureInstrument(c, p, m_sr, m_maxBlock, m_pluginFactory, s.generation);
+        if (auto* mt = p.mixerTrack(c.mixerTrackId); mt && mt->freezeTrackId) rc.instrument = nullptr;   // its insert plays a render
         rc.ctl = &m_registry.channel(c.id);
         rc.ctl->volume.store(c.volume);
         rc.ctl->pan.store(c.pan);
@@ -457,6 +460,8 @@ void AudioEngine::rebuild(const Project& p) {
     for (auto& c : p.clips) {
         const PlaylistTrack* pt = p.track(c.trackId);
         if (!pt) continue;
+        if (auto* mt = p.mixerTrack(pt->mixerTrackId); mt && mt->freezeTrackId && pt->id != mt->freezeTrackId && c.type == ClipType::Audio)
+            continue;   // in the frozen insert's render already
         RtClip rc;
         rc.type = c.type;
         rc.start = c.start;

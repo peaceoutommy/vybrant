@@ -167,6 +167,16 @@ void AudioEngine::offlineBegin(double sampleRate, int blockSize) {
     drainCommands();
 }
 void AudioEngine::offlineProcess(float* outL, float* outR, int n, const float* in, int inCh) { processFrames(in, inCh, outL, outR, n); }
+// Every source reaches a track's output delayed by maxLatency minus the latency still ahead of it (PDC aligns everything at the
+// master), so that is what a render taken there has to cut from the front
+int AudioEngine::renderLatency() const {
+    if (!m_rtSnapshot) return 0;
+    Id tap = m_renderTap.load();
+    for (auto& t : m_rtSnapshot->tracks)
+        if (tap ? t.id == tap : t.isMaster)
+            return m_rtSnapshot->maxLatency - (t.outputIdx >= 0 ? m_rtSnapshot->tracks[t.outputIdx].pathLatency : 0);
+    return 0;
+}
 void AudioEngine::offlineEnd() {
     m_offline = false;
     drainCommands();
@@ -632,6 +642,10 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
     ctx.sidechainR = t.scR.data();
     float* L = t.inL.data();
     float* R = t.inR.data();
+    if (t.frozen) {   // its render plays from the playlist: what fed it would play twice
+        std::fill(L, L + n, 0.f);
+        std::fill(R, R + n, 0.f);
+    }
     // generator inputs (instruments, audio clips, hardware inputs) pass through the delay-compensation line first
     t.ctl->generatorDelay.process(t.genL.data(), t.genR.data(), n);
     for (int i = 0; i < n; ++i) {
@@ -657,6 +671,13 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
                 }
         }
     }
+    Id tap = m_renderTap.load();
+    bool tapPre = m_renderTapPre.load();
+    if (tap == t.id && tapPre)
+        for (int i = 0; i < n; ++i) {
+            outL[i] += L[i];
+            outR[i] += R[i];
+        }
     // pre-fader sends
     for (auto& sd : t.sends)
         if (sd.pre && sd.targetIdx >= 0) {
@@ -720,8 +741,7 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
                     dr[i] += R[i] * lv;
                 }
         }
-    Id tap = m_renderTap.load();
-    if (tap ? t.id == tap : t.isMaster) {
+    if (tap ? t.id == tap && !tapPre : t.isMaster) {
         for (int i = 0; i < n; ++i) {
             outL[i] += L[i];
             outR[i] += R[i];

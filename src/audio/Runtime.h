@@ -187,6 +187,7 @@ struct RtTrack {
     int inputChannel = -1;
     bool audible = true;
     bool armed = false;
+    bool frozen = false;
     std::vector<float> inL, inR, scL, scR, genL, genR;
     int chainLatency = 0;
     int pathLatency = 0;

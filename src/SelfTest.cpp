@@ -174,6 +174,43 @@ int runSelfTest(App& app) {
         CHECK(r && files.size() >= 5 && peak("_00 Master") > 0.1f && peak(" Kick") > 0.1f && peak(" Snare") >= 0 && peak(" Snare") < 1e-4f,
             "stems: one file per used mixer track, each holding only what plays there (the demo snare has no steps)");
     }
+    // ---- freeze: the insert's render plays in its place, so the song sounds the same - also with a latency effect on it
+    {
+        auto& pr = app.project();
+        Id kick = pr.channels[0].id, ins = pr.channels[0].mixerTrackId;
+        model.edit<Channel>(kick, "", [](Channel& c) { c.solo = true; });   // only the kick: other instruments use noise
+        Id slot = app.addEffect(ins, "native.limiter");
+        QString oldPath = model.filePath();
+        model.setFilePath(tmp.path() + "/f.mtp");   // the render goes next to the project
+        RenderOptions o;
+        o.tailSeconds = 0.5;
+        o.bitDepth = 32;
+        o.dither = false;
+        o.path = tmp.path() + "/pre.wav";
+        app.exportAudio(o, nullptr, &err);
+        bool fz = app.freezeMixerTrack(ins, nullptr, &err);
+        o.path = tmp.path() + "/post.wav";
+        app.exportAudio(o, nullptr, &err);
+        auto a = AudioFile::load(tmp.path() + "/pre.wav", 0), b = AudioFile::load(tmp.path() + "/post.wav", 0);
+        float diff = 1.f;
+        if (a && b && a->frames > 1000 && b->frames >= a->frames) {   // the frozen clip keeps its tail, so the song can get longer
+            diff = 0.f;
+            for (int64_t i = 0; i < std::min(a->frames, b->frames); ++i) diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
+        }
+        const MixerTrack* mt = pr.mixerTrack(ins);
+        CHECK(fz && mt && mt->freezeTrackId && pr.track(mt->freezeTrackId) && diff < 1e-3f && a->peakValue > 0.1f,
+            QString("a frozen insert sounds the same, lined up through its effect's latency (max diff %1)").arg(diff).toUtf8().constData());
+        app.unfreezeMixerTrack(ins);
+        CHECK(!pr.mixerTrack(ins)->freezeTrackId && std::none_of(pr.playlistTracks.begin(), pr.playlistTracks.end(),
+                                                         [](const PlaylistTrack& t) { return t.name.endsWith("(frozen)"); }),
+            "unfreeze removes the render and its track");
+        model.undoStack().undo();
+        model.undoStack().undo();
+        CHECK(!pr.mixerTrack(ins)->freezeTrackId, "undo steps back through unfreeze and freeze");
+        model.setFilePath(oldPath);
+        app.removeEffect(ins, slot);
+        model.edit<Channel>(kick, "", [](Channel& c) { c.solo = false; });
+    }
     // ---- sample modes: tempo from names, clip speed, stretch flavours, sampler tempo fit
     {
         CHECK(AudioFile::bpmFromName("/x/PIOTR FIGIEL ENSEMBLE - To an unfaithful girl 89 bpm.wav") == 89 &&

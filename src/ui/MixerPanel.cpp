@@ -1,6 +1,7 @@
 #include "ui/MixerPanel.h"
 #include "ui/InAppDrag.h"
 #include <QMessageBox>
+#include <QProgressDialog>
 #include <QShortcut>
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
@@ -445,7 +446,7 @@ void MixerStrip::refresh() {
     const MixerTrack* t = m_app.project().mixerTrack(m_track);
     if (!t) return;
     m_updating = true;
-    m_name->setText(t->name);
+    m_name->setText(t->freezeTrackId ? t->name + " \u2744" : t->name);   // snowflake: frozen
     // Kept as a theme template so a live theme change re-applies it; the track colour is this strip's own, not the theme's.
     theme::styled(m_name,
         QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:3px; background:%1; color:%2; border-bottom: 2px solid %3;")
@@ -609,6 +610,18 @@ void MixerStrip::contextMenuEvent(QContextMenuEvent* e) {
             });
         } else if (!t->isMaster) m.addAction("Delete track", [this] { m_app.deleteMixerTrack(m_track); });
     }
+    if (t->freezeTrackId) m.addAction("Unfreeze", [this] { m_app.unfreezeMixerTrack(m_track); });
+    else if (!t->isMaster)
+        m.addAction("Freeze (render to audio)", [this] {
+            QProgressDialog dlg("Freezing...", "Cancel", 0, 1000, this);
+            dlg.setWindowModality(Qt::WindowModal);
+            QString err;
+            bool ok = m_app.freezeMixerTrack(m_track, [&](double v) {
+                dlg.setValue((int)(v * 1000));
+                return !dlg.wasCanceled();
+            }, &err);
+            if (!ok && !dlg.wasCanceled()) QMessageBox::warning(this, "Freeze failed", err);
+        })->setToolTip("Renders this track (after its effects, before its fader) to audio and stops running its instruments and effects");
     m.addAction("Reset clip indicator", [this] { m_meter->resetClip(); });
     m.exec(e->globalPos());
 }

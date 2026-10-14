@@ -23,6 +23,7 @@ struct RenderOptions {
     int blockSize = 512;
     float normalizeTargetDb = -0.3f;
     Id tapTrack = 0;   // render only this mixer track's output (post effects and fader) instead of the master mix
+    bool tapPreFader = false;   // the tap before the track's fader and pan (freeze)
     bool stems = false;   // App::exportAudio: one file per used mixer track (master included), named after 'path'
 };
 

@@ -212,6 +212,7 @@ struct MixerTrack {
     std::vector<Send> sends;
     bool isMaster = false;
     bool customName = false;   // renamed by the user; otherwise named after the first channel routed here (App::syncMixerTrackNames)
+    Id freezeTrackId = 0;   // frozen: the playlist track playing its render; what fed it and its effects are skipped
 };
 
 // ---------------- Plugins ----------------
