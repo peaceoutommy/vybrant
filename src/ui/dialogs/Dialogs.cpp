@@ -229,7 +229,7 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
     setWindowTitle("Plugin Manager");
     resize(820, 560);
     auto* lay = new QVBoxLayout(this);
-    lay->addWidget(new QLabel("Plugin folders (VST2 .so and VST3 bundles are scanned recursively, out of process):", this));
+    lay->addWidget(new QLabel("Plugin folders (VST2 .so, VST3 bundles and CLAP files are scanned recursively, out of process):", this));
     auto* dl = new QHBoxLayout();
     m_dirs = new QListWidget(this);
     m_dirs->addItems(app.pluginDb().directories());

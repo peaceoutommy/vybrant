@@ -1,7 +1,7 @@
 # MusicThingy
 
 A Linux-native digital audio workstation with a pattern-based workflow: Channel Rack + step sequencer, Piano Roll,
-Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3 hosting,
+Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP hosting,
 automation, audio/MIDI recording and offline rendering. Original UI, original DSP.
 
 ## Building
@@ -62,7 +62,7 @@ src/
              (lock-free rings -> disk thread), RenderEngine (offline export), AudioFile (loading, stretching,
              multiresolution waveform cache)
   midi/      MidiEngine (ALSA sequencer I/O thread, clock, controller learn)
-  plugins/   Vst3Abi.h / Vst2Abi.h (self-written binary interface declarations), Vst3Plugin, Vst2Plugin adapters,
+  plugins/   Vst3Abi.h / Vst2Abi.h / ClapAbi.h (self-written binary interface declarations), Vst3Plugin, Vst2Plugin, ClapPlugin adapters,
              PluginHost / PluginDatabase / PluginScanner (out-of-process), PluginEmbedWidget (X11 editor host)
   ui/        App (wires everything; every UI action is a command), MainWindow (dockable workspace), TransportBar,
              BrowserPanel, ChannelRackPanel, PianoRollPanel, PlaylistPanel, MixerPanel, PluginWindow (generic
@@ -125,8 +125,9 @@ main path. Delays are recomputed whenever an effect is added, removed, bypassed 
 
 VST3 bundles (`*.vst3/Contents/x86_64-linux/*.so`) and VST2 `.so` files are discovered in the standard Linux paths
 (`~/.vst3`, `/usr/lib/vst3`, `~/.vst`, `/usr/lib/vst`, `/usr/lib/lxvst`, `$VST_PATH`, `$VST3_PATH`) and any folder
-added in the Plugin Manager. The host talks to plugins through its own minimal declarations of the public binary
-interfaces (`src/plugins/Vst3Abi.h`, `Vst2Abi.h`); no SDK code is included, so redistribution is not bound by the
+added in the Plugin Manager. CLAP plugins (`*.clap`) are found in `~/.clap`, `/usr/lib/clap`, `/usr/local/lib/clap` and
+`$CLAP_PATH`. The host talks to plugins through its own minimal declarations of the public binary
+interfaces (`src/plugins/Vst3Abi.h`, `Vst2Abi.h`, `ClapAbi.h`); no SDK code is included, so redistribution is not bound by the
 SDK licences. Plugin state, parameters (by stable id), latency, editors (X11 embedded with a host run loop for VST3)
 and MIDI mapping are supported. Failed plugins are listed with the reason and can be hidden or rescanned.
 

@@ -24,9 +24,9 @@ QStringList wrapperDirs();   // ~/.vst/yabridge, ~/.vst3/yabridge
 }   // namespace yabridge
 
 struct PluginInfo {
-    QString format;   // "vst2" | "vst3"
-    QString path;   // bundle dir (vst3) or .so (vst2)
-    QString uid;   // class id hex (vst3) / unique id hex (vst2)
+    QString format;   // "vst2" | "vst3" | "clap"
+    QString path;   // bundle dir (vst3), .so (vst2) or .clap file
+    QString uid;   // class id hex (vst3) / unique id hex (vst2) / plugin id (clap)
     QString name, vendor, category /* Instrument|Effect */, subCategories, version;
     int numInputs = 0, numOutputs = 0;
     bool hasEditor = false;

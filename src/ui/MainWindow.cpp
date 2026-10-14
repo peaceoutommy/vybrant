@@ -199,7 +199,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
         theme::setGlyph(plug, theme::Glyph::Plugins, 21);
         plug->setFixedSize(34, theme::kBarH);
         plug->setFocusPolicy(Qt::NoFocus);
-        plug->setToolTip("Plugin manager - scan and organise VST2 / VST3 plugins");
+        plug->setToolTip("Plugin manager - scan and organise VST2 / VST3 / CLAP plugins");
         connect(plug, &QToolButton::clicked, this, [this] { m_app.commands().action("options.plugins")->trigger(); });
         m_transport->addWindowButton(plug);
         auto* gear = new QToolButton(this);
@@ -749,7 +749,7 @@ void MainWindow::buildMenus() {
         "help.about", "About MusicThingy", "Help", QKeySequence(),
         [this] {
             QMessageBox::about(this, "About MusicThingy",
-                "<b>MusicThingy</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3 hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
+                "<b>MusicThingy</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
         },
         this));
 }

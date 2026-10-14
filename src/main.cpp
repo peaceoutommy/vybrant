@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
             QString name = argv[i + 1];
             for (auto& p : daw.pluginDb().plugins())
                 if (!p.failed && p.name.contains(name, Qt::CaseInsensitive) &&
-                    (p.format == "vst3" || name.contains("vst2", Qt::CaseInsensitive))) {
+                    (p.format != "vst2" || name.contains("vst2", Qt::CaseInsensitive))) {
                     mt::Id cid = daw.addPluginChannel(p); /* plus a bar of notes in a clip so --render has something to play */
                     mt::Id pid = daw.project().selectedPatternId;
                     daw.edit<mt::Pattern>(pid, "test notes", [cid](mt::Pattern& pat) {

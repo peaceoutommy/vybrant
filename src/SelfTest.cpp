@@ -5,6 +5,7 @@
 #include "dsp/effects/Effects.h"
 #include "dsp/instruments/Instruments.h"
 #include "audio/RenderEngine.h"
+#include "plugins/PluginHost.h"
 #include "ui/widgets/Controls.h"
 #include "ui/AudioEditor.h"
 #include <QMouseEvent>
@@ -17,6 +18,9 @@
 #include <QKeyEvent>
 #include <QJsonDocument>
 #include <QTemporaryDir>
+#include <QProcess>
+#include <QStandardPaths>
+#include <QThread>
 #include <cstdio>
 #include <cstring>
 
@@ -728,6 +732,71 @@ int runSelfTest(App& app) {
         auto a = DrumSampler::synthesizeDrum("Kick", 44100);
         CHECK(a->peaks.size() == 4 && a->levelFor(100).samplesPerBin == 64 && a->levelFor(5000).samplesPerBin == 4096,
             "multiresolution waveform cache levels");
+    }
+    // ---- CLAP hosting: build the test gain plugin (tests/clap_gain.cpp), scan it out of process, run it, save and restore it
+    {
+        QString root = QCoreApplication::applicationDirPath() + "/..", src = root + "/tests/clap_gain.cpp";
+        QString cxx = QStandardPaths::findExecutable("c++");
+        QTemporaryDir dir;
+        QString so = dir.path() + "/clap/MT Test Gain.clap";
+        QDir().mkpath(dir.path() + "/clap");
+        if (cxx.isEmpty() || !QFileInfo::exists(src)) std::printf("  skip CLAP hosting checks (no c++ compiler or tests/clap_gain.cpp)\n");
+        else if (QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", src, "-o", so}) != 0)
+            CHECK(false, "compile the CLAP test plugin");
+        else {
+            CHECK(PluginScanner::candidateFiles({dir.path()}).contains(so), "plugin scan finds .clap files");
+            QProcess scan;
+            scan.start(QCoreApplication::applicationFilePath(), {"--scan-plugin", so});
+            scan.waitForFinished(30000);
+            QJsonObject o = QJsonDocument::fromJson(scan.readAllStandardOutput().split('\n').first()).object();
+            CHECK(o["format"].toString() == "clap" && o["uid"].toString() == "org.musicthingy.test-gain" &&
+                    o["category"].toString() == "Effect",
+                "out-of-process scan reports the CLAP plugin");
+            PluginInfo info;
+            info.format = "clap";
+            info.uid = "org.musicthingy.test-gain";
+            info.name = "MT Test Gain";
+            info.path = so;
+            PluginHost host(app.pluginDb());
+            PluginInstanceData d = PluginHost::makeInstanceData(info, 1);
+            auto proc = host.createInstance(d);
+            CHECK(proc && proc->kind() == ProcessorKind::Effect && proc->params().count() == 1,
+                "CLAP plugin instantiates with its parameter");
+            auto run = [&](IProcessor& p) {
+                std::fill(L.begin(), L.end(), 0.5f);
+                std::fill(R.begin(), R.end(), 0.5f);
+                midi.clear();
+                p.process(L.data(), R.data(), 512, midi, ctx);
+                return L[100];
+            };
+            if (proc) {
+                proc->prepare(44100, 512);
+                CHECK(proc->latencySamples() == 64, "CLAP plugin reports its latency");
+                uint32_t gain = proc->params().desc(0).id;
+                proc->params().set(gain, 0.5f);
+                CHECK(std::fabs(run(*proc) - 0.25f) < 1e-6f, "CLAP plugin processes audio with the parameter applied");
+                d.state = QByteArray::fromBase64(proc->saveState()["pluginState"].toString().toLatin1());
+                auto copy = host.createInstance(d);
+                if (copy) copy->prepare(44100, 512);
+                CHECK(copy && std::fabs(copy->params().get(gain) - 0.5f) < 1e-6f && std::fabs(run(*copy) - 0.25f) < 1e-6f,
+                    "CLAP plugin state round-trips");
+                // a latency change makes the plugin request a restart: handed over by the audio thread while blocks run,
+                // taken over by the UI thread when none come
+                auto restarted = [&](float g, int lat, bool blocks) {
+                    proc->params().set(gain, g);
+                    run(*proc);
+                    proc->latencyChanged();
+                    for (int i = 0; i < 40 && proc->latencySamples() != lat; ++i) {
+                        QThread::msleep(20);
+                        QCoreApplication::processEvents();
+                        if (blocks) run(*proc);
+                    }
+                    return proc->latencySamples() == lat && proc->latencyChanged() && std::fabs(run(*proc) - 0.5f * g) < 1e-6f;
+                };
+                CHECK(restarted(1.8f, 128, true), "CLAP restart request re-activates the plugin while it is processing");
+                CHECK(restarted(1.f, 64, false), "CLAP restart request re-activates the plugin when no blocks come");
+            }
+        }
     }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
     return g_fail ? 1 : 0;
