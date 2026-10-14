@@ -1,4 +1,5 @@
 #include "ui/ProjectSamplesPanel.h"
+#include "ui/AudioEditor.h"
 #include <QSignalBlocker>
 #include <QMessageBox>
 #include <QSet>
@@ -293,6 +294,13 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
             [this, onPlaylist] { Q_EMIT showOnPlaylist(onPlaylist); })
             ->setEnabled(!onPlaylist.empty());
         m.addAction("Preview", [this, path] { m_app.previewFile(path); });
+        Id src = 0, ch = 0;   // a sample of the playlist, else of a sampler channel
+        for (auto& a : m_app.project().audioSources)
+            if (a.filePath == path) src = a.id;
+        for (auto& c : m_app.project().channels)
+            if (!src && c.type == ChannelType::Sampler && c.samplePath == path) ch = c.id;
+        if ((src || ch) && QFileInfo::exists(path))
+            m.addAction("Edit audio...", [this, src, ch] { openAudioEditor(m_app, this, src, ch); });
         if (!QFileInfo::exists(path))
             m.addAction("Locate...", [this, path] {
                 QString p = QFileDialog::getOpenFileName(this, "Locate " + QFileInfo(path).fileName());

@@ -346,6 +346,42 @@ void App::relinkSample(Id id, const QString& newPath) {
         a.missing = false;
     });
 }
+// Repoints a sample to an edited copy of its file: the audio source (every clip of it) and/or a sampler channel. The sampler
+// plays its own asset, not the channel's path, so it is swapped too, both ways.
+void App::replaceSampleFile(Id sourceId, Id channelId, const QString& path) {
+    std::vector<std::unique_ptr<Command>> cmds;
+    if (project().audioSource(sourceId)) {
+        double sr = 0;
+        int chans = 0;
+        int64_t frames = 0;
+        AudioFile::probe(path, &sr, &chans, &frames);
+        cmds.push_back(std::make_unique<EditObjectCommand<AudioSource>>(
+            m_model, sourceId, "",
+            [=](AudioSource& a) {
+                if (frames != a.frames) a.trimStart = a.trimEnd = 0, a.slices.clear();   // they counted frames of the old file
+                a.filePath = path;
+                a.sampleRate = sr;
+                a.channels = chans;
+                a.frames = frames;
+                a.missing = false;
+            },
+            0));
+    }
+    if (const Channel* ch = project().channel(channelId)) {
+        auto load = [this, channelId](const QString& p) {
+            if (auto* s = dynamic_cast<Sampler*>(processor(channelId))) {
+                auto a = m_cache.getSync(p);
+                if (a) s->setSample(a, p);
+                s->pendingPath = a ? QString() : p;   // a load still pending for the other file must not land after this
+            }
+        };
+        cmds.push_back(std::make_unique<LambdaCommand>("", [load, path] { load(path); }, [load, old = ch->samplePath] { load(old); }));
+        cmds.push_back(
+            std::make_unique<EditObjectCommand<Channel>>(m_model, channelId, "", [path](Channel& c) { c.samplePath = path; }, 0));
+    }
+    m_cache.getSync(path);
+    if (!cmds.empty()) m_model.macro("Edit audio", std::move(cmds));
+}
 int App::searchMissingIn(const QString& dir) {
     int n = 0;
     for (auto* a : missingSamples()) {
@@ -978,27 +1014,54 @@ void App::deleteClips(const std::vector<Id>& ids) {
     for (Id id : ids) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, id, ""));
     m_model.macro(ids.size() == 1 ? "Delete clip" : QString("Delete %1 clips").arg(ids.size()), std::move(cmds));
 }
+// c (clen ticks long) keeps the part before 'at'; returns the part after it (with c's id)
+static Clip cutClip(Clip& c, Tick clen, Tick at) {
+    Clip right = c;
+    Tick leftLen = at - c.start;
+    right.start = at;
+    right.length = clen - leftLen;
+    right.sourceOffset = c.sourceOffset + leftLen;
+    right.fadeIn = 0;
+    c.length = leftLen;
+    c.fadeOut = 0;
+    return right;
+}
 void App::splitClip(Id id, Tick at) {
     const Clip* c = project().clip(id);
     Tick clen = c ? project().clipLength(*c) : 0;
     if (!c || at <= c->start || at >= c->start + clen) return;
-    Clip right = *c;
+    Clip left = *c;
+    Clip right = cutClip(left, clen, at);
     right.id = project().newId();
-    Tick leftLen = at - c->start;
-    right.start = at;
-    right.length = clen - leftLen;
-    right.sourceOffset = c->sourceOffset + leftLen;
-    right.fadeIn = 0;
     std::vector<std::unique_ptr<Command>> cmds;
-    cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(
-        m_model, id, "",
-        [leftLen](Clip& cl) {
-            cl.length = leftLen;
-            cl.fadeOut = 0;
-        },
-        0));
+    cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, id, "", [left](Clip& cl) { cl = left; }, 0));
     cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, right, "", -1));
     m_model.macro("Split clip", std::move(cmds));
+}
+// The takes of a recording are audio clips of one source on stacked tracks. Each take overlapping [from, to) is split at the
+// bounds; inside, the parts on the clicked take's track play and the rest are muted. Outside nothing changes. One undo step.
+void App::useTake(Id clipId, Tick from, Tick to) {
+    const Clip* k = project().clip(clipId);
+    if (!k || k->type != ClipType::Audio || to <= from) return;
+    const Id src = k->sourceId, lane = k->trackId;
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (const Clip& c : project().clips) {
+        Tick end = c.start + c.length;
+        if (c.type != ClipType::Audio || c.sourceId != src || end <= from || c.start >= to) continue;
+        Clip left = c, mid = c, right;
+        bool hasLeft = from > c.start, hasRight = to < end;
+        if (hasLeft) mid = cutClip(left, c.length, from);
+        if (hasRight) right = cutClip(mid, mid.length, to);
+        mid.muted = c.trackId != lane;
+        Clip first = hasLeft ? left : mid;   // keeps the clip's id
+        cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [first](Clip& x) { x = first; }, 0));
+        for (Clip* part : {hasLeft ? &mid : nullptr, hasRight ? &right : nullptr})
+            if (part) {
+                part->id = project().newId();
+                cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, *part, "", -1));
+            }
+    }
+    if (!cmds.empty()) m_model.macro("Use take", std::move(cmds));
 }
 Id App::duplicateClip(Id id, Tick newStart, Id newTrack) {
     const Clip* c = project().clip(id);
@@ -1453,10 +1516,13 @@ void App::previewFile(const QString& path) {
         Q_EMIT statusMessage("Cannot preview " + path + ": " + err, 4000);
         return;
     }
-    m_previewPath = path;
+    playPreview(b);
+}
+void App::playPreview(std::shared_ptr<PreviewBuffer> b) {
+    m_previewPath = b->path;
     m_previewBuffer = b;
     m_engine->previewPlay(b);
-    Q_EMIT previewChanged(path);
+    Q_EMIT previewChanged(b->path);
 }
 void App::stopPreview() {
     m_engine->previewStop();

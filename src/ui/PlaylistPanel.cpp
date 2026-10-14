@@ -1,4 +1,5 @@
 #include "ui/PlaylistPanel.h"
+#include "ui/AudioEditor.h"
 #include "ui/InAppDrag.h"
 #include "dsp/DspUtils.h"
 #include <QPainterPath>
@@ -744,6 +745,10 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         return;
     }
     if (m_tool == MuteTool) {
+        if (c && c->type == ClipType::Audio && e->modifiers() & Qt::ShiftModifier) {
+            useTake(c->id);
+            return;
+        }
         m_drag = Muting;
         m_touched.clear();
         if (c) {
@@ -1459,6 +1464,10 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
     }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
+        m.addAction("Edit audio...", [this, sid = c->sourceId] { openAudioEditor(m_app, this, sid, 0); });
+        if (std::any_of(proj.clips.begin(), proj.clips.end(),
+                [c](const Clip& x) { return x.type == ClipType::Audio && x.sourceId == c->sourceId && x.trackId != c->trackId; }))
+            m.addAction("Use this take here", [this, id] { useTake(id); });
         m.addAction(c->reverse ? "Un-reverse" : "Reverse",
             [this, id] { m_app.edit<Clip>(id, "Reverse clip", [](Clip& x) { x.reverse = !x.reverse; }); });
         m.addAction("Normalize (source)",
@@ -1558,6 +1567,14 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
     }
     (void)proj;
     m.exec(global);
+}
+// comping: the clicked take plays in the time selection (the loop region), or over its own length when there is none
+void PlaylistView::useTake(Id clipId) {
+    const auto& tr = m_app.project().transport;
+    const Clip* c = m_app.project().clip(clipId);
+    if (!c) return;
+    if (tr.loopEnabled && tr.loopEnd > tr.loopStart) m_app.useTake(clipId, tr.loopStart, tr.loopEnd);
+    else m_app.useTake(clipId, c->start, c->start + c->length);
 }
 void PlaylistView::deleteSelected() {
     std::vector<Id> ids(m_selected.begin(), m_selected.end());
@@ -1690,7 +1707,8 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent)
         theme::Glyph::Pencil, theme::Glyph::Marquee, theme::Glyph::Eraser, theme::Glyph::Slice, theme::Glyph::MuteSpeaker};
     const char* tips[] = {"Draw (1): click to place the selected pattern; drag clips to move, edges to resize; right-click deletes",
         "Select (2): drag a rectangle to select clips", "Erase (3)", "Slice (4): click a clip to split it",
-        "Mute (5): click a clip to toggle mute"};
+        "Mute (5): click a clip to toggle mute; Shift+click a recorded take to use it in the time selection (or under it) and mute the "
+        "other takes there"};
     auto* tg = new QHBoxLayout();
     tg->setSpacing(1);
     tg->setContentsMargins(0, 0, 0, 0);

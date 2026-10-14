@@ -6,6 +6,7 @@
 #include "dsp/instruments/Instruments.h"
 #include "audio/RenderEngine.h"
 #include "ui/widgets/Controls.h"
+#include "ui/AudioEditor.h"
 #include <QMouseEvent>
 #include <QMenu>
 #include <QInputDialog>
@@ -442,6 +443,115 @@ int runSelfTest(App& app) {
         app.deletePattern(pat);
         model.editTransport("", [saved](TransportSettings& t) { t = saved; });
         app.deleteMixerTrack(ins);
+    }
+    // ---- take comping: 'use this take here' over the middle of 3 stacked takes splits each at the bounds, plays the clicked take
+    // there and mutes the others; outside the range nothing changes; one undo puts the takes back
+    {
+        auto& pr = app.project();
+        Tick bar = pr.transport.timeSig.ticksPerBar();
+        AudioSource src;
+        src.id = pr.newId();
+        src.filePath = "/nonexistent/takes.wav";
+        pr.audioSources.push_back(src);
+        std::vector<Clip> takes;
+        for (int i = 0; i < 3; ++i) {
+            Clip c;
+            c.id = pr.newId();
+            c.type = ClipType::Audio;
+            c.trackId = app.addPlaylistTrack();
+            c.sourceId = src.id;
+            c.length = bar * 4;
+            c.sourceOffset = bar * 4 * i;
+            c.fadeIn = c.fadeOut = PPQ / 4;
+            c.muted = i < 2;   // as recorded: only the newest heard
+            pr.clips.push_back(c);
+            takes.push_back(c);
+        }
+        size_t clips0 = pr.clips.size(), undo0 = model.undoStack().count();
+        app.useTake(takes[0].id, bar, bar * 2);
+        bool parts = pr.clips.size() == clips0 + 6, comped = true;
+        for (auto& t : takes) {
+            std::vector<const Clip*> v;
+            for (auto& c : pr.clips)
+                if (c.trackId == t.trackId) v.push_back(&c);
+            std::sort(v.begin(), v.end(), [](const Clip* x, const Clip* y) { return x->start < y->start; });
+            if (v.size() != 3) {
+                parts = false;
+                continue;
+            }
+            for (auto* c : v) comped = comped && c->sourceOffset - c->start == t.sourceOffset && c->sourceId == src.id;
+            comped = comped && v[0]->start == 0 && v[1]->start == bar && v[2]->start == bar * 2 && v[2]->length == bar * 2;
+            comped = comped && v[0]->muted == t.muted && v[1]->muted == (t.id != takes[0].id) && v[2]->muted == t.muted;
+            comped = comped && v[0]->fadeIn == t.fadeIn && v[0]->fadeOut == 0 && v[1]->fadeIn == 0 && v[1]->fadeOut == 0 &&
+                v[2]->fadeIn == 0 && v[2]->fadeOut == t.fadeOut;
+        }
+        CHECK(parts, "use this take: every overlapping take is split at the selection bounds");
+        CHECK(comped, "use this take: the clicked take plays inside the selection, the others are muted there, outside is unchanged");
+        model.undoStack().undo();
+        bool restored = pr.clips.size() == clips0 && model.undoStack().count() == undo0;
+        for (auto& t : takes) restored = restored && pr.clip(t.id) && *pr.clip(t.id) == t;
+        CHECK(restored, "use this take: one undo restores the takes");
+        for (auto& t : takes) {
+            std::erase_if(pr.clips, [&](const Clip& x) { return x.id == t.id; });
+            app.deletePlaylistTrack(t.trackId);
+        }
+        std::erase_if(pr.audioSources, [&](const AudioSource& x) { return x.id == src.id; });
+    }
+    // ---- sample editor: the edit operations, and Apply repoints the sample (and its sampler channel) to the new file in one undo step
+    {
+        AudioAsset a;
+        a.channels = 2;
+        a.frames = 8;
+        a.left = {0.1f, 0.2f, -0.5f, 0.25f, 0.f, 0.f, 0.3f, 0.4f};
+        a.right = a.left;
+        AudioAsset t = a, d = a, n = a, fi = a, fo = a, r = a;
+        sampleedit::trim(t, 2, 6);
+        CHECK(t.frames == 4 && t.left.size() == 4 && t.right.size() == 4 && t.left[0] == -0.5f && t.right[3] == 0.f,
+            "sample editor: trim keeps only the selection");
+        sampleedit::erase(d, 2, 6);
+        CHECK(
+            d.frames == 4 && d.right.size() == 4 && d.left[1] == 0.2f && d.left[2] == 0.3f, "sample editor: delete cuts the selection out");
+        sampleedit::normalize(n, 0, 8);
+        CHECK(
+            std::fabs(n.left[2] + 1.f) < 1e-6f && std::fabs(n.right[0] - 0.2f) < 1e-6f, "sample editor: normalize raises the peak to 0 dB");
+        sampleedit::fade(fi, 0, 8, true);
+        sampleedit::fade(fo, 4, 8, false);
+        CHECK(fi.left[0] == 0.f && fi.left[7] == 0.4f && std::fabs(fi.left[3] - 0.25f * 3 / 7) < 1e-6f && fo.left[7] == 0.f &&
+                std::fabs(fo.right[6] - 0.1f) < 1e-6f && fo.left[3] == 0.25f,
+            "sample editor: fades ramp from / to silence over the selection only");
+        sampleedit::reverse(r, 0, 8);
+        CHECK(r.left[0] == 0.4f && r.left[7] == 0.1f && r.right[5] == -0.5f, "sample editor: reverse");
+        AudioAsset m;   // mono: 'right' stays empty
+        m.channels = 1;
+        m.left = {0.f, 0.0001f, 0.5f, -0.5f, 0.f};
+        m.frames = 5;
+        sampleedit::trimSilence(m, dbToGain(-60.f));
+        AudioAsset dc = m;
+        sampleedit::removeDc(dc, 0, 1);
+        CHECK(m.frames == 2 && m.right.empty() && m.left[0] == 0.5f && dc.left[0] == 0.f && dc.left[1] == -0.5f,
+            "sample editor: trim silence and DC removal");
+
+        auto& pr = app.project();
+        QTemporaryDir dir;
+        std::vector<float> s(200, 0.25f);
+        QString orig = dir.path() + "/orig.wav", edited = dir.path() + "/orig edit 1.wav";
+        bool written = AudioFile::write(orig, s.data(), 1, 200, 44100, 32, "wav") &&
+            AudioFile::write(edited, s.data(), 1, 100, 44100, 32, "wav");
+        Id sid = app.ensureAudioSource(orig);
+        Id ch = app.addChannel(ChannelType::Sampler, "native.sampler", QString(), orig);
+        app.engine().rebuild(pr);
+        auto* sampler = dynamic_cast<Sampler*>(app.processor(ch));
+        size_t undo0 = model.undoStack().count();
+        app.replaceSampleFile(sid, ch, edited);
+        CHECK(written && sampler && pr.audioSource(sid)->filePath == edited && pr.audioSource(sid)->frames == 100 &&
+                pr.channel(ch)->samplePath == edited && sampler->samplePath() == edited && model.undoStack().count() == undo0 + 1,
+            "sample editor: apply repoints the source and the sampler channel to the edited file");
+        model.undoStack().undo();
+        CHECK(sampler && pr.audioSource(sid)->filePath == orig && pr.audioSource(sid)->frames == 200 &&
+                pr.channel(ch)->samplePath == orig && sampler->samplePath() == orig,
+            "sample editor: one undo restores the original file");
+        app.deleteChannel(ch);
+        model.remove<AudioSource>(sid, "");
     }
     // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
     {
