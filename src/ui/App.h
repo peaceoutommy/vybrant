@@ -136,6 +136,7 @@ public:
     Id addAutomationClip(Id trackId, Id laneId, Tick start, Tick length);
     void deleteClips(const std::vector<Id>& ids);
     void splitClip(Id id, Tick at);
+    void useTake(Id clipId, Tick from, Tick to);   // comping: this take plays in [from, to), its recording's other takes are muted
     Id duplicateClip(Id id, Tick newStart, Id newTrack);
     void makeClipUnique(Id clipId);
     Id ensureAudioSource(const QString& path);

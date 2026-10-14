@@ -384,6 +384,59 @@ int runSelfTest(App& app) {
         model.editTransport("", [saved](TransportSettings& t) { t = saved; });
         app.deleteMixerTrack(ins);
     }
+    // ---- take comping: 'use this take here' over the middle of 3 stacked takes splits each at the bounds, plays the clicked take
+    // there and mutes the others; outside the range nothing changes; one undo puts the takes back
+    {
+        auto& pr = app.project();
+        Tick bar = pr.transport.timeSig.ticksPerBar();
+        AudioSource src;
+        src.id = pr.newId();
+        src.filePath = "/nonexistent/takes.wav";
+        pr.audioSources.push_back(src);
+        std::vector<Clip> takes;
+        for (int i = 0; i < 3; ++i) {
+            Clip c;
+            c.id = pr.newId();
+            c.type = ClipType::Audio;
+            c.trackId = app.addPlaylistTrack();
+            c.sourceId = src.id;
+            c.length = bar * 4;
+            c.sourceOffset = bar * 4 * i;
+            c.fadeIn = c.fadeOut = PPQ / 4;
+            c.muted = i < 2;   // as recorded: only the newest heard
+            pr.clips.push_back(c);
+            takes.push_back(c);
+        }
+        size_t clips0 = pr.clips.size(), undo0 = model.undoStack().count();
+        app.useTake(takes[0].id, bar, bar * 2);
+        bool parts = pr.clips.size() == clips0 + 6, comped = true;
+        for (auto& t : takes) {
+            std::vector<const Clip*> v;
+            for (auto& c : pr.clips)
+                if (c.trackId == t.trackId) v.push_back(&c);
+            std::sort(v.begin(), v.end(), [](const Clip* x, const Clip* y) { return x->start < y->start; });
+            if (v.size() != 3) {
+                parts = false;
+                continue;
+            }
+            for (auto* c : v) comped = comped && c->sourceOffset - c->start == t.sourceOffset && c->sourceId == src.id;
+            comped = comped && v[0]->start == 0 && v[1]->start == bar && v[2]->start == bar * 2 && v[2]->length == bar * 2;
+            comped = comped && v[0]->muted == t.muted && v[1]->muted == (t.id != takes[0].id) && v[2]->muted == t.muted;
+            comped = comped && v[0]->fadeIn == t.fadeIn && v[0]->fadeOut == 0 && v[1]->fadeIn == 0 && v[1]->fadeOut == 0 &&
+                v[2]->fadeIn == 0 && v[2]->fadeOut == t.fadeOut;
+        }
+        CHECK(parts, "use this take: every overlapping take is split at the selection bounds");
+        CHECK(comped, "use this take: the clicked take plays inside the selection, the others are muted there, outside is unchanged");
+        model.undoStack().undo();
+        bool restored = pr.clips.size() == clips0 && model.undoStack().count() == undo0;
+        for (auto& t : takes) restored = restored && pr.clip(t.id) && *pr.clip(t.id) == t;
+        CHECK(restored, "use this take: one undo restores the takes");
+        for (auto& t : takes) {
+            std::erase_if(pr.clips, [&](const Clip& x) { return x.id == t.id; });
+            app.deletePlaylistTrack(t.trackId);
+        }
+        std::erase_if(pr.audioSources, [&](const AudioSource& x) { return x.id == src.id; });
+    }
     // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
     {
         auto& pr = app.project();

@@ -41,6 +41,7 @@ public:
     void paste() override;
     void selectBySource();
     void sliceAtPlayhead();
+    void useTake(Id clipId);
     void deleteSpace() override;   // the loop area's span
     void insertSpace() override;
     std::vector<Clip> m_clipboard;

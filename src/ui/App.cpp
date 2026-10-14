@@ -945,27 +945,54 @@ void App::deleteClips(const std::vector<Id>& ids) {
     for (Id id : ids) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, id, ""));
     m_model.macro(ids.size() == 1 ? "Delete clip" : QString("Delete %1 clips").arg(ids.size()), std::move(cmds));
 }
+// c (clen ticks long) keeps the part before 'at'; returns the part after it (with c's id)
+static Clip cutClip(Clip& c, Tick clen, Tick at) {
+    Clip right = c;
+    Tick leftLen = at - c.start;
+    right.start = at;
+    right.length = clen - leftLen;
+    right.sourceOffset = c.sourceOffset + leftLen;
+    right.fadeIn = 0;
+    c.length = leftLen;
+    c.fadeOut = 0;
+    return right;
+}
 void App::splitClip(Id id, Tick at) {
     const Clip* c = project().clip(id);
     Tick clen = c ? project().clipLength(*c) : 0;
     if (!c || at <= c->start || at >= c->start + clen) return;
-    Clip right = *c;
+    Clip left = *c;
+    Clip right = cutClip(left, clen, at);
     right.id = project().newId();
-    Tick leftLen = at - c->start;
-    right.start = at;
-    right.length = clen - leftLen;
-    right.sourceOffset = c->sourceOffset + leftLen;
-    right.fadeIn = 0;
     std::vector<std::unique_ptr<Command>> cmds;
-    cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(
-        m_model, id, "",
-        [leftLen](Clip& cl) {
-            cl.length = leftLen;
-            cl.fadeOut = 0;
-        },
-        0));
+    cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, id, "", [left](Clip& cl) { cl = left; }, 0));
     cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, right, "", -1));
     m_model.macro("Split clip", std::move(cmds));
+}
+// The takes of a recording are audio clips of one source on stacked tracks. Each take overlapping [from, to) is split at the
+// bounds; inside, the parts on the clicked take's track play and the rest are muted. Outside nothing changes. One undo step.
+void App::useTake(Id clipId, Tick from, Tick to) {
+    const Clip* k = project().clip(clipId);
+    if (!k || k->type != ClipType::Audio || to <= from) return;
+    const Id src = k->sourceId, lane = k->trackId;
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (const Clip& c : project().clips) {
+        Tick end = c.start + c.length;
+        if (c.type != ClipType::Audio || c.sourceId != src || end <= from || c.start >= to) continue;
+        Clip left = c, mid = c, right;
+        bool hasLeft = from > c.start, hasRight = to < end;
+        if (hasLeft) mid = cutClip(left, c.length, from);
+        if (hasRight) right = cutClip(mid, mid.length, to);
+        mid.muted = c.trackId != lane;
+        Clip first = hasLeft ? left : mid;   // keeps the clip's id
+        cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, c.id, "", [first](Clip& x) { x = first; }, 0));
+        for (Clip* part : {hasLeft ? &mid : nullptr, hasRight ? &right : nullptr})
+            if (part) {
+                part->id = project().newId();
+                cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, *part, "", -1));
+            }
+    }
+    if (!cmds.empty()) m_model.macro("Use take", std::move(cmds));
 }
 Id App::duplicateClip(Id id, Tick newStart, Id newTrack) {
     const Clip* c = project().clip(id);
