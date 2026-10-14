@@ -92,6 +92,11 @@ public:
     virtual void setActive(bool) {}
     // Produced MIDI (plugins may emit) - optional
     virtual const MidiEventList* outputMidi() const { return nullptr; }
+    // Multi-out instruments (a drum plugin's separate kick / snare outs): the stereo pairs next to the main one, valid right
+    // after process(); a mono output gives the same buffer for both sides
+    virtual int auxOutputCount() const { return 0; }
+    virtual const float* auxOutput(int index, int side) const { return nullptr; }
+    virtual QString auxOutputName(int index) const { return QString("Output %1").arg(index + 2); }
     // Latency changed since last query (plugins) - engine polls
     virtual bool latencyChanged() { return false; }
     // Human-readable value for the UI (UI thread only); default formats using the ParamDesc

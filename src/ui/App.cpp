@@ -752,6 +752,39 @@ void App::setChannelMixerTrack(Id id, Id trackId) {
     cmds.push_back(std::make_unique<EditObjectCommand<Channel>>(m_model, id, "", [trackId](Channel& c) { c.mixerTrackId = trackId; }, 0));
     m_model.macro("Route channel", std::move(cmds));
 }
+void App::setChannelAuxOutput(Id id, int index, Id trackId) {
+    if (!project().channel(id) || index < 0) return;
+    m_model.edit<Channel>(id, "Route plugin output", [index, trackId](Channel& c) {
+        if ((int)c.auxOutputTracks.size() <= index) c.auxOutputTracks.resize(index + 1, 0);
+        c.auxOutputTracks[index] = trackId;
+    });
+}
+void App::routeAuxOutputsToFreeTracks(Id id) {
+    IProcessor* proc = processor(id);
+    const Channel* ch = project().channel(id);
+    if (!proc || !ch || proc->auxOutputCount() == 0) return;
+    std::set<Id> used;
+    for (auto& c : project().channels) {
+        used.insert(c.mixerTrackId);
+        used.insert(c.auxOutputTracks.begin(), c.auxOutputTracks.end());
+    }
+    std::vector<Id> aux(proc->auxOutputCount(), 0);
+    std::vector<std::unique_ptr<Command>> cmds;
+    auto t = project().mixerTracks.begin();
+    for (int k = 0; k < (int)aux.size(); ++k) {
+        while (t != project().mixerTracks.end() && (t->isMaster || used.count(t->id))) ++t;
+        if (t == project().mixerTracks.end()) break;
+        aux[k] = t->id;
+        QString name = ch->name + " " + proc->auxOutputName(k);
+        cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, t->id, "", [name](MixerTrack& x) {
+            x.name = name;
+            x.customName = true;
+        }, 0));
+        ++t;
+    }
+    cmds.push_back(std::make_unique<EditObjectCommand<Channel>>(m_model, id, "", [aux](Channel& c) { c.auxOutputTracks = aux; }, 0));
+    m_model.macro("Route plugin outputs", std::move(cmds));
+}
 void App::setChannelSample(Id id, const QString& path) {
     auto* ch = project().channel(id);
     if (!ch) return;

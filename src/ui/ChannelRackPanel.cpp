@@ -892,6 +892,18 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
                 m_app.changeChannelInstrument(id, "plugin", d.id);
             });
     fillMixerTrackMenu(m.addMenu("Route to mixer track"), proj, c.mixerTrackId, [this, id](Id tid) { m_app.setChannelMixerTrack(id, tid); });
+    if (IProcessor* proc = m_app.processor(id); proc && proc->auxOutputCount() > 0) {   // multi-out instruments
+        auto* outs = m.addMenu("Plugin outputs");
+        outs->addAction("Route outputs to free mixer tracks", [this, id] { m_app.routeAuxOutputsToFreeTracks(id); });
+        outs->addSeparator();
+        for (int k = 0; k < proc->auxOutputCount(); ++k) {
+            Id cur = k < (int)c.auxOutputTracks.size() ? c.auxOutputTracks[k] : 0;
+            const MixerTrack* t = proj.mixerTrack(cur);
+            auto* sub = outs->addMenu(proc->auxOutputName(k) + (t ? "  \u2192 " + t->name : QString("  (off)")));
+            sub->addAction("Off", [this, id, k] { m_app.setChannelAuxOutput(id, k, 0); })->setEnabled(cur != 0);
+            fillMixerTrackMenu(sub, proj, cur, [this, id, k](Id tid) { m_app.setChannelAuxOutput(id, k, tid); });
+        }
+    }
     m.addSeparator();
     m.addAction("Move up", [this, id, row] { m_app.moveChannel(id, std::max(0, row - 1)); });
     m.addAction("Move down", [this, id, row] { m_app.moveChannel(id, row + 1); });

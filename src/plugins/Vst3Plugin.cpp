@@ -672,10 +672,12 @@ void Vst3Plugin::setupBuses() {
         m_component->getBusInfo(kAudio, kInput, i, bi);
         if (bi.channelCount == 1) ins[i] = kMono;
     }
+    m_outNames.clear();
     for (int i = 0; i < m_numOutputBuses; ++i) {
         BusInfo bi{};
         m_component->getBusInfo(kAudio, kOutput, i, bi);
         if (bi.channelCount == 1) outs[i] = kMono;
+        m_outNames << u16(bi.name);
     }
     if (m_processor->setBusArrangements(ins.data(), m_numInputBuses, outs.data(), m_numOutputBuses) != kResultOk) {
         for (int i = 0; i < m_numInputBuses; ++i) m_processor->getBusArrangement(kInput, i, ins[i]);
@@ -692,7 +694,7 @@ void Vst3Plugin::setupBuses() {
     for (auto a : ins) m_inChans.push_back(chans(a));
     for (auto a : outs) m_outChans.push_back(chans(a));
     for (int i = 0; i < m_numInputBuses; ++i) m_component->activateBus(kAudio, kInput, i, i < 2);
-    for (int i = 0; i < m_numOutputBuses; ++i) m_component->activateBus(kAudio, kOutput, i, i == 0);
+    for (int i = 0; i < m_numOutputBuses; ++i) m_component->activateBus(kAudio, kOutput, i, true);   // extra outs: multi-out routing
     int evIn = m_component->getBusCount(kEvent, kInput), evOut = m_component->getBusCount(kEvent, kOutput);
     for (int i = 0; i < evIn; ++i) m_component->activateBus(kEvent, kInput, i, i == 0);
     for (int i = 0; i < evOut; ++i) m_component->activateBus(kEvent, kOutput, i, i == 0);

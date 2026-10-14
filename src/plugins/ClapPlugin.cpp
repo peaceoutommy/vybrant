@@ -230,9 +230,12 @@ bool ClapPlugin::init(const QString& path, const QString& pluginId, QString* err
                 if (!ap->get(m_plugin, i, input, &info)) info.channel_count = 0;
                 if (main < 0 && (info.flags & CLAP_AUDIO_PORT_IS_MAIN)) main = (int)i;
                 chans.push_back(info.channel_count);
+                if (!input) m_outNames << QString::fromUtf8(info.name);
             }
             if (main < 0 && !chans.empty()) main = 0;
         }
+    for (int i = 0; i < (int)m_outChans.size(); ++i)
+        if (i != m_mainOut && m_outChans[i] > 0) m_auxOuts.push_back(i);
     if (auto* np = (const clap_plugin_note_ports*)ext(CLAP_EXT_NOTE_PORTS)) {
         clap_note_port_info info{};
         if (np->count(m_plugin, true) > 0 && np->get(m_plugin, 0, true, &info)) {

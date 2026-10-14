@@ -611,6 +611,17 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
                 t.genR[i] += c.bufR[i];
             }
         }
+        // multi-out: extra output pairs straight to their mixer tracks (channel volume applies, pan is the main pair's)
+        int nAux = std::min((int)c.auxTrackIdx.size(), c.instrument->auxOutputCount());
+        for (int k = 0; k < nAux; ++k) {
+            if (c.auxTrackIdx[k] < 0) continue;
+            auto& t = s.tracks[c.auxTrackIdx[k]];
+            const float *al = c.instrument->auxOutput(k, 0), *ar = c.instrument->auxOutput(k, 1);
+            for (int i = 0; i < n; ++i) {
+                t.genL[i] += al[i] * vol;
+                t.genR[i] += ar[i] * vol;
+            }
+        }
     }
     // Audio clips
     if (ctx.playing && m_songMode.load())

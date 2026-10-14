@@ -121,6 +121,7 @@ struct Channel {
     Id mixerTrackId = 0;   // 0 = master
     int rootNote = 60;
     int midiOutPort = -1, midiOutChannel = 0;
+    std::vector<Id> auxOutputTracks;   // multi-out instruments: the mixer track each extra output pair plays on (0 = off)
     QJsonObject instrumentState;   // saved native instrument state
     Id pluginId() const { return pluginInstanceId; }
 };

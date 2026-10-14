@@ -1177,6 +1177,40 @@ int runSelfTest(App& app) {
                 CHECK(restarted(1.8f, 128, true), "CLAP restart request re-activates the plugin while it is processing");
                 CHECK(restarted(1.f, 64, false), "CLAP restart request re-activates the plugin when no blocks come");
             }
+            // multi-out: the extra output pair of an instrument plays on a mixer track of its own
+            PluginInfo mi = info;
+            mi.uid = "org.musicthingy.test-multi";
+            mi.name = "MT Test Multi";
+            mi.category = "Instrument";
+            PluginInstanceData md = PluginHost::makeInstanceData(mi, app.project().newId());
+            auto multi = host.createInstance(md);
+            if (multi) multi->prepare(44100, 512);
+            float mainOut = multi ? run(*multi) : 0.f;
+            CHECK(multi && multi->kind() == ProcessorKind::Instrument && multi->auxOutputCount() == 1 && multi->auxOutputName(0) == "Kick" &&
+                    std::fabs(mainOut - 0.25f) < 1e-6f && std::fabs(multi->auxOutput(0, 1)[100] - 0.5f) < 1e-6f,
+                "a multi-out instrument shows its extra output pair next to the main one");
+            model.insert<PluginInstanceData>(md, "");
+            Id ch = app.addChannel(ChannelType::Plugin, "plugin", "Multi", QString(), md.id);
+            app.engine().rebuild(app.project());
+            app.routeAuxOutputsToFreeTracks(ch);
+            const Channel* mc = app.project().channel(ch);
+            Id mainT = mc->mixerTrackId, auxT = mc->auxOutputTracks.empty() ? 0 : mc->auxOutputTracks[0];
+            auto level = [&](Id track) {
+                RenderOptions o;
+                o.path = dir.path() + "/tap.wav";
+                o.tapTrack = track;
+                o.tailSeconds = 0;
+                o.bitDepth = 32;
+                o.dither = false;
+                app.exportAudio(o, nullptr, &err);
+                auto a = AudioFile::load(o.path, 0);
+                return a && a->frames > 1000 ? a->L()[a->frames / 2] : -1.f;
+            };
+            float lm = level(mainT), la = level(auxT);
+            CHECK(auxT && auxT != mainT && app.project().mixerTrack(auxT)->name == "Multi Kick" && std::fabs(lm - 0.25f) < 1e-4f &&
+                    std::fabs(la - 0.5f) < 1e-4f,
+                QString("the extra output plays on its own mixer track, named after it (main %1, Kick %2)").arg(lm).arg(la).toUtf8().constData());
+            app.deleteChannel(ch);
         }
     }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);

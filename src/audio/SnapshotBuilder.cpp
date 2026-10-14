@@ -373,6 +373,7 @@ void AudioEngine::rebuild(const Project& p) {
         rc.rootNote = c.rootNote;
         rc.isMidiOut = c.type == ChannelType::MidiOut;
         rc.midiOutPort = c.midiOutPort;
+        for (Id t : c.auxOutputTracks) rc.auxTrackIdx.push_back(t && trackIdx.count(t) ? trackIdx[t] : -1);
         rc.bufL.assign(m_maxBlock, 0.f);
         rc.bufR.assign(m_maxBlock, 0.f);
         chanIdx[c.id] = (int)s.channels.size();

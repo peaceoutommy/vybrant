@@ -49,6 +49,12 @@ public:
     bool latencyChanged() override { return m_latencyDirty.exchange(false); }
     QString formatValue(uint32_t id) const override;
     QString pluginFormat() const override { return "clap"; }
+    int auxOutputCount() const override { return (int)m_auxOuts.size(); }
+    const float* auxOutput(int i, int side) const override {
+        auto& o = m_outPtrs[m_auxOuts[i]];
+        return o[std::min<size_t>(side, o.size() - 1)];
+    }
+    QString auxOutputName(int i) const override { return m_outNames[m_auxOuts[i]]; }
     std::function<void(uint32_t, float)> onParamEdited;   // UI thread: the plugin (its GUI) changed a parameter
 
 private:
@@ -84,6 +90,8 @@ private:
     // audio ports: the main ports carry the track's stereo pair, any others get silent / ignored buffers
     std::vector<uint32_t> m_inChans, m_outChans;
     int m_mainIn = -1, m_mainOut = -1;
+    std::vector<int> m_auxOuts;   // output ports other than the main one (multi-out)
+    QStringList m_outNames;
     std::vector<clap::clap_audio_buffer> m_inBufs, m_outBufs;
     std::vector<std::vector<float*>> m_inPtrs, m_outPtrs;
     std::vector<std::vector<float>> m_scratch;

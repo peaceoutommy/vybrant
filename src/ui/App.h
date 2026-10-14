@@ -115,6 +115,8 @@ public:
     void setChannelEnabled(Id id, bool e);
     void setChannelCutItself(Id id, bool on);
     void setChannelMixerTrack(Id id, Id trackId);
+    void setChannelAuxOutput(Id id, int index, Id trackId);   // multi-out: where extra output pair 'index' plays (0 = off)
+    void routeAuxOutputsToFreeTracks(Id id);   // FL's auto-map: each extra output onto a free insert named after it
     void setChannelSample(Id id, const QString& path);
     void changeChannelInstrument(Id id, const QString& key, Id pluginId = 0);
 

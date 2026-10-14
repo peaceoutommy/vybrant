@@ -167,6 +167,7 @@ struct RtChannel {
     MidiEventList midi;
     NoteOffScheduler noteOffs;
     std::vector<float> bufL, bufR;
+    std::vector<int> auxTrackIdx;   // multi-out: the mixer track index for each extra output pair (-1 = off)
     std::vector<int> patternLanes;
     dsp::PdcDelay* pdc = nullptr;
 };

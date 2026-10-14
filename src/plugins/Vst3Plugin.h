@@ -62,6 +62,9 @@ public:
     QString formatValue(uint32_t id) const override;
     QString pluginFormat() const override { return "vst3"; }
     const MidiEventList* outputMidi() const override { return &m_outMidi; }
+    int auxOutputCount() const override { return std::max(0, m_numOutputBuses - 1); }
+    const float* auxOutput(int i, int side) const override { return m_outPtrs[i + 1][std::min<int>(side, m_outChans[i + 1] - 1)]; }
+    QString auxOutputName(int i) const override { return m_outNames[i + 1]; }
     // Called on the UI thread: push parameter values changed by automation/engine to the controller so the editor follows
     void syncControllerFromParams();
     std::function<void(uint32_t, float)> onParamEdited;   // UI -> app (plugin editor moved a parameter)
@@ -97,6 +100,7 @@ private:
     int m_numInputBuses = 0, m_numOutputBuses = 0;
     std::vector<vst3::AudioBusBuffers> m_inBuses, m_outBuses;
     std::vector<std::vector<float*>> m_inPtrs, m_outPtrs;
+    QStringList m_outNames;
     std::vector<std::vector<float>> m_scratch;
     std::vector<int> m_inChans, m_outChans;
     std::vector<float> m_inL, m_inR;

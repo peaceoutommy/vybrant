@@ -78,12 +78,15 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
     }
     root["patterns"] = pats;
     QJsonArray chans;
-    for (auto& c : p.channels)
+    for (auto& c : p.channels) {
+        QJsonArray aux;
+        for (Id t : c.auxOutputTracks) aux.append((double)t);
         chans.append(QJsonObject{{"id", (double)c.id}, {"name", c.name}, {"color", colorJ(c.color)}, {"type", (int)c.type},
             {"instrument", c.instrumentKey}, {"plugin", (double)c.pluginInstanceId}, {"sample", relPath(c.samplePath, dir)},
             {"volume", c.volume}, {"pan", c.pan}, {"mute", c.mute}, {"solo", c.solo}, {"enabled", c.enabled}, {"cutItself", c.cutItself},
             {"mixerTrack", (double)c.mixerTrackId}, {"rootNote", c.rootNote}, {"midiOutPort", c.midiOutPort},
-            {"midiOutChannel", c.midiOutChannel}, {"state", c.instrumentState}});
+            {"midiOutChannel", c.midiOutChannel}, {"auxOutputs", aux}, {"state", c.instrumentState}});
+    }
     root["channels"] = chans;
     QJsonArray tracks, clips;
     for (auto& t : p.playlistTracks)
@@ -295,6 +298,7 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         c.rootNote = o["rootNote"].toInt(60);
         c.midiOutPort = o["midiOutPort"].toInt(-1);
         c.midiOutChannel = o["midiOutChannel"].toInt();
+        for (auto v : o["auxOutputs"].toArray()) c.auxOutputTracks.push_back((Id)v.toDouble());
         c.instrumentState = o["state"].toObject();
         p.channels.push_back(c);
     }
