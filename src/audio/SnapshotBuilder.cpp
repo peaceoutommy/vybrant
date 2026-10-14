@@ -19,12 +19,14 @@ static std::map<Id, Id>& procPluginIds() {
     return k;
 }
 
-static QString keyForChannel(const Channel& c) {
-    return c.type == ChannelType::Plugin ? QString("plugin:%1").arg(c.pluginInstanceId) : c.instrumentKey;
+static QString pluginKey(Id id, const Project& p) {   // its own process or ours: a different processor
+    const PluginInstanceData* pd = p.plugin(id);
+    return QString("plugin:%1%2").arg(id).arg(pd && pd->bridged ? ":bridged" : "");
 }
-static QString keyForSlot(const EffectSlot& s) {
-    return s.pluginInstanceId ? QString("plugin:%1").arg(s.pluginInstanceId) : s.processorKey;
+static QString keyForChannel(const Channel& c, const Project& p) {
+    return c.type == ChannelType::Plugin ? pluginKey(c.pluginInstanceId, p) : c.instrumentKey;
 }
+static QString keyForSlot(const EffectSlot& s, const Project& p) { return s.pluginInstanceId ? pluginKey(s.pluginInstanceId, p) : s.processorKey; }
 
 IProcessor* RuntimeRegistry::replaceProcessor(Id ownerId, std::unique_ptr<IProcessor> proc, double sr, int maxBlock, uint64_t gen) {
     auto it = m_procs.find(ownerId);
@@ -53,7 +55,7 @@ static std::unique_ptr<IProcessor> createFor(const QString& key, const Project& 
 
 IProcessor* RuntimeRegistry::ensureInstrument(
     const Channel& ch, const Project& p, double sr, int maxBlock, const PluginFactory& pf, uint64_t gen) {
-    QString key = keyForChannel(ch);
+    QString key = keyForChannel(ch, p);
     auto it = m_procs.find(ch.id);
     if (it != m_procs.end() && procKeys()[ch.id] == key) return it->second.get();
     auto proc = createFor(key, p, ch.pluginInstanceId, pf);
@@ -80,7 +82,7 @@ IProcessor* RuntimeRegistry::ensureInstrument(
 
 IProcessor* RuntimeRegistry::ensureEffect(
     const EffectSlot& slot, const Project& p, double sr, int maxBlock, const PluginFactory& pf, uint64_t gen) {
-    QString key = keyForSlot(slot);
+    QString key = keyForSlot(slot, p);
     auto it = m_procs.find(slot.id);
     if (it != m_procs.end() && procKeys()[slot.id] == key) return it->second.get();
     auto proc = createFor(key, p, slot.pluginInstanceId, pf);

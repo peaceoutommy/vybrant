@@ -59,13 +59,14 @@ private:
     void build();
     void tick();
     void showPresetMenu();
+    Id pluginInstanceId() const;   // of the channel or effect slot this window edits (0 = native processor)
     App& m_app;
     Id m_owner;
     IProcessor* m_proc = nullptr;
     QWidget* m_body = nullptr;
     GenericParamPanel* m_generic = nullptr;
     QLabel* m_title;
-    QToolButton *m_preset, *m_bypass, *m_genericToggle;
+    QToolButton *m_preset, *m_bypass, *m_genericToggle, *m_bridge;
     QTimer m_timer;
     bool m_useGeneric = false;
     QString m_titleText;

@@ -172,6 +172,7 @@ public:
     // Freeze: render the insert (after its effects, before its fader) onto a playlist track routed back into it; what fed it,
     // and its effects, stop running. Unfreeze puts them back. Both are one undo step.
     bool freezeMixerTrack(Id id, std::function<bool(double)> progress, QString* error);
+    void setPluginBridged(Id pluginInstanceId, bool on);   // run it in its own process (crash protection) or in ours
     void unfreezeMixerTrack(Id id);
 
     // ---- processors (instruments / effects / plugins)

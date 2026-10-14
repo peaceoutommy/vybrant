@@ -1,10 +1,13 @@
 // Minimal CLAP plugins for the self test: a stereo gain effect with one parameter, state and a reported latency
 // (64 samples, 128 above 1.5x gain: changing it asks the host for a restart, as CLAP requires while active), and a
-// multi-out instrument that writes 0.25 to its main output pair and 0.5 to an extra "Kick" pair.
+// multi-out instrument that writes 0.25 to its main output pair and 0.5 to an extra "Kick" pair. Above 1.95x gain the
+// gain plugin crashes on purpose, for the out-of-process test. The gain plugin's editor is a plain 320x200 X11 window named
+// "mt-test-gain-editor" (`musicthingy --embed-test` looks for it inside the host's window).
 // `musicthingy --selftest` compiles it with the system C++ compiler against src/plugins/ClapAbi.h (not part of the app build).
 #include "plugins/ClapAbi.h"
 #include <cstdio>
 #include <cstring>
+#include <X11/Xlib.h>   // after the CLAP declarations: its macros clash with nothing below
 
 using namespace clap;
 
@@ -17,6 +20,8 @@ struct Gain {
     double gain = 1.0;
     uint32_t latency = 0;   // reported only, the audio is not delayed
     bool restartAsked = false;
+    Display* dpy = nullptr;   // editor
+    Window win = 0;
 };
 Gain* self(const clap_plugin* p) { return (Gain*)p->plugin_data; }
 
@@ -53,6 +58,48 @@ const clap_plugin_state state = {
     [](const clap_plugin* p, const clap_istream* s) { return s->read(s, &self(p)->gain, sizeof(double)) == sizeof(double); },
 };
 const clap_plugin_latency latency = {[](const clap_plugin* p) { return self(p)->latency; }};
+const clap_plugin_gui gui = {
+    [](const clap_plugin*, const char* api, bool floating) { return !floating && !std::strcmp(api, CLAP_WINDOW_API_X11); },
+    [](const clap_plugin*, const char** api, bool* floating) {
+        *api = CLAP_WINDOW_API_X11;
+        *floating = false;
+        return true;
+    },
+    [](const clap_plugin* p, const char*, bool) { return (self(p)->dpy = XOpenDisplay(nullptr)) != nullptr; },
+    [](const clap_plugin* p) {
+        auto* g = self(p);
+        if (g->win) XDestroyWindow(g->dpy, g->win);
+        if (g->dpy) XCloseDisplay(g->dpy);
+        g->win = 0;
+        g->dpy = nullptr;
+    },
+    [](const clap_plugin*, double) { return false; },
+    [](const clap_plugin*, uint32_t* w, uint32_t* h) {
+        *w = 320;
+        *h = 200;
+        return true;
+    },
+    [](const clap_plugin*) { return false; }, [](const clap_plugin*, clap_gui_resize_hints*) { return false; },
+    [](const clap_plugin*, uint32_t*, uint32_t*) { return false; }, [](const clap_plugin*, uint32_t, uint32_t) { return false; },
+    [](const clap_plugin* p, const clap_window* w) {   // its own window inside the host's
+        auto* g = self(p);
+        g->win = XCreateSimpleWindow(g->dpy, w->x11, 0, 0, 320, 200, 0, 0, 0x3366cc);
+        XStoreName(g->dpy, g->win, "mt-test-gain-editor");
+        XFlush(g->dpy);
+        return true;
+    },
+    [](const clap_plugin*, const clap_window*) { return false; }, [](const clap_plugin*, const char*) {},
+    [](const clap_plugin* p) {
+        XMapWindow(self(p)->dpy, self(p)->win);
+        XFlush(self(p)->dpy);
+        return true;
+    },
+    [](const clap_plugin* p) {
+        XUnmapWindow(self(p)->dpy, self(p)->win);
+        XFlush(self(p)->dpy);
+        return true;
+    },
+};
 const clap_plugin_audio_ports ports = {
     [](const clap_plugin*, bool) -> uint32_t { return 1; },
     [](const clap_plugin*, uint32_t i, bool input, clap_audio_port_info* info) {
@@ -85,6 +132,7 @@ const clap_plugin* create(const clap_host* host) {
         [](const clap_plugin* p, const clap_process* pr) -> clap_process_status {
             auto* g = self(p);
             applyEvents(g, pr->in_events);   // whole-block parameter changes are enough for a test
+            if (g->gain > 1.95) __builtin_trap();
             if ((g->gain > 1.5 ? 128u : 64u) != g->latency && !g->restartAsked) {
                 g->restartAsked = true;
                 g->host->request_restart(g->host);
@@ -99,6 +147,7 @@ const clap_plugin* create(const clap_host* host) {
             if (!std::strcmp(id, CLAP_EXT_STATE)) return &state;
             if (!std::strcmp(id, CLAP_EXT_LATENCY)) return &latency;
             if (!std::strcmp(id, CLAP_EXT_AUDIO_PORTS)) return &ports;
+            if (!std::strcmp(id, CLAP_EXT_GUI)) return &gui;
             return nullptr;
         },
         [](const clap_plugin*) {}};

@@ -3,6 +3,8 @@
 #include "plugins/Vst2Plugin.h"
 #include "plugins/ClapPlugin.h"
 #include "plugins/Lv2Plugin.h"
+#include "plugins/PluginBridge.h"
+#include <QSettings>
 #include "core/Log.h"
 #include <QStandardPaths>
 #include <QDir>
@@ -410,6 +412,7 @@ PluginInstanceData PluginHost::makeInstanceData(const PluginInfo& info, Id id) {
     d.manufacturer = info.vendor;
     d.type = info.category == "Instrument" ? "instrument" : "effect";
     d.path = info.path;
+    d.bridged = QSettings().value("plugins/bridge", false).toBool();
     return d;
 }
 
@@ -422,6 +425,11 @@ std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData&
         if (error) *error = "Plugin binary not found: " + data.path;
         Log::warn("Missing plugin: " + data.name + " (" + data.path + ")");
         return nullptr;
+    }
+    if (data.bridged) {
+        PluginInstanceData d = data;
+        d.path = path;
+        return BridgedPlugin::create(d, error);
     }
     QString err;
     std::unique_ptr<IProcessor> proc;

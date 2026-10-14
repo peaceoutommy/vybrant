@@ -5,6 +5,7 @@
 #include "plugins/Vst2Plugin.h"
 #include "plugins/ClapPlugin.h"
 #include "plugins/Lv2Plugin.h"
+#include "plugins/PluginBridge.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -217,6 +218,11 @@ PluginWindow::PluginWindow(App& app, Id ownerId, const QString& title, QWidget* 
     m_genericToggle->setCheckable(true);
     m_genericToggle->setToolTip("Show the generic parameter editor instead of the custom GUI");
     hdr->addWidget(m_genericToggle);
+    m_bridge = new QToolButton(this);
+    m_bridge->setText("Own process");
+    m_bridge->setCheckable(true);
+    m_bridge->setToolTip("Run this plugin in its own process: if it crashes, only it goes silent and the app keeps running");
+    hdr->addWidget(m_bridge);
     m_preset = new QToolButton(this);
     m_preset->setText("Presets ▾");
     hdr->addWidget(m_preset);
@@ -225,6 +231,9 @@ PluginWindow::PluginWindow(App& app, Id ownerId, const QString& title, QWidget* 
     connect(m_genericToggle, &QToolButton::toggled, this, [this](bool b) {
         m_useGeneric = b;
         build();
+    });
+    connect(m_bridge, &QToolButton::clicked, this, [this](bool on) {
+        if (Id pid = pluginInstanceId()) m_app.setPluginBridged(pid, on);
     });
     connect(m_bypass, &QToolButton::toggled, this, [this](bool b) {
         for (auto& t : m_app.project().mixerTracks)
@@ -256,6 +265,8 @@ void PluginWindow::build() {
         return;
     }
     bool isEffect = m_proc->kind() == ProcessorKind::Effect;
+    m_bridge->setVisible(m_proc->isPlugin());
+    m_bridge->setChecked(dynamic_cast<BridgedPlugin*>(m_proc) != nullptr);
     m_bypass->setVisible(isEffect);
     m_genericToggle->setVisible(m_proc->hasCustomEditor());
     for (auto& t : m_app.project().mixerTracks)
@@ -269,6 +280,7 @@ void PluginWindow::build() {
         if (auto* v2 = dynamic_cast<Vst2Plugin*>(m_proc)) v2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* c = dynamic_cast<ClapPlugin*>(m_proc)) c->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* l2 = dynamic_cast<Lv2Plugin*>(m_proc)) l2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
+        if (auto* br = dynamic_cast<BridgedPlugin*>(m_proc)) br->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
     } else {
         auto* sc = new QScrollArea(this);
         sc->setWidgetResizable(true);
@@ -281,6 +293,13 @@ void PluginWindow::build() {
         resize(6 * 86 + 40, std::min(760, 64 + rows * 84));
     }
     adjustSize();
+}
+Id PluginWindow::pluginInstanceId() const {
+    if (const Channel* c = m_app.project().channel(m_owner)) return c->pluginInstanceId;
+    for (auto& t : m_app.project().mixerTracks)
+        for (auto& e : t.effects)
+            if (e.id == m_owner) return e.pluginInstanceId;
+    return 0;
 }
 void PluginWindow::tick() {
     IProcessor* p = m_app.processor(m_owner);

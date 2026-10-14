@@ -121,7 +121,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
         plugs.append(QJsonObject{{"id", (double)pl.id}, {"format", pl.format}, {"identifier", pl.identifier}, {"name", pl.name},
             {"manufacturer", pl.manufacturer}, {"type", pl.type}, {"path", pl.path}, {"state", QString::fromLatin1(pl.state.toBase64())},
             {"controllerState", QString::fromLatin1(pl.controllerState.toBase64())}, {"latency", pl.latency}, {"bypass", pl.bypass},
-            {"params", cache}});
+            {"bridged", pl.bridged}, {"params", cache}});
     }
     root["plugins"] = plugs;
     QJsonArray autom;
@@ -405,6 +405,7 @@ bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString*
         pl.controllerState = QByteArray::fromBase64(o["controllerState"].toString().toLatin1());
         pl.latency = o["latency"].toInt();
         pl.bypass = o["bypass"].toBool();
+        pl.bridged = o["bridged"].toBool();
         auto cache = o["params"].toObject();
         for (auto it = cache.begin(); it != cache.end(); ++it) pl.paramCache[it.key().toUInt()] = it.value().toDouble();
         p.plugins.push_back(pl);

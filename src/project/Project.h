@@ -260,6 +260,7 @@ struct PluginInstanceData {
     bool bypass = false;
     bool missing = false;
     bool crashed = false;
+    bool bridged = false;   // runs in its own process (PluginBridge): a crash takes only that process down
     std::map<uint32_t, double> paramCache;
 };
 

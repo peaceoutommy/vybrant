@@ -6,6 +6,7 @@
 #include "dsp/instruments/Instruments.h"
 #include "audio/RenderEngine.h"
 #include "plugins/PluginHost.h"
+#include "plugins/PluginBridge.h"
 #include "project/MidiFile.h"
 #include "ui/PianoRollPanel.h"
 #include "ui/widgets/Controls.h"
@@ -1176,7 +1177,7 @@ int runSelfTest(App& app) {
         QString so = dir.path() + "/clap/MT Test Gain.clap";
         QDir().mkpath(dir.path() + "/clap");
         if (cxx.isEmpty() || !QFileInfo::exists(src)) std::printf("  skip CLAP hosting checks (no c++ compiler or tests/clap_gain.cpp)\n");
-        else if (QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", src, "-o", so}) != 0)
+        else if (QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", src, "-o", so, "-lX11"}) != 0)
             CHECK(false, "compile the CLAP test plugin");
         else {
             CHECK(PluginScanner::candidateFiles({dir.path()}).contains(so), "plugin scan finds .clap files");
@@ -1265,6 +1266,56 @@ int runSelfTest(App& app) {
                     std::fabs(la - 0.5f) < 1e-4f,
                 QString("the extra output plays on its own mixer track, named after it (main %1, Kick %2)").arg(lm).arg(la).toUtf8().constData());
             app.deleteChannel(ch);
+            // out of process: the same plugins through the bridge; a crash silences only the plugin
+            PluginInstanceData bd = d;
+            bd.bridged = true;
+            bd.state.clear();
+            auto bp = host.createInstance(bd);
+            auto* bridged = dynamic_cast<BridgedPlugin*>(bp.get());
+            if (bp) bp->prepare(44100, 512);
+            CHECK(bridged && bp->params().count() == 1 && bp->latencySamples() == 64, "a bridged plugin starts in its own process with its parameter and latency");
+            if (bridged) {
+                uint32_t gain = bp->params().desc(0).id;
+                bp->params().set(gain, 0.5f);
+                CHECK(std::fabs(run(*bp) - 0.25f) < 1e-6f, "it processes audio in the other process with the parameter applied");
+                bd.state = QByteArray::fromBase64(bp->saveState()["pluginState"].toString().toLatin1());
+                auto copy = host.createInstance(bd);
+                if (copy) copy->prepare(44100, 512);
+                CHECK(copy && std::fabs(copy->params().get(gain) - 0.5f) < 1e-6f && std::fabs(run(*copy) - 0.25f) < 1e-6f,
+                    "a bridged plugin's state round-trips");
+                PluginInstanceData bm = md;
+                bm.bridged = true;
+                auto bmulti = host.createInstance(bm);
+                if (bmulti) bmulti->prepare(44100, 512);
+                float bmain = bmulti ? run(*bmulti) : 0.f;
+                CHECK(bmulti && bmulti->auxOutputCount() == 1 && std::fabs(bmain - 0.25f) < 1e-6f && std::fabs(bmulti->auxOutput(0, 0)[100] - 0.5f) < 1e-6f,
+                    "a bridged multi-out instrument hands over its extra outputs");
+                QString crashedName;
+                auto prevHandler = BridgedPlugin::onCrashed;
+                BridgedPlugin::onCrashed = [&](Id, const QString& n) { crashedName = n; };
+                bp->params().set(gain, 1.99f);   // the test plugin crashes on purpose
+                float out = run(*bp);
+                for (int i = 0; i < 100 && crashedName.isEmpty(); ++i) {
+                    QThread::msleep(10);
+                    QCoreApplication::processEvents();
+                }
+                CHECK(bridged->dead() && out == 0.f && run(*bp) == 0.f && crashedName == "MT Test Gain" && std::fabs(run(*copy) - 0.25f) < 1e-6f,
+                    "a crashing plugin only silences itself: the app and the other plugins keep running");
+                BridgedPlugin::onCrashed = prevHandler;
+                // in a project: the window's 'Own process' toggle rebuilds it bridged; the engine renders through the bridge
+                PluginInstanceData pm = PluginHost::makeInstanceData(mi, app.project().newId());
+                model.insert<PluginInstanceData>(pm, "");
+                Id bch = app.addChannel(ChannelType::Plugin, "plugin", "Multi", QString(), pm.id);
+                app.setPluginBridged(pm.id, true);
+                app.engine().rebuild(app.project());
+                app.routeAuxOutputsToFreeTracks(bch);
+                const Channel* bc = app.project().channel(bch);
+                Id bt = bc->auxOutputTracks.empty() ? 0 : bc->auxOutputTracks[0];
+                float bl = level(bc->mixerTrackId), ba = level(bt);
+                CHECK(dynamic_cast<BridgedPlugin*>(app.processor(bch)) && std::fabs(bl - 0.25f) < 1e-4f && std::fabs(ba - 0.5f) < 1e-4f,
+                    QString("'Own process' rebuilds the plugin bridged and the song renders through it (main %1, Kick %2)").arg(bl).arg(ba).toUtf8().constData());
+                app.deleteChannel(bch);
+            }
         }
     }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
@@ -1419,5 +1470,75 @@ int runDockTest(QMainWindow* win) {
     QCoreApplication::processEvents();
     std::printf("after release: floating=%d area=%d\n", rack->isFloating(), (int)win->dockWidgetArea(rack));
     return 0;
+}
+}   // namespace mt
+
+// `musicthingy --embed-test` (on X11): the CLAP test plugin's editor embeds into our window, in-process and from its own
+// process. The window bypasses the window manager and sits off-screen, so nothing shows.
+#include <QVBoxLayout>
+#include <X11/Xlib.h>   // last: its macros clash with Qt
+namespace mt {
+static bool findWindow(Display* d, Window w, const char* name, XWindowAttributes* at) {
+    char* n = nullptr;
+    bool hit = XFetchName(d, w, &n) && n && !std::strcmp(n, name);
+    if (n) XFree(n);
+    if (hit) return XGetWindowAttributes(d, w, at);
+    Window root, parent, *kids = nullptr;
+    unsigned nk = 0;
+    if (!XQueryTree(d, w, &root, &parent, &kids, &nk)) return false;
+    bool found = false;
+    for (unsigned i = 0; i < nk && !found; ++i) found = findWindow(d, kids[i], name, at);
+    if (kids) XFree(kids);
+    return found;
+}
+int runEmbedTest(App& app) {
+    std::printf("MusicThingy editor embedding test\n");
+    if (QGuiApplication::platformName() != "xcb") {
+        std::printf("  skip (needs X11, platform is %s)\n", qPrintable(QGuiApplication::platformName()));
+        return 0;
+    }
+    QString root = QCoreApplication::applicationDirPath() + "/..", cxx = QStandardPaths::findExecutable("c++");
+    QTemporaryDir dir;
+    QString so = dir.path() + "/MT Test Gain.clap";
+    if (cxx.isEmpty() || QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", root + "/tests/clap_gain.cpp", "-o", so, "-lX11"}) != 0) {
+        std::printf("  FAIL compile the CLAP test plugin\n");
+        return 1;
+    }
+    PluginInfo info;
+    info.format = "clap";
+    info.uid = "org.musicthingy.test-gain";
+    info.name = "MT Test Gain";
+    info.path = so;
+    PluginHost host(app.pluginDb());
+    Display* dpy = XOpenDisplay(nullptr);
+    for (bool bridged : {false, true}) {
+        PluginInstanceData d = PluginHost::makeInstanceData(info, app.project().newId());
+        d.bridged = bridged;
+        auto proc = host.createInstance(d);
+        if (proc) proc->prepare(44100, 512);
+        QWidget top(nullptr, Qt::Window | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
+        top.move(-4000, -4000);
+        auto* lay = new QVBoxLayout(&top);
+        lay->setContentsMargins(0, 0, 0, 0);
+        QWidget* ed = proc ? proc->createEditor(&top) : nullptr;
+        if (ed) lay->addWidget(ed);
+        top.show();
+        XWindowAttributes at{};
+        bool found = false;
+        QElapsedTimer t;
+        t.start();
+        while (!found && t.elapsed() < 3000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            XSync(dpy, 0);
+            found = findWindow(dpy, (Window)top.winId(), "mt-test-gain-editor", &at) && at.map_state == IsViewable;
+        }
+        double dpr = top.devicePixelRatioF();   // plugin sizes are physical pixels
+        CHECK(ed && found && at.width == 320 && at.height == 200 && std::lround(top.width() * dpr) >= 320 && std::lround(top.height() * dpr) >= 200,
+            bridged ? "the editor of a plugin in its own process shows inside our window, at its size"
+                    : "a CLAP editor shows inside our window, at its size");
+    }
+    XCloseDisplay(dpy);
+    std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
+    return g_fail ? 1 : 0;
 }
 }   // namespace mt

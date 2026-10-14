@@ -30,7 +30,9 @@ cmake -B build-cmake && cmake --build build-cmake -j$(nproc)
 Command line: `musicthingy [project.mtp] [--render out.wav] [--selftest] [--screenshot file.png] [--quit]`.
 `--selftest` runs the built-in test suite (serializer round-trip, undo/redo, every native processor, delay
 compensation, routing-cycle detection, automation, offline render). `--scan-plugin <path>` is used internally by the
-out-of-process plugin scanner.
+out-of-process plugin scanner, and `--plugin-bridge <socket> <shm>` by plugins that run in their own process (plugin
+window > "Own process", or Plugin Manager > "Run new plugins in their own process"): a crashing plugin then only
+silences itself.
 
 Plugin GUIs need an X11 window, so on Wayland the app starts under XWayland (`QT_QPA_PLATFORM=xcb`) unless you set
 the platform yourself.
@@ -40,9 +42,11 @@ the platform yourself.
 ```bash
 ./bin/musicthingy --selftest          # engine / model checks (serializer, undo, processors, render)
 python3 tests/ui_test.py              # UI behaviour through the control socket, in an offscreen instance
+python3 tests/sync_test.py            # JACK transport and MIDI clock in, against a dummy jackd / ALSA client
+QT_QPA_PLATFORM=xcb ./bin/musicthingy --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
 ```
 
-Both run in CI (`.github/workflows/ci.yml`). The UI test uses a private config directory and socket, so it is
+All but the embed test run in CI (`.github/workflows/ci.yml`). The UI test uses a private config directory and socket, so it is
 safe to run while the app is open. Sources are formatted with `clang-format` (`.clang-format` in the root):
 
 ```bash

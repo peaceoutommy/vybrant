@@ -229,7 +229,7 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
     setWindowTitle("Plugin Manager");
     resize(820, 560);
     auto* lay = new QVBoxLayout(this);
-    lay->addWidget(new QLabel("Plugin folders (VST2 .so, VST3 bundles and CLAP files are scanned recursively, out of process):", this));
+    lay->addWidget(new QLabel("Plugin folders (VST2 .so, VST3 bundles and CLAP files are scanned recursively, out of process; LV2 comes from the standard LV2 paths):", this));
     auto* dl = new QHBoxLayout();
     m_dirs = new QListWidget(this);
     m_dirs->addItems(app.pluginDb().directories());
@@ -243,6 +243,11 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
     dbtns->addStretch(1);
     dl->addLayout(dbtns);
     lay->addLayout(dl);
+    auto* bridge = new QCheckBox("Run new plugins in their own process (crash protection: a crashing plugin goes silent, the app keeps running)", this);
+    bridge->setChecked(QSettings().value("plugins/bridge", false).toBool());
+    bridge->setToolTip("Each plugin window has an 'Own process' switch for plugins already in the project");
+    lay->addWidget(bridge);
+    connect(bridge, &QCheckBox::toggled, this, [](bool b) { QSettings().setValue("plugins/bridge", b); });
     connect(add, &QPushButton::clicked, this, [this] {
         QString d = QFileDialog::getExistingDirectory(this, "Plugin folder");
         if (!d.isEmpty()) {

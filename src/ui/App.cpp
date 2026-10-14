@@ -2,6 +2,7 @@
 #include <QColorDialog>
 #include "ui/App.h"
 #include "audio/JackTransport.h"
+#include "plugins/PluginBridge.h"
 #include "ui/widgets/Controls.h"
 #include "project/MidiFile.h"
 #include <QRegularExpression>
@@ -41,6 +42,10 @@ App::App(QObject* parent)
     connect(m_engine.get(), &AudioEngine::transportStateChanged, this, &App::onTransportStateChanged);
     connect(m_engine.get(), &AudioEngine::pluginCrashed, this, &App::onPluginCrashed);
     connect(m_midi.get(), &MidiEngine::ccReceived, this, &App::onCcReceived);
+    BridgedPlugin::onCrashed = [this](Id instanceId, const QString& name) {
+        if (auto* pd = project().plugin(instanceId)) pd->crashed = true;
+        Q_EMIT statusMessage("Plugin " + name + " crashed in its own process - the app keeps running; turn 'Own process' off and on in its window to restart it", 0);
+    };
     connect(m_midi.get(), &MidiEngine::clockTransport, this, [this](int what, double tick) {
         if (what == 0) seek(0);
         if (what == 0 || what == 1) play();
@@ -1795,6 +1800,11 @@ void App::onRecordedMidi(const MidiEvent& e, double tick) {
     project().pattern(pid)->ensureChannel(cid).notes.push_back(n);
     m_recNoteIds.insert(n.id);
     m_model.notify(ChangePatterns);
+}
+void App::setPluginBridged(Id pluginInstanceId, bool on) {
+    m_engine->syncStateToProject(project());   // the new processor starts from the current state
+    m_model.edit<PluginInstanceData>(pluginInstanceId, on ? "Run plugin in its own process" : "Run plugin in the app",
+        [on](PluginInstanceData& d) { d.bridged = on, d.crashed = false; });
 }
 void App::onPluginCrashed(Id slotId) {
     QString name = "plugin";

@@ -4,6 +4,7 @@
 #include "ui/ControlServer.h"
 #include "ui/Theme.h"
 #include "plugins/PluginHost.h"
+#include "plugins/PluginBridge.h"
 #include "audio/RenderEngine.h"
 #include <QApplication>
 #include <QMainWindow>
@@ -14,6 +15,7 @@
 #include <cstdio>
 namespace mt {
 int runSelfTest(App& app);
+int runEmbedTest(App& app);
 int runPreviewBench(App& app, const QString& dir);
 int runUiTest(QMainWindow* win, const QString& png);
 int runDuplicateTest(App& app);
@@ -46,6 +48,7 @@ int main(int argc, char** argv) {
     QApplication::setStyle("Fusion");
     mt::theme::setPalette(mt::theme::loadSavedTheme());
     app.setStyleSheet(mt::theme::stylesheet());
+    if (argc >= 4 && std::strcmp(argv[1], "--plugin-bridge") == 0) return mt::pluginBridgeMain(argv[2], argv[3]);   // a plugin's own process
     mt::App daw;
     daw.initialize();
     if (argc >= 2 && std::strcmp(argv[1], "--selftest") == 0) {
@@ -53,6 +56,7 @@ int main(int argc, char** argv) {
         int rc = mt::runSelfTest(daw);
         return rc;
     } /* the tests exercise the demo content */
+    if (argc >= 2 && std::strcmp(argv[1], "--embed-test") == 0) return mt::runEmbedTest(daw);
     if (argc >= 2 && std::strcmp(argv[1], "--duptest") == 0) {
         daw.newProject(true);
         return mt::runDuplicateTest(daw);
