@@ -63,9 +63,15 @@ struct RtNote {
     float probability;
     int midiChannel;
 };
+struct RtControl {
+    Tick tick;
+    int controller;
+    MidiEvent event;   // CC / pitch bend / channel pressure; the sample offset is set when scheduled
+};
 struct RtPatternChannel {
     int channelIndex;
     std::vector<RtNote> notes;
+    std::vector<RtControl> controls;   // sorted by tick
 };
 struct RtPattern {
     Id id;

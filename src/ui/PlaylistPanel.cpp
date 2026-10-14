@@ -1,4 +1,5 @@
 #include "ui/PlaylistPanel.h"
+#include "project/MidiFile.h"
 #include "ui/InAppDrag.h"
 #include "dsp/DspUtils.h"
 #include <QPainterPath>
@@ -1663,7 +1664,8 @@ void PlaylistView::dropEvent(QDropEvent* e) {
             QString p = u.toLocalFile();
             if (AudioFile::isAudioFile(p)) {
                 m_app.addAudioClip(tid, p, at);
-            } else if (p.endsWith(".mtp")) m_app.openProject(p);
+            } else if (MidiFile::isMidiFile(p)) m_app.importMidiFile(p, tid, at);
+            else if (p.endsWith(".mtp")) m_app.openProject(p);
         }
     } else if (kind == "pattern") m_app.addPatternClip(tid, val.toULongLong(), at);
     else if (kind == "lane") m_app.addAutomationClip(tid, val.toULongLong(), at, 0);

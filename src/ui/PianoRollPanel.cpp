@@ -1,5 +1,6 @@
 #include "ui/PianoRollPanel.h"
 #include "ui/TransportBar.h"
+#include "project/MidiFile.h"
 #include "ui/Theme.h"
 #include <QPainter>
 #include <QMouseEvent>
@@ -11,6 +12,11 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QInputDialog>
+#include <QFileDialog>
+#include <QMimeData>
+#include <QDragEnterEvent>
+#include <QDropEvent>
+#include <QUrl>
 #include <QFrame>
 #include <algorithm>
 #include <climits>
@@ -78,6 +84,7 @@ QStringList PianoRollView::chordNames() {
 PianoRollView::PianoRollView(App& app, QWidget* parent)
     : TimelineView(app, PPQ / 16, parent) {
     m_velH = clamp(QSettings().value("pianoroll/laneHeight", 80).toInt(), 40, 400);
+    setAcceptDrops(true);
     connect(&m_repeatTimer, &QTimer::timeout, this, [this] {
         if (m_previewPitch >= 0) {
             m_app.noteOff(m_previewPitch);
@@ -373,7 +380,26 @@ void PianoRollView::renderCache() {
             p.setPen(theme::gridStrong());
             p.drawLine(L.vel.left(), midY, L.vel.right(), midY);
         }
-        if (d)
+        if (int ctrl = laneController(); d && ctrl >= 0) {
+            // controller points, each held until the next: a step graph filled from the baseline (the centre for pitch bend)
+            auto yOf = [&](int v) { return L.vel.bottom() - 3 - (int)std::lround((float)v / controlMax(ctrl) * (L.vel.height() - 6)); };
+            int y0 = yOf(ctrl == kCtrlPitchBend ? 8192 : 0);
+            p.setPen(theme::gridStrong());
+            if (ctrl == kCtrlPitchBend) p.drawLine(L.vel.left(), y0, L.vel.right(), y0);
+            QColor fill = base;
+            fill.setAlpha(80);
+            std::vector<const ControlPoint*> pts;
+            for (auto& cp : d->controls)
+                if (cp.controller == ctrl) pts.push_back(&cp);
+            for (size_t i = 0; i < pts.size(); ++i) {
+                int x0 = tickToX(pts[i]->tick), x1 = i + 1 < pts.size() ? tickToX(pts[i + 1]->tick) : L.vel.right(), y = yOf(pts[i]->value);
+                if (x1 < L.vel.left() || x0 > L.vel.right()) continue;
+                p.fillRect(QRect(QPoint(x0, std::min(y, y0)), QPoint(x1, std::max(y, y0))), fill);
+                p.setPen(base);
+                p.drawLine(x0, y, x1, y);
+                p.fillRect(QRect(x0 - 1, y - 1, 3, 3), base.lighter(140));
+            }
+        } else if (d)
             for (auto& n : notesView()) {
                 int x = tickToX(n.start);
                 if (x < L.vel.left() - bw || x > L.vel.right()) continue;
@@ -538,7 +564,12 @@ void PianoRollView::seekToPatternTick(Tick t) {
     if (best->loopSource) local %= len;
     m_app.seek(best->start + local);
 }
-// The bottom lane edits one note property (velocity, pan, release velocity or fine pitch); values are 0..1 for the lane
+// The bottom lane edits one note property (velocity, pan, release velocity or fine pitch; values are 0..1 for the lane) or
+// shows a controller lane of the pattern channel
+int PianoRollView::laneController() const {
+    static const int ids[] = {-1, -1, -1, -1, kCtrlPitchBend, 1, 11, 64, kCtrlPressure};
+    return m_lane == 9 ? m_otherCc : ids[clamp(m_lane, 0, 8)];
+}
 float PianoRollView::laneValue(const Note& n) const {
     switch (m_lane) {
     case 1: return (n.pan + 1.f) * 0.5f;
@@ -558,8 +589,9 @@ void PianoRollView::setLaneValue(Note& n, float v) const {
 }
 bool PianoRollView::laneBipolar() const { return m_lane == 1 || m_lane == 3; }
 QString PianoRollView::laneName() const {
-    static const char* names[] = {"Velocity", "Pan", "Release", "Fine pitch"};
-    return names[clamp(m_lane, 0, 3)];
+    static const char* names[] = {
+        "Velocity", "Pan", "Release", "Fine pitch", "Pitch bend", "Mod wheel", "Expression", "Sustain", "Channel pressure"};
+    return m_lane == 9 ? QString("CC %1").arg(m_otherCc) : names[clamp(m_lane, 0, 8)];
 }
 void PianoRollView::beginEdit() {
     PatternChannelData* d = data();
@@ -587,6 +619,7 @@ void PianoRollView::commitEdit(const QString& desc) {
         same = after.notes == stepsAsNotes() &&
             std::all_of(after.steps.begin(), after.steps.end(), [](const Step& s) { return !s.enabled; });
     }
+    same = same && after.controls == m_before.controls;
     if (same) {
         invalidate();
         return;
@@ -714,13 +747,28 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
     if (L.vel.contains(e->pos())) {
         if (m_laneLabelRect.contains(e->pos())) {
             QMenu m(this);
-            const char* names[] = {"Velocity", "Pan", "Release velocity", "Fine pitch"};
-            for (int i = 0; i < 4; ++i) {
-                auto* a = m.addAction(names[i], [this, i] { setLane(i); });
+            const char* names[] = {"Velocity", "Pan", "Release velocity", "Fine pitch", "Pitch bend", "Mod wheel (CC 1)",
+                "Expression (CC 11)", "Sustain (CC 64)", "Channel pressure", "Other CC..."};
+            for (int i = 0; i < kLaneCount; ++i) {
+                if (i == 4) m.addSeparator();
+                auto* a = m.addAction(names[i], [this, i] {
+                    bool ok = true;
+                    if (i == 9) m_otherCc = QInputDialog::getInt(this, "Controller lane", "CC number (0-127):", m_otherCc, 0, 127, 1, &ok);
+                    if (ok) setLane(i);
+                });
                 a->setCheckable(true);
                 a->setChecked(i == m_lane);
             }
             m.exec(mapToGlobal(QPoint(m_laneLabelRect.left(), m_laneLabelRect.bottom() + 2)));
+            return;
+        }
+        if (laneController() >= 0) {   // FL event editor: drag draws points, right button erases; the notes are left alone
+            if (PatternChannelData* d = data()) {
+                m_before = *d;
+                m_editing = true;
+                m_drag = e->button() == Qt::RightButton ? ControlErase : ControlDraw;
+                mouseMoveEvent(e);
+            }
             return;
         }
         beginEdit();
@@ -900,6 +948,26 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
         return;
     }
     if (!d) return;
+    if (m_drag == ControlDraw || m_drag == ControlErase) {
+        int ctrl = laneController(), max = controlMax(ctrl);
+        QPoint a = m_lastPos, b = e->pos();
+        if (a.x() > b.x()) std::swap(a, b);
+        m_lastPos = e->pos();
+        if (m_drag == ControlErase) {   // the swept pixels, a few around a click
+            Tick t0 = xToTick(a.x() - 3), t1 = xToTick(b.x() + 3);
+            std::erase_if(d->controls, [&](const ControlPoint& c) { return c.controller == ctrl && c.tick >= t0 && c.tick <= t1; });
+        } else {   // a line of grid points from the last mouse position to this one, replacing what was under it
+            Tick step = snapTicks() > 1 ? snapTicks() : std::max<Tick>(1, (Tick)(3 / m_ppt));
+            Tick t0 = std::max<Tick>(0, snap(xToTick(a.x()))), t1 = std::max<Tick>(0, snap(xToTick(b.x())));
+            std::erase_if(d->controls, [&](const ControlPoint& c) { return c.controller == ctrl && c.tick >= t0 && c.tick < t1 + step; });
+            for (Tick t = t0; t <= t1; t += step) {
+                float y = t1 > t0 ? a.y() + (b.y() - a.y()) * (float)(t - t0) / (t1 - t0) : b.y();
+                setControl(d->controls, t, ctrl, clamp((int)std::lround((L.vel.bottom() - 3 - y) / (L.vel.height() - 6) * max), 0, max));
+            }
+        }
+        invalidate();
+        return;
+    }
     if (m_drag == Velocity) {
         float v = clamp((float)(L.vel.bottom() - e->pos().y()) / (L.vel.height() - 6), 0.f, 1.f);
         // Shift: every note swept gets the value at the first Shift position. Alt: swept notes go back to their original value.
@@ -1055,6 +1123,8 @@ void PianoRollView::mouseReleaseEvent(QMouseEvent* e) {
         break;
     case Resizing: commitEdit("Resize notes"); break;
     case Velocity: commitEdit("Edit velocity"); break;
+    case ControlDraw: commitEdit("Draw " + laneName()); break;
+    case ControlErase: commitEdit("Erase " + laneName()); break;
     case Erasing: commitEdit("Erase notes"); break;
     case Muting: commitEdit("Mute notes"); break;
     default: break;
@@ -1113,7 +1183,7 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
     Layout L = layout();
     if (m_laneLabelRect.contains(e->position().toPoint()) ||
         (L.vel.contains(e->position().toPoint()) && e->position().toPoint().y() < L.vel.top() + 20)) {
-        setLane(((m_lane + (dy > 0 ? 3 : 1)) % 4));
+        setLane(((m_lane + (dy > 0 ? kLaneCount - 1 : 1)) % kLaneCount));
         e->accept();
         return;
     }
@@ -1247,7 +1317,7 @@ void PianoRollView::keyPressEvent(QKeyEvent* e) {
         break;
     case Qt::Key_F:
         if (!ctrl && !alt) {
-            setLane((m_lane + 1) % 4);
+            setLane((m_lane + 1) % kLaneCount);
             return;
         }
         break;
@@ -1352,6 +1422,21 @@ void PianoRollView::insertSpace() {
 }
 void PianoRollView::keyReleaseEvent(QKeyEvent* e) { QWidget::keyReleaseEvent(e); }
 void PianoRollView::contextMenuEvent(QContextMenuEvent* e) { e->accept(); }   // menus open on right-button release (right-drag erases)
+// A MIDI file dropped here (from the browser or the file manager) is imported and the roll shows its first channel
+static bool hasMidiFile(const QMimeData* m) {
+    auto urls = m->urls();
+    return std::any_of(urls.begin(), urls.end(), [](const QUrl& u) { return MidiFile::isMidiFile(u.toLocalFile()); });
+}
+void PianoRollView::dragEnterEvent(QDragEnterEvent* e) {
+    if (hasMidiFile(e->mimeData())) e->acceptProposedAction();
+}
+void PianoRollView::dragMoveEvent(QDragMoveEvent* e) { e->acceptProposedAction(); }
+void PianoRollView::dropEvent(QDropEvent* e) {
+    for (auto& u : e->mimeData()->urls())
+        if (MidiFile::isMidiFile(u.toLocalFile()) && m_app.importMidiFile(u.toLocalFile()))
+            Q_EMIT channelRequested(m_app.project().selectedChannelId);
+    e->acceptProposedAction();
+}
 void PianoRollView::showAreaMenu(const QPoint& pos, const QPoint& globalPos) {
     Layout L = layout();
     if (!L.grid.contains(pos)) return;
@@ -1653,6 +1738,13 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     tm->addAction("Delete\tDel", [this] { m_view->deleteSelected(); });
     tm->addSeparator();
     tm->addAction("Zoom to fit", [this] { m_view->zoomToFit(); });
+    tm->addAction("Export pattern as MIDI...", [this] {
+        const Pattern* p = m_app.project().pattern(m_app.project().selectedPatternId);
+        if (!p) return;
+        Id id = p->id;
+        QString path = QFileDialog::getSaveFileName(this, "Export pattern as MIDI", p->name + ".mid", "MIDI file (*.mid)");
+        if (!path.isEmpty()) m_app.exportMidiFile(path, id);
+    });
     sep();
     {
         auto* g = group();

@@ -5,6 +5,8 @@
 #include "dsp/effects/Effects.h"
 #include "dsp/instruments/Instruments.h"
 #include "audio/RenderEngine.h"
+#include "project/MidiFile.h"
+#include "ui/PianoRollPanel.h"
 #include "ui/widgets/Controls.h"
 #include <QMouseEvent>
 #include <QMenu>
@@ -362,6 +364,15 @@ int runSelfTest(App& app) {
         on.data1 = 64;
         eng.pushUiMidi(on);
         run(20);
+        MidiEvent bend, mod;
+        bend.type = MidiEvent::PitchBend;
+        bend.pitchBend = 4000;
+        mod.type = MidiEvent::CC;
+        mod.data1 = 1;
+        mod.data2 = 90;
+        eng.pushUiMidi(bend);
+        eng.pushUiMidi(mod);
+        run(2);
         MidiEvent off = on;
         off.type = MidiEvent::NoteOff;
         eng.pushUiMidi(off);
@@ -373,16 +384,189 @@ int runSelfTest(App& app) {
         for (auto& cd : p->channels) notes += (int)cd.notes.size();
         auto clip = std::find_if(pr.clips.begin(), pr.clips.end(), [&](const Clip& c) { return c.type == ClipType::Pattern && c.sourceId == pat; });
         CHECK(notes == 1 && clip != pr.clips.end() && clip->start == bar * 2, "song-mode notes get a pattern clip at the bar the pass started in");
+        std::vector<ControlPoint> ctl;
+        for (auto& cd : p->channels) ctl.insert(ctl.end(), cd.controls.begin(), cd.controls.end());
+        CHECK(ctl.size() == 2 && ctl[0].tick == ctl[1].tick && ctl[0].controller == kCtrlPitchBend && ctl[0].value == 12192 &&
+                ctl[1].controller == 1 && ctl[1].value == 90,
+            "pitch bend and CC played during the pass are recorded into the controller lanes");
         model.undoStack().undo();
         notes = 0;
-        for (auto& cd : pr.pattern(pat)->channels) notes += (int)cd.notes.size();
+        for (auto& cd : pr.pattern(pat)->channels) notes += (int)cd.notes.size() + (int)cd.controls.size();
         CHECK(notes == 0 && model.undoStack().count() == undo1 &&
                 std::none_of(pr.clips.begin(), pr.clips.end(), [&](const Clip& c) { return c.sourceId == pat; }),
-            "one undo removes the recorded notes and their clip");
+            "one undo removes the recorded notes, controller points and their clip");
         eng.offlineEnd();
         app.deletePattern(pat);
         model.editTransport("", [saved](TransportSettings& t) { t = saved; });
         app.deleteMixerTrack(ins);
+    }
+    // ---- controller lanes and MIDI files: project -> SMF -> project, PPQ conversion, running status, type-0 splitting, song
+    // export, and a lane point reaching the instrument at its sample offset
+    {
+        auto& pr = app.project();
+        QTemporaryDir midDir;
+        auto note = [](int pitch, Tick start, Tick dur, float vel) {
+            Note n;
+            n.pitch = pitch;
+            n.start = start;
+            n.duration = dur;
+            n.velocity = vel;
+            return n;
+        };
+        Id lead = app.addChannel(ChannelType::Synth, "native.synth", "Lead");
+        Id pat = app.addPattern("MidiRoundTrip");
+        std::vector<Note> notes = {note(60, 0, 480, 0.8f), note(64, 480, 240, 0.5f), note(60, 960, 960, 1.f), note(67, 960, 120, 0.3f),
+            note(72, 1920, 480, 0.6f), note(72, 2400, 480, 0.7f)};   // a chord, a repeated pitch, back-to-back notes of one pitch
+        std::vector<ControlPoint> ctl;
+        for (auto& cp : std::vector<ControlPoint>{{0, kCtrlPitchBend, 8192}, {480, kCtrlPitchBend, 16383}, {960, kCtrlPitchBend, 0},
+                 {0, 1, 0}, {960, 1, 100}, {480, 64, 127}, {1920, 64, 0}, {240, kCtrlPressure, 50}})
+            setControl(ctl, cp.tick, cp.controller, cp.value);   // sorted by tick, as the lanes keep them
+        model.edit<Pattern>(pat, "", [&](Pattern& x) {
+            x.ensureChannel(lead).notes = notes;
+            x.ensureChannel(lead).controls = ctl;
+        });
+        Project pj;
+        CHECK(ProjectSerializer::fromJson(ProjectSerializer::toJson(pr), pj, &err) && pj.pattern(pat)->channelData(lead)->controls == ctl,
+            "controller lanes survive save/load");
+        QString mid = midDir.path() + "/round.mid";
+        size_t undo0 = model.undoStack().count(), chans0 = pr.channels.size();
+        Id imported = app.exportMidiFile(mid, pat) ? app.importMidiFile(mid) : 0;
+        const Channel* ic = pr.channel(pr.selectedChannelId);
+        const PatternChannelData* icd = imported && ic ? pr.pattern(imported)->channelData(ic->id) : nullptr;
+        bool same = icd && icd->notes.size() == notes.size();
+        for (size_t i = 0; same && i < notes.size(); ++i)
+            same = icd->notes[i].pitch == notes[i].pitch && icd->notes[i].start == notes[i].start &&
+                icd->notes[i].duration == notes[i].duration && std::fabs(icd->notes[i].velocity - notes[i].velocity) < 0.005f;
+        CHECK(same && ic->name == "Lead" && ic->instrumentKey == "native.synth" && pr.channels.size() == chans0 + 1,
+            "MIDI export + import gives a synth channel named after the track with the same notes");
+        CHECK(icd && icd->controls == ctl, "MIDI export + import keeps CC, sustain, channel pressure and pitch bend points exactly");
+        CHECK(model.undoStack().count() == undo0 + 1, "a MIDI import is one undo step");
+        model.undoStack().undo();
+        CHECK(!pr.pattern(imported) && pr.channels.size() == chans0, "undoing the import removes its pattern and channels");
+        // a type-0 file at 480 PPQ written by hand: running status, note-on velocity 0 as note-off, two MIDI channels
+        const unsigned char type0[] = {'M', 'T', 'h', 'd', 0, 0, 0, 6, 0, 0, 0, 1, 0x01, 0xe0, 'M', 'T', 'r', 'k', 0, 0, 0, 60, 0x00, 0xff,
+            0x03, 0x04, 'S', 'o', 'n', 'g',   // track name
+            0x00, 0xff, 0x51, 0x03, 0x09, 0x27, 0xc0,   // 600000 us per quarter: 100 BPM
+            0x00, 0xff, 0x58, 0x04, 0x03, 0x02, 0x18, 0x08,   // 3/4
+            0x00, 0x90, 0x3c, 0x64,   // ch 1: C4 on
+            0x00, 0x3e, 0x50,   // running status: D4 on
+            0x00, 0x91, 0x30, 0x7f,   // ch 2: C3 on
+            0x00, 0xb1, 0x01, 0x40,   // ch 2: mod wheel 64
+            0x81, 0x70, 0x80, 0x3c, 0x00,   // 240 ticks later: C4 off
+            0x00, 0x90, 0x3e, 0x00,   // D4 note-on velocity 0 = off
+            0x81, 0x70, 0xe1, 0x00, 0x60,   // ch 2: pitch bend 12288
+            0x00, 0x81, 0x30, 0x40,   // C3 off
+            0x00, 0xff, 0x2f, 0x00};
+        MidiFileData f;
+        bool readOk = MidiFile::read(QByteArray((const char*)type0, sizeof(type0)), f, &err);
+        CHECK(readOk && f.hasTempo && std::fabs(f.bpm - 100) < 1e-9 && f.timeSig.numerator == 3 && f.timeSig.denominator == 4,
+            "SMF reader picks up tempo and time signature");
+        CHECK(readOk && f.tracks.size() == 2 && f.tracks[0].name == "Channel 1" && f.tracks[1].name == "Channel 2",
+            "a type-0 file splits into one part per MIDI channel");
+        CHECK(f.tracks.size() == 2 && f.tracks[0].notes.size() == 2 && f.tracks[0].notes[1].pitch == 62 &&
+                std::fabs(f.tracks[0].notes[1].velocity - 80 / 127.f) < 1e-6f && f.tracks[0].notes[0].duration == 480 &&
+                f.tracks[0].notes[1].duration == 480,
+            "running status and note-on velocity 0 read as notes (480 PPQ ticks doubled to 960)");
+        std::vector<ControlPoint> want = {{0, 1, 64}, {960, kCtrlPitchBend, 12288}};
+        CHECK(f.tracks.size() == 2 && f.tracks[1].notes.size() == 1 && f.tracks[1].notes[0].duration == 960 && f.tracks[1].controls == want,
+            "CC and pitch bend of a 480 PPQ file land on the converted ticks");
+        // song export: pattern clips flattened onto the timeline, a looping clip repeating the pattern
+        Tick len = pr.pattern(pat)->effectiveLength(pr.transport.timeSig), at = pr.transport.timeSig.ticksPerBar() * 40;
+        Id clip = app.addPatternClip(app.firstPlaylistTrack(), pat, at, len * 2, true);
+        MidiFileData song;
+        bool songOk = app.exportMidiFile(mid) && MidiFile::load(mid, song, &err);
+        auto leadTrack = std::find_if(song.tracks.begin(), song.tracks.end(), [](const MidiFileTrack& t) { return t.name == "Lead"; });
+        CHECK(songOk && leadTrack != song.tracks.end() && leadTrack->notes.size() == notes.size() * 2 && leadTrack->notes[0].start == at &&
+                leadTrack->notes[notes.size()].start == at + len,
+            "song export flattens a looping pattern clip onto the timeline");
+        app.deleteClips({clip});
+        // the engine: a CC point reaches the instrument (a MIDI out channel, whose output we can read) at its sample offset
+        Id out = app.addChannel(ChannelType::MidiOut, "native.midiout", "CcOut");
+        model.edit<Pattern>(pat, "", [&](Pattern& x) {
+            setControl(x.ensureChannel(out).controls, PPQ, 1, 99);
+            setControl(x.ensureChannel(out).controls, PPQ * 2, kCtrlPitchBend, 12000);
+        });
+        TransportSettings saved = pr.transport;
+        model.editTransport("", [](TransportSettings& t) { t.songMode = false; });
+        app.selectPattern(pat);
+        auto& eng = app.engine();
+        const int B = 512;
+        std::vector<float> l(B), r(B);
+        eng.offlineBegin(44100, B);
+        const MidiEventList* outMidi = app.processor(out) ? app.processor(out)->outputMidi() : nullptr;
+        eng.stop();
+        eng.seek(0);
+        eng.play();
+        int64_t ccAt = -1, pbAt = -1;
+        int ccVal = -1, pbVal = 0;
+        for (int b = 0; b < 1000 && outMidi && pbAt < 0; ++b) {
+            eng.offlineProcess(l.data(), r.data(), B);
+            for (int i = 0; i < outMidi->count; ++i) {
+                const MidiEvent& ev = outMidi->events[i];
+                if (ev.type == MidiEvent::CC && ev.data1 == 1 && ccAt < 0) ccAt = (int64_t)b * B + ev.sampleOffset, ccVal = ev.data2;
+                if (ev.type == MidiEvent::PitchBend && pbAt < 0) pbAt = (int64_t)b * B + ev.sampleOffset, pbVal = ev.pitchBend;
+            }
+        }
+        double spt = 44100 * 60.0 / (pr.transport.bpm * PPQ);
+        CHECK(ccVal == 99 && std::llabs(ccAt - (int64_t)(PPQ * spt)) <= 1,
+            QString("a CC lane point reaches the instrument at its sample offset (%1, expected %2)")
+                .arg(ccAt)
+                .arg((int64_t)(PPQ * spt))
+                .toUtf8()
+                .constData());
+        CHECK(pbVal == 12000 - 8192 && std::llabs(pbAt - (int64_t)(2 * PPQ * spt)) <= 1,
+            "a pitch-bend lane point arrives as a pitch bend at its sample offset");
+        eng.stop();
+        eng.seek(PPQ + PPQ / 2);
+        eng.play();
+        eng.offlineProcess(l.data(), r.data(), B);
+        bool chased = false;
+        for (int i = 0; outMidi && i < outMidi->count; ++i)
+            chased = chased ||
+                (outMidi->events[i].type == MidiEvent::CC && outMidi->events[i].data2 == 99 && outMidi->events[i].sampleOffset == 0);
+        CHECK(chased, "playback starting after a lane point first sends the held value");
+        eng.stop();
+        eng.offlineProcess(l.data(), r.data(), B);
+        eng.offlineEnd();
+        model.editTransport("", [saved](TransportSettings& t) { t = saved; });
+        app.deletePattern(pat);
+        app.deleteChannel(out);
+        app.deleteChannel(lead);
+    }
+    // ---- piano roll controller lane (FL event editor): a drag draws grid points along the line, a right-drag erases them
+    {
+        Id cc = app.addChannel(ChannelType::Synth, "native.synth", "LaneTest");
+        PianoRollView v(app);
+        v.resize(800, 500);
+        v.setChannel(cc);
+        v.setLane(5);   // mod wheel
+        QString lane = v.debugScroll().section("velY=", 1).section(' ', 0, 0);   // "top..bottom"
+        int top = lane.section("..", 0, 0).toInt(), bottom = lane.section("..", 1).toInt();
+        auto y = [&](float v01) { return (int)std::lround(bottom - 3 - v01 * (bottom - top + 1 - 6)); };
+        auto x = [&](Tick t) { return v.debugPoint(t, 60).x() - 2; };   // a pixel right of the tick
+        auto send = [&](QEvent::Type type, Qt::MouseButton b, int px, int py) {
+            QMouseEvent e(type, QPointF(px, py), v.mapToGlobal(QPointF(px, py)), type == QEvent::MouseMove ? Qt::NoButton : b,
+                type == QEvent::MouseButtonRelease ? Qt::NoButton : b, Qt::NoModifier);
+            QCoreApplication::sendEvent(&v, &e);
+        };
+        auto points = [&] { return app.project().pattern(app.project().selectedPatternId)->ensureChannel(cc).controls; };
+        size_t undo0 = model.undoStack().count();
+        send(QEvent::MouseButtonPress, Qt::LeftButton, x(0), y(0.5f));
+        send(QEvent::MouseMove, Qt::LeftButton, x(PPQ), y(1.f));
+        send(QEvent::MouseButtonRelease, Qt::LeftButton, x(PPQ), y(1.f));
+        auto drawn = points();
+        bool line = drawn.size() == 5 && drawn.front().value == 64 && drawn.back().value == 127;
+        for (size_t i = 0; line && i < drawn.size(); ++i)
+            line = drawn[i].controller == 1 && drawn[i].tick == (Tick)i * PPQ / 4 && (i == 0 || drawn[i].value > drawn[i - 1].value);
+        CHECK(line && model.undoStack().count() == undo0 + 1,
+            "mod wheel lane: a drag draws a rising line of points on the grid, one undo step");
+        send(QEvent::MouseButtonPress, Qt::RightButton, x(PPQ / 4), y(0));
+        send(QEvent::MouseMove, Qt::RightButton, x(PPQ * 3 / 4), y(0));
+        send(QEvent::MouseButtonRelease, Qt::RightButton, x(PPQ * 3 / 4), y(0));
+        auto left = points();
+        CHECK(left.size() == 2 && left[0].tick == 0 && left[1].tick == PPQ && model.undoStack().count() == undo0 + 2,
+            "a right-drag in the lane erases the points under it");
+        app.deleteChannel(cc);
     }
     // ---- tempo change: audio clips that don't follow the tempo keep their length in seconds
     {

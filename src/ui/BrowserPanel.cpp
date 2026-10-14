@@ -1,4 +1,5 @@
 #include "ui/BrowserPanel.h"
+#include "project/MidiFile.h"
 #include "ui/InAppDrag.h"
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
@@ -65,7 +66,7 @@ void BrowserModel::reindex() {
                 if (token->load() != gen) return;
                 QString p = it.next();
                 bool audio = AudioFile::isAudioFile(p);
-                if (!audio && !p.endsWith(".mtp")) continue;
+                if (!audio && !p.endsWith(".mtp") && !MidiFile::isMidiFile(p)) continue;
                 QString name = it.fileName();
                 idx->files.push_back({p, name, p.mid(d.size()).toLower(),
                     audio}); /* matched on the path inside the library so folder names count ("kick" finds Kicks/808.wav) */
@@ -154,7 +155,7 @@ void BrowserModel::populateFolder(QStandardItem* item) {
     for (auto& fi : d.entryInfoList(QDir::Files, QDir::Name)) {
         QString p = fi.absoluteFilePath();
         if (AudioFile::isAudioFile(p)) item->appendRow(makeItem(fi.fileName(), AudioFile, "file:" + p, p));
-        else if (fi.suffix() == "mtp") item->appendRow(makeItem(fi.fileName(), ProjectFile, "file:" + p, p));
+        else if (fi.suffix() == "mtp" || MidiFile::isMidiFile(p)) item->appendRow(makeItem(fi.fileName(), ProjectFile, "file:" + p, p));
     }
 }
 void BrowserModel::rebuild() {
@@ -778,7 +779,10 @@ void BrowserPanel::onDoubleClicked(const QModelIndex& idx) {
         m_app.selectChannel(path.toULongLong());
         Q_EMIT openEditor(path.toULongLong());
         break;
-    case BrowserModel::ProjectFile: m_app.openProject(path); break;
+    case BrowserModel::ProjectFile:   // projects open, MIDI files import
+        if (MidiFile::isMidiFile(path)) m_app.importMidiFile(path);
+        else m_app.openProject(path);
+        break;
     case BrowserModel::Preset: {
         Id sel = m_app.project().selectedChannelId;
         if (sel) m_app.loadPreset(sel, path);

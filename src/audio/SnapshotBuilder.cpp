@@ -441,6 +441,17 @@ void AudioEngine::rebuild(const Project& p) {
                     {(int)std::lround(ch->rootNote + sp.pitch), start, start + st, sp.velocity, sp.pan, 0.f, sp.probability, 0});
             }
             std::sort(rc.notes.begin(), rc.notes.end(), [](const RtNote& a, const RtNote& b) { return a.start < b.start; });
+            for (auto& cp : pc.controls) {
+                if (cp.controller < 0 || cp.controller > kCtrlPitchBend) continue;
+                MidiEvent e;
+                e.type = cp.controller == kCtrlPitchBend ? MidiEvent::PitchBend
+                    : cp.controller == kCtrlPressure     ? MidiEvent::ChannelPressure
+                                                         : MidiEvent::CC;
+                e.data1 = (uint8_t)clamp(cp.controller, 0, 127);
+                e.data2 = (uint8_t)clamp(cp.value, 0, 127);
+                e.pitchBend = clamp(cp.value, 0, 16383) - 8192;
+                rc.controls.push_back({cp.tick, cp.controller, e});
+            }
             rp.channels.push_back(std::move(rc));
         }
         for (auto& l : p.automationLanes)

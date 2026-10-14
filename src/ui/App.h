@@ -122,6 +122,10 @@ public:
     void setPatternColor(Id id, const QColor& c);
     void setStep(Id patternId, Id channelId, int step, bool enabled);
     void setStepProperty(Id patternId, Id channelId, int step, int which, float value, bool commit);
+    // MIDI files. Import: a new synth channel per part with notes and a new pattern holding them (plus a clip on clipTrack at clipAt
+    // when given), one undo step; returns the pattern. Export: the pattern, or with 0 the song (pattern clips flattened).
+    Id importMidiFile(const QString& path, Id clipTrack = 0, Tick clipAt = 0);
+    bool exportMidiFile(const QString& path, Id patternId = 0);
 
     // ---- playlist
     // edit one project object (Pattern, Clip, MixerTrack...) as an undoable command, merged with the previous one when mergeId matches
@@ -236,6 +240,8 @@ private:
     Id m_recPatternId = 0;
     Tick m_recClipStart = 0;   // song mode: where notes that land outside the pattern's clips get a new clip
     std::set<Id> m_recNoteIds;
+    std::map<Id, std::vector<ControlPoint>> m_recControlsBefore;   // channel -> its controller lanes before the pass recorded into them
+    bool m_recNotifyPending = false;   // recorded controller values refresh the views at most every 100 ms
     std::vector<std::pair<double, int64_t>> m_recSegments;   // (tick, recorded frame) from AudioEngine::recordSegment
     QString m_previewPath;
     std::shared_ptr<PreviewBuffer> m_previewBuffer;

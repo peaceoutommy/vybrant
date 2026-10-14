@@ -58,10 +58,14 @@ public:
         invalidate();
     }
     int keyLabels() const { return m_keyLabels; }
+    // note lanes: 0 velocity, 1 pan, 2 release velocity, 3 fine pitch; controller lanes: 4 pitch bend, 5 mod wheel, 6 expression,
+    // 7 sustain, 8 channel pressure, 9 the CC number picked from the lane menu
+    static constexpr int kLaneCount = 10;
     void setLane(int lane) {
         m_lane = lane;
         invalidate();
-    }   // 0 velocity, 1 pan, 2 release velocity, 3 fine pitch
+    }
+    int laneController() const;   // the controller id of a controller lane, -1 for a note lane
     float laneValue(const Note& n) const;
     void setLaneValue(Note& n, float v) const;
     bool laneBipolar() const;
@@ -107,9 +111,28 @@ protected:
     void keyReleaseEvent(QKeyEvent*) override;
     void contextMenuEvent(QContextMenuEvent*) override;
     void leaveEvent(QEvent*) override;
+    void dragEnterEvent(QDragEnterEvent*) override;
+    void dragMoveEvent(QDragMoveEvent*) override;
+    void dropEvent(QDropEvent*) override;
 
 private:
-    enum Drag { NoDrag, Moving, Resizing, Rubber, Velocity, Erasing, Pan, KeyPreview, Creating, TimeSelect, Muting, Seek, LaneResize };
+    enum Drag {
+        NoDrag,
+        Moving,
+        Resizing,
+        Rubber,
+        Velocity,
+        Erasing,
+        Pan,
+        KeyPreview,
+        Creating,
+        TimeSelect,
+        Muting,
+        Seek,
+        LaneResize,
+        ControlDraw,
+        ControlErase
+    };
     struct Layout {
         int keyW = 60, rulerH = 22, velH = 70;
         QRect grid, ruler, keys, vel;
@@ -164,6 +187,7 @@ private:
     float m_laneLock = -1;   // Shift in the lane: value captured at the first Shift position
     std::map<std::pair<Id, int>, float> m_laneOrig;   // (note, lane) -> value before the lane first edited it (Alt restores)
     int m_lane = 0;
+    int m_otherCc = 7;
     int m_velH = 80;
     int m_laneResizeStart = 0;
     QRect m_laneLabelRect;

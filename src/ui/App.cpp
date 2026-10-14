@@ -2,6 +2,7 @@
 #include <QColorDialog>
 #include "ui/App.h"
 #include "ui/widgets/Controls.h"
+#include "project/MidiFile.h"
 #include <QRegularExpression>
 #include <cstdio>
 #include "audio/RenderEngine.h"
@@ -513,6 +514,7 @@ void App::selectChannel(Id id) {
 }
 
 // ---------------------------------------------------------------- channels
+static const char* const kChannelPalette[] = {"#e2665c", "#e0a040", "#6dc26d", "#5aa9e6", "#c07be0", "#e6c35a", "#5ad1c9", "#e07ba0"};
 Id App::addChannel(ChannelType type, const QString& key, const QString& name, const QString& samplePath, Id pluginId) {
     Channel c;
     c.id = project().newId();
@@ -524,8 +526,7 @@ Id App::addChannel(ChannelType type, const QString& key, const QString& name, co
         ? name
         : (!samplePath.isEmpty() ? QFileInfo(samplePath).completeBaseName()
                                  : (NativeRegistry::instance().info(key) ? NativeRegistry::instance().info(key)->name : "Channel"));
-    static const char* palette[] = {"#e2665c", "#e0a040", "#6dc26d", "#5aa9e6", "#c07be0", "#e6c35a", "#5ad1c9", "#e07ba0"};
-    c.color = QColor(palette[project().channels.size() % 8]);
+    c.color = QColor(kChannelPalette[project().channels.size() % 8]);
     // route to the first free insert (or master)
     std::set<Id> used;
     for (auto& ch : project().channels) used.insert(ch.mixerTrackId);
@@ -604,6 +605,7 @@ Id App::duplicateChannel(Id id) {
                 d.notes = copy.notes;
                 for (auto& n : d.notes) n.id = n.id * 31 + 7;
                 d.steps = copy.steps;
+                d.controls = copy.controls;
             },
             0));
     }
@@ -735,7 +737,7 @@ std::vector<Id> App::splitPatternByChannel(Id id) {
     std::vector<std::unique_ptr<Command>> cmds;
     std::vector<Pattern> parts;
     for (auto& cd : src->channels) {
-        bool has = !cd.notes.empty();
+        bool has = !cd.notes.empty() || !cd.controls.empty();
         for (auto& st : cd.steps)
             if (st.enabled) has = true;
         if (!has) continue;
@@ -1443,6 +1445,7 @@ void App::beginRecordPass() {
     m_recPass = true;
     m_recSegments.clear();
     m_recNoteIds.clear();
+    m_recControlsBefore.clear();
     m_pendingNotes.clear();
     auto& tr = project().transport;
     m_recSong = tr.songMode;
@@ -1494,10 +1497,13 @@ void App::endRecordPass() {
         return t.id;
     };
     // ---- notes: back out what the pass added so restoring it is the undo step
-    Pattern* pat = m_recNoteIds.empty() ? nullptr : project().pattern(m_recPatternId);
+    Pattern* pat = m_recNoteIds.empty() && m_recControlsBefore.empty() ? nullptr : project().pattern(m_recPatternId);
     if (pat) {
         Pattern after = *pat;
-        for (auto& cd : pat->channels) std::erase_if(cd.notes, [&](const Note& n) { return m_recNoteIds.count(n.id) > 0; });
+        for (auto& cd : pat->channels) {
+            std::erase_if(cd.notes, [&](const Note& n) { return m_recNoteIds.count(n.id) > 0; });
+            if (auto it = m_recControlsBefore.find(cd.id); it != m_recControlsBefore.end()) cd.controls = it->second;
+        }
         cmds.push_back(std::make_unique<EditObjectCommand<Pattern>>(m_model, pat->id, "", [after](Pattern& p) { p = after; }, 0));
         bool covered = std::any_of(project().clips.begin(), project().clips.end(), [&](const Clip& c) {
             return c.type == ClipType::Pattern && c.sourceId == pat->id && m_recClipStart >= c.start && m_recClipStart < c.start + project().clipLength(c);
@@ -1592,6 +1598,20 @@ void App::onRecordedMidi(const MidiEvent& e, double tick) {
         else local -= m_recClipStart;   // into the clip the pass places on stop
         if (local < 0) return;
     }
+    if (e.type == MidiEvent::CC || e.type == MidiEvent::PitchBend || e.type == MidiEvent::ChannelPressure) {
+        int ctrl = e.type == MidiEvent::CC ? e.data1 : e.type == MidiEvent::PitchBend ? kCtrlPitchBend : kCtrlPressure;
+        auto& cd = project().pattern(pid)->ensureChannel(cid);
+        m_recControlsBefore.try_emplace(cid, cd.controls);
+        setControl(cd.controls, local, ctrl, e.type == MidiEvent::PitchBend ? e.pitchBend + 8192 : e.data2);
+        if (!m_recNotifyPending) {   // a wheel sends hundreds of values a second
+            m_recNotifyPending = true;
+            QTimer::singleShot(100, this, [this] {
+                m_recNotifyPending = false;
+                m_model.notify(ChangePatterns);
+            });
+        }
+        return;
+    }
     if (e.type == MidiEvent::NoteOn) {
         m_pendingNotes[e.data1] = {(double)local, e};
         return;
@@ -1630,6 +1650,147 @@ void App::onPluginCrashed(Id slotId) {
         }
     Log::error("Plugin crashed and was bypassed: " + name);
     Q_EMIT statusMessage("Plugin crashed and was bypassed: " + name + " - save your project", 0);
+}
+
+// ---------------------------------------------------------------- MIDI files
+// Import, FL style: every part of the file (a track, or a MIDI channel of a type-0 file) with notes becomes a new synth channel
+// routed like a channel added by hand, and they all go into one new pattern named after the file. The project's tempo and time
+// signature stay as they are (the status bar says when the file's tempo differs).
+Id App::importMidiFile(const QString& path, Id clipTrack, Tick clipAt) {
+    QString file = QFileInfo(path).fileName(), err;
+    MidiFileData f;
+    if (!MidiFile::load(path, f, &err)) {
+        Q_EMIT statusMessage(QString("Could not import %1: %2").arg(file, err), 5000);
+        return 0;
+    }
+    std::erase_if(f.tracks, [](const MidiFileTrack& t) { return t.notes.empty(); });
+    if (f.tracks.empty()) {
+        Q_EMIT statusMessage(file + " has no notes", 4000);
+        return 0;
+    }
+    std::vector<std::unique_ptr<Command>> cmds;
+    Pattern pat;
+    pat.id = project().newId();
+    pat.name = QFileInfo(path).completeBaseName();
+    for (auto& c : project().channels) pat.ensureChannel(c.id);
+    std::vector<Id> ids;
+    std::set<Id> used;
+    for (auto& c : project().channels) used.insert(c.mixerTrackId);
+    for (auto& t : f.tracks) {
+        Channel c;
+        c.id = project().newId();
+        c.name = t.name;
+        c.type = ChannelType::Synth;
+        c.instrumentKey = "native.synth";
+        c.color = QColor(kChannelPalette[(project().channels.size() + ids.size()) % 8]);
+        c.mixerTrackId = project().masterId();
+        for (auto& mt : project().mixerTracks)
+            if (!mt.isMaster && !used.count(mt.id)) {
+                c.mixerTrackId = mt.id;
+                break;
+            }
+        used.insert(c.mixerTrackId);
+        cmds.push_back(std::make_unique<InsertObjectCommand<Channel>>(m_model, c, "", -1));
+        auto& cd = pat.ensureChannel(c.id);
+        cd.notes = t.notes;
+        for (auto& n : cd.notes) n.id = project().newId();
+        cd.controls = t.controls;
+        ids.push_back(c.id);
+    }
+    for (auto& p : project().patterns)
+        cmds.push_back(std::make_unique<EditObjectCommand<Pattern>>(
+            m_model, p.id, "",
+            [ids](Pattern& x) {
+                for (Id id : ids) x.ensureChannel(id);
+            },
+            0));
+    cmds.push_back(std::make_unique<InsertObjectCommand<Pattern>>(m_model, pat, "", -1));
+    if (clipTrack) {
+        Clip c;
+        c.id = project().newId();
+        c.type = ClipType::Pattern;
+        c.trackId = clipTrack;
+        c.sourceId = pat.id;
+        c.start = std::max<Tick>(0, clipAt);
+        c.length = 0;
+        c.loopSource = false;
+        c.name = pat.name;
+        cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
+    }
+    m_model.macro("Import MIDI file", std::move(cmds));
+    selectPattern(pat.id);
+    selectChannel(ids.front());
+    QString msg = QString("Imported %1: %2 channel(s)").arg(file).arg(ids.size());
+    if (f.hasTempo && std::fabs(f.bpm - project().transport.bpm) > 0.01)
+        msg +=
+            QString(" - the file is at %1 BPM, the project stays at %2 BPM").arg(f.bpm, 0, 'g', 5).arg(project().transport.bpm, 0, 'g', 5);
+    Q_EMIT statusMessage(msg, 6000);
+    return pat.id;
+}
+// Export: one track per channel with notes or controller points, plus the tempo and time signature. The song is every audible
+// pattern clip flattened onto the timeline the way song mode plays it (the selected pattern when the playlist has none).
+bool App::exportMidiFile(const QString& path, Id patternId) {
+    const Project& p = project();
+    MidiFileData f;
+    f.bpm = p.transport.bpm;
+    f.timeSig = p.transport.timeSig;
+    std::map<Id, MidiFileTrack> parts;
+    // what the pattern plays from its ticks [from, to) - piano roll notes and step-sequencer steps - moved by 'at'
+    auto add = [&](const Pattern& pat, Tick at, Tick from, Tick to) {
+        for (auto& cd : pat.channels) {
+            const Channel* ch = p.channel(cd.id);
+            if (!ch) continue;
+            auto& part = parts[cd.id];
+            std::vector<Note> notes;
+            for (auto& n : cd.notes)
+                if (!n.muted) notes.push_back(n);
+            Tick st = pat.stepTicks();
+            for (size_t i = 0; i < cd.steps.size() && (int)i < pat.stepCount; ++i) {
+                const Step& sp = cd.steps[i];
+                if (!sp.enabled) continue;
+                Note n;   // as SnapshotBuilder compiles a step
+                n.pitch = clamp((int)std::lround(ch->rootNote + sp.pitch), 0, 127);
+                n.start = (Tick)i * st + (Tick)(sp.offset * st) + ((i % 2) ? (Tick)(pat.swing * st * 0.5f) : 0);
+                n.duration = st;
+                n.velocity = sp.velocity;
+                notes.push_back(n);
+            }
+            for (auto& n : notes)
+                if (n.start >= from && n.start < to) {
+                    part.notes.push_back(n);
+                    part.notes.back().start += at;
+                }
+            for (auto& c : cd.controls)
+                if (c.tick >= from && c.tick < to) part.controls.push_back({c.tick + at, c.controller, c.value});
+        }
+    };
+    const Pattern* single = p.pattern(patternId);
+    bool song = !single && std::any_of(p.clips.begin(), p.clips.end(), [](const Clip& c) { return c.type == ClipType::Pattern; });
+    if (song) {
+        for (auto& c : p.clips) {
+            const Pattern* pat = p.pattern(c.sourceId);
+            const PlaylistTrack* t = p.track(c.trackId);
+            if (c.type != ClipType::Pattern || !pat || !t || c.muted || t->mute) continue;
+            // the clip plays pattern ticks [sourceOffset, sourceOffset + length), repeating the pattern when it loops
+            Tick len = std::max<Tick>(pat->effectiveLength(p.transport.timeSig), 1), end = c.sourceOffset + p.clipLength(c);
+            for (Tick k = c.sourceOffset / len; k * len < end && (c.loopSource || k == 0); ++k)
+                add(*pat, c.start - c.sourceOffset + k * len, std::max<Tick>(c.sourceOffset - k * len, 0),
+                    std::min<Tick>(end - k * len, len));
+        }
+    } else if (const Pattern* pat = single ? single : p.pattern(p.selectedPatternId))
+        add(*pat, 0, 0, pat->effectiveLength(p.transport.timeSig));
+    for (auto& ch : p.channels)
+        if (auto it = parts.find(ch.id); it != parts.end() && (!it->second.notes.empty() || !it->second.controls.empty())) {
+            it->second.name = ch.name;
+            f.tracks.push_back(std::move(it->second));
+        }
+    QString err;
+    if (!MidiFile::save(path, f, &err)) {
+        Q_EMIT statusMessage("MIDI export failed: " + err, 5000);
+        return false;
+    }
+    Q_EMIT statusMessage(QString("Exported %1 track(s) to %2").arg(f.tracks.size()).arg(QFileInfo(path).fileName()), 4000);
+    return true;
 }
 
 // ---------------------------------------------------------------- audio config & export
