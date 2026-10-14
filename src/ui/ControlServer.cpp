@@ -417,7 +417,7 @@ QString ControlServer::handle(const QString& line) {
         sendDrag(b->debugViewport(), pt, pt, 0);
         QString toast;
         for (auto* w : QApplication::topLevelWidgets())
-            if (auto* l = qobject_cast<QLabel*>(w); l && l->isVisible() && (l->windowFlags() & Qt::ToolTip) == Qt::ToolTip) toast = l->text();
+            if (auto* l = w->findChild<QLabel*>(); l && w->isVisible() && (w->windowFlags() & Qt::ToolTip) == Qt::ToolTip) toast = l->text();
         return QString("channels=%1 toast=%2").arg(m_app.project().channels.size()).arg(toast);
     }
     if (c == "samples" && a.size() >= 2) {   // project panel: samples drop <path> | samples open | samples show

@@ -427,13 +427,16 @@ void makeValueEditable(QLabel* label, std::function<void(double)> onValue) {
     label->setToolTip("Double-click to type a value");
 }
 void showToast(const QString& text, const QPoint& globalPos) {
-    auto* t = new QLabel(text);
+    // a translucent top-level skips its styled background entirely, so the label lives inside one instead of being it
+    auto* t = new QWidget;
     t->setWindowFlags(Qt::ToolTip | Qt::FramelessWindowHint);
     t->setAttribute(Qt::WA_ShowWithoutActivating);
     t->setAttribute(Qt::WA_TransparentForMouseEvents);
     t->setAttribute(Qt::WA_TranslucentBackground);   // rounded corners
     t->setAttribute(Qt::WA_DeleteOnClose);
-    theme::styled(t, "QLabel { background:@accent@; color:#14161a; font-weight:bold; padding:5px 10px; border-radius:5px; }");
+    auto* l = new QLabel(text, t);
+    theme::styled(l, "QLabel { background:@accent@; color:#14161a; font-weight:bold; padding:5px 10px; border-radius:5px; }");
+    l->adjustSize();
     t->adjustSize();
     QPoint at = globalPos + QPoint(16, -t->height() - 4);   // just above-right of the pointer, clear of what was clicked
     if (QScreen* sc = QGuiApplication::screenAt(globalPos)) {
