@@ -1,10 +1,12 @@
 #include "plugins/PluginEmbedWidget.h"
 #include <QResizeEvent>
+#include <QKeyEvent>
 #include <QLayout>
 #include <cstdio>
 #include <cmath>
 #include <QGuiApplication>
 #include <X11/Xlib.h>   // last: its macros (None, Bool...) clash with Qt headers
+#undef KeyPress   // and with QEvent::KeyPress below
 
 namespace mt {
 
@@ -21,6 +23,13 @@ PluginEmbedWidget::PluginEmbedWidget(QWidget* parent)
         if (m_attached && onIdle) onIdle();
         if (m_attached) reclaimKeyboard();
     });
+    m_snap.setSingleShot(true);
+    m_snap.setInterval(250);   // once the window edge is let go, not against the drag
+    connect(&m_snap, &QTimer::timeout, this, [this] {
+        double dpr = devicePixelRatioF();
+        QSize d = QSize((int)std::lround(m_snapSize.width() / dpr), (int)std::lround(m_snapSize.height() / dpr)) - size();
+        if (QWidget* top = window(); top && !d.isNull()) top->resize(top->size() + d);
+    });
 }
 PluginEmbedWidget::~PluginEmbedWidget() { doDetach(); }
 void PluginEmbedWidget::showEvent(QShowEvent*) {
@@ -33,6 +42,28 @@ void PluginEmbedWidget::resizeEvent(QResizeEvent* e) {
         double dpr = devicePixelRatioF();
         onResized((int)std::lround(e->size().width() * dpr), (int)std::lround(e->size().height() * dpr));
     }
+}
+void PluginEmbedWidget::snapTo(int w, int h) {
+    m_snapSize = QSize(w, h);
+    m_snap.start();
+}
+// A key the editor takes (its text fields, its own shortcuts) must not also fire an app shortcut, so the editor gets it at
+// ShortcutOverride, before shortcuts are matched
+bool PluginEmbedWidget::event(QEvent* e) {
+    if (e->type() == QEvent::ShortcutOverride && m_attached && onKey && !keepHostKeyboard && onKey(static_cast<QKeyEvent*>(e), true)) {
+        m_keyTaken = true;
+        e->accept();
+        return true;
+    }
+    if (e->type() == QEvent::KeyPress && m_keyTaken) {
+        m_keyTaken = false;
+        return true;
+    }
+    return QWidget::event(e);
+}
+void PluginEmbedWidget::keyReleaseEvent(QKeyEvent* e) {
+    if (m_attached && onKey && !keepHostKeyboard && onKey(e, false)) return;
+    QWidget::keyReleaseEvent(e);
 }
 void PluginEmbedWidget::doAttach() {
     if (m_attached || !onAttach) return;

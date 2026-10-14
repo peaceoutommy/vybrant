@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QJsonObject>
+#include <QKeyEvent>
 #include <QSocketNotifier>
 #include <QTimer>
 #include <QPointer>
@@ -1090,12 +1091,28 @@ QWidget* Vst3Plugin::createEditor(QWidget* parent) {
         }
         if (m_host->frame) m_host->frame->runLoop->clearAll();
     };
-    w->onResized = [this](int width, int height) {
-        if (m_host->view && m_host->view->canResize() == kResultTrue) {
-            ViewRect r{0, 0, width, height};
-            if (m_host->view->checkSizeConstraint(&r) == kResultOk) m_host->view->onSize(&r);
-            else m_host->view->onSize(&r);
-        }
+    w->onResized = [this, w](int width, int height) {
+        if (!m_host->view || m_host->view->canResize() != kResultTrue) return;
+        ViewRect r{0, 0, width, height};
+        m_host->view->checkSizeConstraint(&r);   // snaps r to a size the editor allows
+        m_host->view->onSize(&r);
+        if (r.getWidth() != width || r.getHeight() != height) w->snapTo(r.getWidth(), r.getHeight());
+    };
+    // Linux editors that don't take X focus themselves (VSTGUI) get their keys from the host
+    w->onKey = [this](QKeyEvent* e, bool down) {
+        if (!m_host->view) return false;
+        static const std::pair<int, int16> keys[] = {{Qt::Key_Backspace, 1}, {Qt::Key_Tab, 2}, {Qt::Key_Return, 4}, {Qt::Key_Escape, 6},
+            {Qt::Key_Space, 7}, {Qt::Key_End, 9}, {Qt::Key_Home, 10}, {Qt::Key_Left, 11}, {Qt::Key_Up, 12}, {Qt::Key_Right, 13},
+            {Qt::Key_Down, 14}, {Qt::Key_PageUp, 15}, {Qt::Key_PageDown, 16}, {Qt::Key_Enter, 19}, {Qt::Key_Insert, 21},
+            {Qt::Key_Delete, 22}};   // VST3 VirtualKeyCodes
+        int16 code = 0;
+        for (auto [qt, vk] : keys)
+            if (e->key() == qt) code = vk;
+        char16_t ch = code || e->text().isEmpty() ? 0 : e->text().at(0).unicode();
+        if (!code && !ch) return false;
+        Qt::KeyboardModifiers m = e->modifiers();
+        int16 mods = (m & Qt::ShiftModifier ? 1 : 0) | (m & Qt::AltModifier ? 2 : 0) | (m & Qt::ControlModifier ? 4 : 0);   // shift, alt, command (= Ctrl off macOS)
+        return (down ? m_host->view->onKeyDown(ch, code, mods) : m_host->view->onKeyUp(ch, code, mods)) == kResultTrue;
     };
     return w;
 }
