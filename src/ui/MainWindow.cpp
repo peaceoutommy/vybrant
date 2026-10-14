@@ -301,7 +301,12 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     }
     if (s.contains("ui/geometry")) restoreGeometry(s.value("ui/geometry").toByteArray());
     restoreRackDock();
+    // the main window's state can hold a placeholder for the rack from when it floated there, and restoreState matches docks by
+    // name anywhere in the widget tree - a docked rack must not answer to it, or it floats again
+    QString rackName = m_dRack->objectName();
+    if (!m_dRack->isFloating()) m_dRack->setObjectName(QString());
     if (s.contains("ui/state")) restoreState(s.value("ui/state").toByteArray());
+    m_dRack->setObjectName(rackName);
     m_toolBar->show();
     m_toolBar->toggleViewAction()->setVisible(false);
     if (s.contains("ui/workspace")) m_workspace->restoreState(s.value("ui/workspace").toByteArray());
