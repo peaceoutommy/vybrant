@@ -1112,7 +1112,8 @@ QWidget* Vst3Plugin::createEditor(QWidget* parent) {
         char16_t ch = code || e->text().isEmpty() ? 0 : e->text().at(0).unicode();
         if (!code && !ch) return false;
         Qt::KeyboardModifiers m = e->modifiers();
-        int16 mods = (m & Qt::ShiftModifier ? 1 : 0) | (m & Qt::AltModifier ? 2 : 0) | (m & Qt::ControlModifier ? 4 : 0);   // shift, alt, command (= Ctrl off macOS)
+        int16 mods = (m & Qt::ShiftModifier ? 1 : 0) | (m & Qt::AltModifier ? 2 : 0) |
+            (m & Qt::ControlModifier ? 4 : 0);   // shift, alt, command (= Ctrl off macOS)
         return (down ? m_host->view->onKeyDown(ch, code, mods) : m_host->view->onKeyUp(ch, code, mods)) == kResultTrue;
     };
     return w;

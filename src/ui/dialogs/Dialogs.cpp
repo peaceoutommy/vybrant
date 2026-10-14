@@ -229,7 +229,9 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
     setWindowTitle("Plugin Manager");
     resize(820, 560);
     auto* lay = new QVBoxLayout(this);
-    lay->addWidget(new QLabel("Plugin folders (VST2 .so, VST3 bundles and CLAP files are scanned recursively, out of process; LV2 comes from the standard LV2 paths):", this));
+    lay->addWidget(new QLabel(
+        "Plugin folders (VST2 .so, VST3 bundles and CLAP files are scanned recursively, out of process; LV2 comes from the standard LV2 paths):",
+        this));
     auto* dl = new QHBoxLayout();
     m_dirs = new QListWidget(this);
     m_dirs->addItems(app.pluginDb().directories());
@@ -243,7 +245,8 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
     dbtns->addStretch(1);
     dl->addLayout(dbtns);
     lay->addLayout(dl);
-    auto* bridge = new QCheckBox("Run new plugins in their own process (crash protection: a crashing plugin goes silent, the app keeps running)", this);
+    auto* bridge = new QCheckBox(
+        "Run new plugins in their own process (crash protection: a crashing plugin goes silent, the app keeps running)", this);
     bridge->setChecked(QSettings().value("plugins/bridge", false).toBool());
     bridge->setToolTip("Each plugin window has an 'Own process' switch for plugins already in the project");
     lay->addWidget(bridge);
@@ -551,7 +554,8 @@ void ExportDialog::doExport() {
         &err);
     setEnabled(true);
     if (ok) {
-        QMessageBox::information(this, "Export", (o.stems ? "Exported stems to " + QFileInfo(o.path).absolutePath() : "Exported to " + o.path));
+        QMessageBox::information(
+            this, "Export", (o.stems ? "Exported stems to " + QFileInfo(o.path).absolutePath() : "Exported to " + o.path));
         accept();
     } else QMessageBox::warning(this, "Export failed", err);
 }

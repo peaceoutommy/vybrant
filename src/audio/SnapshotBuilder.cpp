@@ -26,7 +26,9 @@ static QString pluginKey(Id id, const Project& p) {   // its own process or ours
 static QString keyForChannel(const Channel& c, const Project& p) {
     return c.type == ChannelType::Plugin ? pluginKey(c.pluginInstanceId, p) : c.instrumentKey;
 }
-static QString keyForSlot(const EffectSlot& s, const Project& p) { return s.pluginInstanceId ? pluginKey(s.pluginInstanceId, p) : s.processorKey; }
+static QString keyForSlot(const EffectSlot& s, const Project& p) {
+    return s.pluginInstanceId ? pluginKey(s.pluginInstanceId, p) : s.processorKey;
+}
 
 IProcessor* RuntimeRegistry::replaceProcessor(Id ownerId, std::unique_ptr<IProcessor> proc, double sr, int maxBlock, uint64_t gen) {
     auto it = m_procs.find(ownerId);

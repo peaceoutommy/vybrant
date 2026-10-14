@@ -264,8 +264,9 @@ int runSelfTest(App& app) {
         CHECK(fz && mt && mt->freezeTrackId && pr.track(mt->freezeTrackId) && diff < 1e-3f && a->peakValue > 0.1f,
             QString("a frozen insert sounds the same, lined up through its effect's latency (max diff %1)").arg(diff).toUtf8().constData());
         app.unfreezeMixerTrack(ins);
-        CHECK(!pr.mixerTrack(ins)->freezeTrackId && std::none_of(pr.playlistTracks.begin(), pr.playlistTracks.end(),
-                                                         [](const PlaylistTrack& t) { return t.name.endsWith("(frozen)"); }),
+        CHECK(!pr.mixerTrack(ins)->freezeTrackId &&
+                std::none_of(
+                    pr.playlistTracks.begin(), pr.playlistTracks.end(), [](const PlaylistTrack& t) { return t.name.endsWith("(frozen)"); }),
             "unfreeze removes the render and its track");
         model.undoStack().undo();
         model.undoStack().undo();
@@ -456,7 +457,8 @@ int runSelfTest(App& app) {
                 if (i) offsets = offsets && std::abs(takes[i]->sourceOffset - takes[i - 1]->sourceOffset - bar) <= 1;
             }
             CHECK(atLoop && offsets, "each take starts at the loop start, a loop length further into the file");
-            CHECK(tracks && takes[0]->muted && takes[1]->muted && !takes[2]->muted, "takes stack on their own tracks, only the newest audible");
+            CHECK(tracks && takes[0]->muted && takes[1]->muted && !takes[2]->muted,
+                "takes stack on their own tracks, only the newest audible");
         }
         model.undoStack().undo();
         CHECK(pr.clips.size() == clips0 && pr.playlistTracks.size() == tracks0 && model.undoStack().count() == undo0,
@@ -487,7 +489,8 @@ int runSelfTest(App& app) {
             if (c.type == ClipType::Audio && pr.track(c.trackId) && pr.track(c.trackId)->mixerTrackId == ins) tt.push_back(&c);
         bool mapped = tt.size() == 3;
         for (size_t i = 1; i < tt.size(); ++i)
-            mapped = mapped && std::fabs(clipSourceSeconds(*tt[i], tt[i]->start, tm) - clipSourceSeconds(*tt[i - 1], tt[i - 1]->start, tm) - pass) < 1e-3;
+            mapped = mapped &&
+                std::fabs(clipSourceSeconds(*tt[i], tt[i]->start, tm) - clipSourceSeconds(*tt[i - 1], tt[i - 1]->start, tm) - pass) < 1e-3;
         CHECK(mapped && std::abs(tt[0]->length - bar * 2) <= 2, "takes across a tempo change line up through the tempo map");
         model.undoStack().undo();
         model.editTransport("", [](TransportSettings& t) { t.tempoPoints.clear(); });
@@ -523,8 +526,10 @@ int runSelfTest(App& app) {
         const Pattern* p = pr.pattern(pat);
         int notes = 0;
         for (auto& cd : p->channels) notes += (int)cd.notes.size();
-        auto clip = std::find_if(pr.clips.begin(), pr.clips.end(), [&](const Clip& c) { return c.type == ClipType::Pattern && c.sourceId == pat; });
-        CHECK(notes == 1 && clip != pr.clips.end() && clip->start == bar * 2, "song-mode notes get a pattern clip at the bar the pass started in");
+        auto clip = std::find_if(
+            pr.clips.begin(), pr.clips.end(), [&](const Clip& c) { return c.type == ClipType::Pattern && c.sourceId == pat; });
+        CHECK(notes == 1 && clip != pr.clips.end() && clip->start == bar * 2,
+            "song-mode notes get a pattern clip at the bar the pass started in");
         std::vector<ControlPoint> ctl;
         for (auto& cd : p->channels) ctl.insert(ctl.end(), cd.controls.begin(), cd.controls.end());
         CHECK(ctl.size() == 2 && ctl[0].tick == ctl[1].tick && ctl[0].controller == kCtrlPitchBend && ctl[0].value == 12192 &&
@@ -1241,8 +1246,9 @@ int runSelfTest(App& app) {
             auto multi = host.createInstance(md);
             if (multi) multi->prepare(44100, 512);
             float mainOut = multi ? run(*multi) : 0.f;
-            CHECK(multi && multi->kind() == ProcessorKind::Instrument && multi->auxOutputCount() == 1 && multi->auxOutputName(0) == "Kick" &&
-                    std::fabs(mainOut - 0.25f) < 1e-6f && std::fabs(multi->auxOutput(0, 1)[100] - 0.5f) < 1e-6f,
+            CHECK(multi && multi->kind() == ProcessorKind::Instrument && multi->auxOutputCount() == 1 &&
+                    multi->auxOutputName(0) == "Kick" && std::fabs(mainOut - 0.25f) < 1e-6f &&
+                    std::fabs(multi->auxOutput(0, 1)[100] - 0.5f) < 1e-6f,
                 "a multi-out instrument shows its extra output pair next to the main one");
             model.insert<PluginInstanceData>(md, "");
             Id ch = app.addChannel(ChannelType::Plugin, "plugin", "Multi", QString(), md.id);
@@ -1264,7 +1270,11 @@ int runSelfTest(App& app) {
             float lm = level(mainT), la = level(auxT);
             CHECK(auxT && auxT != mainT && app.project().mixerTrack(auxT)->name == "Multi Kick" && std::fabs(lm - 0.25f) < 1e-4f &&
                     std::fabs(la - 0.5f) < 1e-4f,
-                QString("the extra output plays on its own mixer track, named after it (main %1, Kick %2)").arg(lm).arg(la).toUtf8().constData());
+                QString("the extra output plays on its own mixer track, named after it (main %1, Kick %2)")
+                    .arg(lm)
+                    .arg(la)
+                    .toUtf8()
+                    .constData());
             app.deleteChannel(ch);
             // out of process: the same plugins through the bridge; a crash silences only the plugin
             PluginInstanceData bd = d;
@@ -1273,7 +1283,8 @@ int runSelfTest(App& app) {
             auto bp = host.createInstance(bd);
             auto* bridged = dynamic_cast<BridgedPlugin*>(bp.get());
             if (bp) bp->prepare(44100, 512);
-            CHECK(bridged && bp->params().count() == 1 && bp->latencySamples() == 64, "a bridged plugin starts in its own process with its parameter and latency");
+            CHECK(bridged && bp->params().count() == 1 && bp->latencySamples() == 64,
+                "a bridged plugin starts in its own process with its parameter and latency");
             if (bridged) {
                 uint32_t gain = bp->params().desc(0).id;
                 bp->params().set(gain, 0.5f);
@@ -1288,7 +1299,8 @@ int runSelfTest(App& app) {
                 auto bmulti = host.createInstance(bm);
                 if (bmulti) bmulti->prepare(44100, 512);
                 float bmain = bmulti ? run(*bmulti) : 0.f;
-                CHECK(bmulti && bmulti->auxOutputCount() == 1 && std::fabs(bmain - 0.25f) < 1e-6f && std::fabs(bmulti->auxOutput(0, 0)[100] - 0.5f) < 1e-6f,
+                CHECK(bmulti && bmulti->auxOutputCount() == 1 && std::fabs(bmain - 0.25f) < 1e-6f &&
+                        std::fabs(bmulti->auxOutput(0, 0)[100] - 0.5f) < 1e-6f,
                     "a bridged multi-out instrument hands over its extra outputs");
                 QString crashedName;
                 auto prevHandler = BridgedPlugin::onCrashed;
@@ -1299,7 +1311,8 @@ int runSelfTest(App& app) {
                     QThread::msleep(10);
                     QCoreApplication::processEvents();
                 }
-                CHECK(bridged->dead() && out == 0.f && run(*bp) == 0.f && crashedName == "MT Test Gain" && std::fabs(run(*copy) - 0.25f) < 1e-6f,
+                CHECK(bridged->dead() && out == 0.f && run(*bp) == 0.f && crashedName == "MT Test Gain" &&
+                        std::fabs(run(*copy) - 0.25f) < 1e-6f,
                     "a crashing plugin only silences itself: the app and the other plugins keep running");
                 BridgedPlugin::onCrashed = prevHandler;
                 // in a project: the window's 'Own process' toggle rebuilds it bridged; the engine renders through the bridge
@@ -1313,7 +1326,11 @@ int runSelfTest(App& app) {
                 Id bt = bc->auxOutputTracks.empty() ? 0 : bc->auxOutputTracks[0];
                 float bl = level(bc->mixerTrackId), ba = level(bt);
                 CHECK(dynamic_cast<BridgedPlugin*>(app.processor(bch)) && std::fabs(bl - 0.25f) < 1e-4f && std::fabs(ba - 0.5f) < 1e-4f,
-                    QString("'Own process' rebuilds the plugin bridged and the song renders through it (main %1, Kick %2)").arg(bl).arg(ba).toUtf8().constData());
+                    QString("'Own process' rebuilds the plugin bridged and the song renders through it (main %1, Kick %2)")
+                        .arg(bl)
+                        .arg(ba)
+                        .toUtf8()
+                        .constData());
                 app.deleteChannel(bch);
             }
         }
@@ -1500,7 +1517,9 @@ int runEmbedTest(App& app) {
     QString root = QCoreApplication::applicationDirPath() + "/..", cxx = QStandardPaths::findExecutable("c++");
     QTemporaryDir dir;
     QString so = dir.path() + "/MT Test Gain.clap";
-    if (cxx.isEmpty() || QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", root + "/tests/clap_gain.cpp", "-o", so, "-lX11"}) != 0) {
+    if (cxx.isEmpty() ||
+        QProcess::execute(
+            cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", root + "/tests/clap_gain.cpp", "-o", so, "-lX11"}) != 0) {
         std::printf("  FAIL compile the CLAP test plugin\n");
         return 1;
     }
@@ -1533,7 +1552,8 @@ int runEmbedTest(App& app) {
             found = findWindow(dpy, (Window)top.winId(), "mt-test-gain-editor", &at) && at.map_state == IsViewable;
         }
         double dpr = top.devicePixelRatioF();   // plugin sizes are physical pixels
-        CHECK(ed && found && at.width == 320 && at.height == 200 && std::lround(top.width() * dpr) >= 320 && std::lround(top.height() * dpr) >= 200,
+        CHECK(ed && found && at.width == 320 && at.height == 200 && std::lround(top.width() * dpr) >= 320 &&
+                std::lround(top.height() * dpr) >= 200,
             bridged ? "the editor of a plugin in its own process shows inside our window, at its size"
                     : "a CLAP editor shows inside our window, at its size");
     }

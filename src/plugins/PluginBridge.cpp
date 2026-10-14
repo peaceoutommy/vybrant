@@ -182,8 +182,7 @@ void BridgedPlugin::pump() const {
         m_inbox.remove(0, nl + 1);
         if (o.contains("re")) {
             if (o["re"].toString() == m_waitingFor) m_answer = o;
-        } else if (o["ev"].toString() == "size" && m_editorSized)
-            m_editorSized(o["w"].toInt(), o["h"].toInt());
+        } else if (o["ev"].toString() == "size" && m_editorSized) m_editorSized(o["w"].toInt(), o["h"].toInt());
     }
 }
 QJsonObject BridgedPlugin::call(const QJsonObject& request, int timeoutMs) const {
@@ -214,7 +213,8 @@ void BridgedPlugin::died() {
 
 void BridgedPlugin::prepare(double sampleRate, int maxBlockSize) {
     QJsonObject r = call({{"op", "prepare"}, {"sr", sampleRate}, {"block", std::min(maxBlockSize, bridge::kMaxBlock)}});
-    if (r.contains("latency")) m_latency = r["latency"].toInt();   // known once activated: delay compensation needs it before the first block
+    if (r.contains("latency"))
+        m_latency = r["latency"].toInt();   // known once activated: delay compensation needs it before the first block
 }
 void BridgedPlugin::reset() {
     if (m_shm) m_shm->reset = 1;
@@ -372,7 +372,8 @@ struct Bridge {
             int n = s->frames;
             proc->process(s->audio[0], s->audio[1], n, midi, ctx);
             for (int k = 0; k < std::min(proc->auxOutputCount(), bridge::kMaxAux); ++k)
-                for (int side = 0; side < 2; ++side) std::copy(proc->auxOutput(k, side), proc->auxOutput(k, side) + n, s->audio[2 + 2 * k + side]);
+                for (int side = 0; side < 2; ++side)
+                    std::copy(proc->auxOutput(k, side), proc->auxOutput(k, side) + n, s->audio[2 + 2 * k + side]);
             for (int i = 0; i < np; ++i)
                 if (float v = ps.getAt(i); v != lastIn[i]) {   // its own editor moved it: tell the app
                     s->paramsOut[i] = lastIn[i] = v;
@@ -398,10 +399,11 @@ struct Bridge {
             for (int i = 0; i < proc->params().count(); ++i) descs.append(bridge::descJson(proc->params().desc(i)));
             for (int k = 0; k < std::min(proc->auxOutputCount(), bridge::kMaxAux); ++k) aux.append(proc->auxOutputName(k));
             for (int i = 0; i < proc->params().count(); ++i) lastIn.push_back(proc->params().getAt(i));
-            reply(op, {{"ok", true}, {"key", proc->key()}, {"name", proc->displayName()}, {"format", proc->pluginFormat()},
-                          {"kind", (int)proc->kind()}, {"editor", proc->hasCustomEditor()}, {"sidechain", proc->wantsSidechain()},
-                          {"tail", proc->tailSamples()}, {"latency", proc->latencySamples()}, {"aux", aux}, {"params", descs},
-                          {"values", values()}});
+            reply(op,
+                {{"ok", true}, {"key", proc->key()}, {"name", proc->displayName()}, {"format", proc->pluginFormat()},
+                    {"kind", (int)proc->kind()}, {"editor", proc->hasCustomEditor()}, {"sidechain", proc->wantsSidechain()},
+                    {"tail", proc->tailSamples()}, {"latency", proc->latencySamples()}, {"aux", aux}, {"params", descs},
+                    {"values", values()}});
             audio = std::thread([this] { audioLoop(); });
         } else if (op == "prepare") {
             proc->prepare(o["sr"].toDouble(), o["block"].toInt());

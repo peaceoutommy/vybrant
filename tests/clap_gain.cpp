@@ -79,8 +79,10 @@ const clap_plugin_gui gui = {
         *h = 200;
         return true;
     },
-    [](const clap_plugin*) { return false; }, [](const clap_plugin*, clap_gui_resize_hints*) { return false; },
-    [](const clap_plugin*, uint32_t*, uint32_t*) { return false; }, [](const clap_plugin*, uint32_t, uint32_t) { return false; },
+    [](const clap_plugin*) { return false; },
+    [](const clap_plugin*, clap_gui_resize_hints*) { return false; },
+    [](const clap_plugin*, uint32_t*, uint32_t*) { return false; },
+    [](const clap_plugin*, uint32_t, uint32_t) { return false; },
     [](const clap_plugin* p, const clap_window* w) {   // its own window inside the host's
         auto* g = self(p);
         g->win = XCreateSimpleWindow(g->dpy, w->x11, 0, 0, 320, 200, 0, 0, 0x3366cc);
@@ -88,7 +90,8 @@ const clap_plugin_gui gui = {
         XFlush(g->dpy);
         return true;
     },
-    [](const clap_plugin*, const clap_window*) { return false; }, [](const clap_plugin*, const char*) {},
+    [](const clap_plugin*, const clap_window*) { return false; },
+    [](const clap_plugin*, const char*) {},
     [](const clap_plugin* p) {
         XMapWindow(self(p)->dpy, self(p)->win);
         XFlush(self(p)->dpy);
@@ -169,8 +172,8 @@ const clap_plugin_audio_ports multiPorts = {
     },
 };
 const char* const multiFeatures[] = {"instrument", nullptr};
-const clap_plugin_descriptor multiDesc = {
-    CLAP_VERSION, "org.musicthingy.test-multi", "MT Test Multi", "MusicThingy", "", "", "", "1.0", "Self-test multi-out instrument", multiFeatures};
+const clap_plugin_descriptor multiDesc = {CLAP_VERSION, "org.musicthingy.test-multi", "MT Test Multi", "MusicThingy", "", "", "", "1.0",
+    "Self-test multi-out instrument", multiFeatures};
 
 const clap_plugin* createMulti() {
     return new clap_plugin{&multiDesc, nullptr, [](const clap_plugin*) { return true; }, [](const clap_plugin* p) { delete p; },
@@ -188,7 +191,9 @@ const clap_plugin* createMulti() {
 
 const clap_plugin_factory factory = {
     [](const clap_plugin_factory*) -> uint32_t { return 2; },
-    [](const clap_plugin_factory*, uint32_t i) { return i == 0 ? &desc : i == 1 ? &multiDesc : nullptr; },
+    [](const clap_plugin_factory*, uint32_t i) { return i == 0 ? &desc
+                                                     : i == 1  ? &multiDesc
+                                                               : nullptr; },
     [](const clap_plugin_factory*, const clap_host* host, const char* id) {
         return !std::strcmp(id, desc.id) ? create(host) : !std::strcmp(id, multiDesc.id) ? createMulti() : nullptr;
     },

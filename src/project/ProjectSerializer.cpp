@@ -110,8 +110,9 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
             sends.append(QJsonObject{{"target", (double)s.targetTrackId}, {"level", s.level}, {"pre", s.preFader}, {"enabled", s.enabled},
                 {"sidechain", s.sidechain}});
         mixer.append(QJsonObject{{"id", (double)t.id}, {"name", t.name}, {"color", colorJ(t.color)}, {"volume", t.volume}, {"pan", t.pan},
-            {"mute", t.mute}, {"solo", t.solo}, {"armed", t.armed}, {"input", t.inputChannel}, {"inputStereo", t.inputStereo}, {"output", (double)t.outputTrackId},
-            {"effects", fx}, {"sends", sends}, {"master", t.isMaster}, {"customName", t.customName}, {"freezeTrack", (double)t.freezeTrackId}});
+            {"mute", t.mute}, {"solo", t.solo}, {"armed", t.armed}, {"input", t.inputChannel}, {"inputStereo", t.inputStereo},
+            {"output", (double)t.outputTrackId}, {"effects", fx}, {"sends", sends}, {"master", t.isMaster}, {"customName", t.customName},
+            {"freezeTrack", (double)t.freezeTrackId}});
     }
     root["mixer"] = mixer;
     QJsonArray plugs;

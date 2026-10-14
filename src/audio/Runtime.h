@@ -241,7 +241,8 @@ struct EngineCommand {
 };
 // Messages RT -> UI
 struct EngineMessage {
-    enum Type : uint8_t { None, SnapshotRetired, RecordedMidi, PluginCrashed, RecordSegment };   // RecordSegment: tick + sample (recorded frame)
+    // RecordSegment: tick + sample (recorded frame)
+    enum Type : uint8_t { None, SnapshotRetired, RecordedMidi, PluginCrashed, RecordSegment };
     Type type = None;
     Snapshot* snapshot = nullptr;
     MidiEvent midi;

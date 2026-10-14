@@ -44,7 +44,9 @@ App::App(QObject* parent)
     connect(m_midi.get(), &MidiEngine::ccReceived, this, &App::onCcReceived);
     BridgedPlugin::onCrashed = [this](Id instanceId, const QString& name) {
         if (auto* pd = project().plugin(instanceId)) pd->crashed = true;
-        Q_EMIT statusMessage("Plugin " + name + " crashed in its own process - the app keeps running; turn 'Own process' off and on in its window to restart it", 0);
+        Q_EMIT statusMessage("Plugin " + name +
+                " crashed in its own process - the app keeps running; turn 'Own process' off and on in its window to restart it",
+            0);
     };
     connect(m_midi.get(), &MidiEngine::clockTransport, this, [this](int what, double tick) {
         if (what == 0) seek(0);
@@ -482,7 +484,9 @@ bool App::setJackSync(bool on, QString* error) {
     h.playing = [this] { return m_engine->isPlaying(); };
     h.positionTicks = [this] { return m_engine->positionTicks(); };
     // without tempo points the engine runs at its live tempo, which JACK itself may have set
-    auto map = [this] { return project().transport.tempoPoints.empty() ? TempoMap(m_engine->transport().bpm) : project().transport.tempoMap(); };
+    auto map = [this] {
+        return project().transport.tempoPoints.empty() ? TempoMap(m_engine->transport().bpm) : project().transport.tempoMap();
+    };
     h.secondsAt = [map](double t) { return map().secondsAt(t); };
     h.tickAt = [map](double s) { return map().tickAt(s); };
     h.looping = [this] { return !project().transport.songMode || project().transport.loopEnabled; };
@@ -494,9 +498,7 @@ bool App::setJackSync(bool on, QString* error) {
     m_jack.reset();
     return false;
 }
-void App::seekToStart() {
-    seek(project().transport.songMode && project().transport.loopEnabled ? project().transport.loopStart : 0);
-}
+void App::seekToStart() { seek(project().transport.songMode && project().transport.loopEnabled ? project().transport.loopStart : 0); }
 void App::setBpm(double bpm, bool commit) {
     bpm = clamp(bpm, 20.0, 999.0);
     auto& tr = project().transport;
@@ -781,10 +783,13 @@ void App::routeAuxOutputsToFreeTracks(Id id) {
         if (t == project().mixerTracks.end()) break;
         aux[k] = t->id;
         QString name = ch->name + " " + proc->auxOutputName(k);
-        cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, t->id, "", [name](MixerTrack& x) {
-            x.name = name;
-            x.customName = true;
-        }, 0));
+        cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(
+            m_model, t->id, "",
+            [name](MixerTrack& x) {
+                x.name = name;
+                x.customName = true;
+            },
+            0));
         ++t;
     }
     cmds.push_back(std::make_unique<EditObjectCommand<Channel>>(m_model, id, "", [aux](Channel& c) { c.auxOutputTracks = aux; }, 0));
@@ -1670,7 +1675,8 @@ void App::endRecordPass() {
         }
         cmds.push_back(std::make_unique<EditObjectCommand<Pattern>>(m_model, pat->id, "", [after](Pattern& p) { p = after; }, 0));
         bool covered = std::any_of(project().clips.begin(), project().clips.end(), [&](const Clip& c) {
-            return c.type == ClipType::Pattern && c.sourceId == pat->id && m_recClipStart >= c.start && m_recClipStart < c.start + project().clipLength(c);
+            return c.type == ClipType::Pattern && c.sourceId == pat->id && m_recClipStart >= c.start &&
+                m_recClipStart < c.start + project().clipLength(c);
         });
         if (m_recSong && !covered) {
             Clip c;
@@ -1745,7 +1751,8 @@ void App::endRecordPass() {
     if (!cmds.empty()) m_model.macro("Record", std::move(cmds));
     for (auto& [path, insert] : channelTakes) {
         Id ch = addChannel(ChannelType::Sampler, "native.sampler", QString(), path);
-        m_model.edit<Channel>(ch, "Route recording", [insert](Channel& c) { c.mixerTrackId = insert; });   // plays through the insert it was monitored on
+        m_model.edit<Channel>(
+            ch, "Route recording", [insert](Channel& c) { c.mixerTrackId = insert; });   // plays through the insert it was monitored on
     }
     if (takes || channelTakes.size()) Q_EMIT statusMessage(QString("Recorded %1 take(s)").arg(takes + (int)channelTakes.size()), 4000);
 }
@@ -2004,7 +2011,10 @@ bool App::exportAudio(const RenderOptions& opt, std::function<bool(double)> prog
         o.tapTrack = tracks[i]->id;
         QString name = tracks[i]->isMaster ? "Master" : tracks[i]->name;
         name.replace(QRegularExpression("[^A-Za-z0-9 _.-]"), "_");
-        o.path = QString("%1/%2_%3 %4.%5").arg(fi.absolutePath(), fi.completeBaseName()).arg(p.mixerIndex(o.tapTrack), 2, 10, QChar('0')).arg(name, o.format);
+        o.path = QString("%1/%2_%3 %4.%5")
+                     .arg(fi.absolutePath(), fi.completeBaseName())
+                     .arg(p.mixerIndex(o.tapTrack), 2, 10, QChar('0'))
+                     .arg(name, o.format);
         ok = RenderEngine::render(*m_engine, p, o, [&](double v) { return !progress || progress((i + v) / tracks.size()); }, error);
     }
     syncTransportToEngine();
@@ -2018,8 +2028,9 @@ bool App::freezeMixerTrack(Id id, std::function<bool(double)> progress, QString*
                                                : QFileInfo(m_model.filePath()).absolutePath() + "/Frozen";
     QDir().mkpath(dir);
     RenderOptions o;
-    o.path = QString("%1/%2 frozen %3.wav").arg(dir, QString(mt->name).replace(QRegularExpression("[^A-Za-z0-9 _.-]"), "_"),
-        QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+    o.path = QString("%1/%2 frozen %3.wav")
+                 .arg(dir, QString(mt->name).replace(QRegularExpression("[^A-Za-z0-9 _.-]"), "_"),
+                     QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
     o.bitDepth = 32;
     o.dither = false;
     o.sampleRate = m_engine->sampleRate();
@@ -2057,7 +2068,8 @@ bool App::freezeMixerTrack(Id id, std::function<bool(double)> progress, QString*
     cmds.push_back(std::make_unique<InsertObjectCommand<AudioSource>>(m_model, a, "", -1));
     cmds.push_back(std::make_unique<InsertObjectCommand<PlaylistTrack>>(m_model, pt, "", -1));
     cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
-    cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [t = pt.id](MixerTrack& x) { x.freezeTrackId = t; }, 0));
+    cmds.push_back(
+        std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [t = pt.id](MixerTrack& x) { x.freezeTrackId = t; }, 0));
     m_cache.getSync(o.path);   // loaded before the clip exists, so it plays at once instead of after an async load
     m_model.macro("Freeze " + mt->name, std::move(cmds));
     return true;
@@ -2073,7 +2085,8 @@ void App::unfreezeMixerTrack(Id id) {
             if (c.type == ClipType::Audio) sources.insert(c.sourceId);
         }
     for (Id s : sources) cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_model, s, ""));
-    if (project().track(mt->freezeTrackId)) cmds.push_back(std::make_unique<RemoveObjectCommand<PlaylistTrack>>(m_model, mt->freezeTrackId, ""));
+    if (project().track(mt->freezeTrackId))
+        cmds.push_back(std::make_unique<RemoveObjectCommand<PlaylistTrack>>(m_model, mt->freezeTrackId, ""));
     cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [](MixerTrack& x) { x.freezeTrackId = 0; }, 0));
     m_model.macro("Unfreeze " + mt->name, std::move(cmds));
 }

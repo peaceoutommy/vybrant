@@ -109,7 +109,9 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_metro = mkIcon(theme::Glyph::Metronome, "Metronome (Ctrl+M)", true);
     m_countIn = mkIcon(theme::Glyph::CountIn, "Count-in: one bar of clicks before recording starts (Ctrl+P)", true);
     m_punch = mkIcon(theme::Glyph::Punch, "Punch in/out: only record between the loop points", true);
-    m_loopRec = mkIcon(theme::Glyph::Takes, "Loop recording: keep looping the song loop while recording, every pass a new take (off: recording plays on past the loop end)", true);
+    m_loopRec = mkIcon(theme::Glyph::Takes,
+        "Loop recording: keep looping the song loop while recording, every pass a new take (off: recording plays on past the loop end)",
+        true);
     m_loop = nullptr;
     sep();
     m_typing = mkIcon(theme::Glyph::TypingKeys,
