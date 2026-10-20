@@ -22,4 +22,6 @@ HEADERS += $$files(src/*.h, true)
 target.path = $$(HOME)/.local/bin
 desktop.files = resources/musicthingy.desktop
 desktop.path = $$(HOME)/.local/share/applications
-INSTALLS += target desktop
+icon.files = resources/musicthingy.svg
+icon.path = $$(HOME)/.local/share/icons/hicolor/scalable/apps
+INSTALLS += target desktop icon

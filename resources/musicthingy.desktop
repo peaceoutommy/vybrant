@@ -3,6 +3,7 @@ Type=Application
 Name=MusicThingy
 Comment=Digital audio workstation
 Exec=musicthingy %f
+Icon=musicthingy
 Terminal=false
 Categories=AudioVideo;Audio;Music;
 MimeType=application/x-musicthingy-project;

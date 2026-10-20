@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- app icon: a step-sequencer pattern (kick, clap, hats, bass); no name in it, so it survives a rename -->
+  <rect width="256" height="256" rx="48" fill="#23272e"/>
+  <g fill="#3a404a">
+    <rect x="22" y="22" width="44" height="44" rx="9"/><rect x="78" y="22" width="44" height="44" rx="9"/>
+    <rect x="134" y="22" width="44" height="44" rx="9"/><rect x="190" y="22" width="44" height="44" rx="9"/>
+    <rect x="22" y="78" width="44" height="44" rx="9"/><rect x="78" y="78" width="44" height="44" rx="9"/>
+    <rect x="134" y="78" width="44" height="44" rx="9"/><rect x="190" y="78" width="44" height="44" rx="9"/>
+    <rect x="22" y="190" width="44" height="44" rx="9"/><rect x="78" y="190" width="44" height="44" rx="9"/>
+    <rect x="134" y="190" width="44" height="44" rx="9"/><rect x="190" y="190" width="44" height="44" rx="9"/>
+  </g>
+  <g fill="#f2a93b">
+    <rect x="22" y="22" width="44" height="44" rx="9"/><rect x="134" y="22" width="44" height="44" rx="9"/>
+    <rect x="78" y="78" width="44" height="44" rx="9"/><rect x="190" y="78" width="44" height="44" rx="9"/>
+    <g opacity="0.55">
+      <rect x="22" y="134" width="44" height="44" rx="9"/><rect x="78" y="134" width="44" height="44" rx="9"/>
+      <rect x="134" y="134" width="44" height="44" rx="9"/><rect x="190" y="134" width="44" height="44" rx="9"/>
+    </g>
+    <rect x="22" y="190" width="44" height="44" rx="9"/><rect x="190" y="190" width="44" height="44" rx="9"/>
+  </g>
+</svg>

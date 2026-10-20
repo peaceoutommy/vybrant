@@ -4,6 +4,12 @@ A Linux-native digital audio workstation with a pattern-based workflow: Channel 
 Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP/LV2 hosting,
 automation, audio/MIDI recording and offline rendering. Original UI, original DSP.
 
+## Download
+
+Each release on GitHub has an AppImage: make it executable and run it (`chmod +x MusicThingy-*.AppImage`). It runs on
+distributions with glibc 2.39 or newer (Ubuntu 24.04+, Fedora 40+, Arch) and uses the system's JACK library
+(`pipewire-jack` or `jack2`) for audio.
+
 ## Building
 
 Dependencies (all available from common distro repositories):
@@ -151,3 +157,7 @@ the generic parameter editor. Mono plugins process the sum of the stereo pair an
 `plugins`, `automation`, `audioReferences`, `markers`, `midiMappings`). Object references are stable ids, sample
 paths are stored relative to the project when possible, plugin state is base64. `ProjectSerializer::migrate()`
 is the hook for future format versions.
+
+## License
+
+GPL-3.0-or-later, see [LICENSE](LICENSE). (It links Rubber Band and FFTW, which are GPL.)

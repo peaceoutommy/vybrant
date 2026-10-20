@@ -1,0 +1,65 @@
+name: Release
+
+# A tag like v0.1.0 builds an AppImage and publishes it as a GitHub release. "Run workflow" on the Actions tab builds one
+# without releasing it (it's attached to the run as an artifact).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config qmake6 qt6-base-dev libgl1-mesa-dev \
+            portaudio19-dev libasound2-dev libsndfile1-dev libsamplerate0-dev \
+            librubberband-dev libmp3lame-dev libfftw3-dev libx11-dev libjack-jackd2-dev liblilv-dev lv2-dev file
+
+      - name: Build
+        run: |
+          qmake6 MusicThingy.pro
+          make -j"$(nproc)"
+
+      - name: Self test
+        env:
+          QT_QPA_PLATFORM: offscreen
+          XDG_CONFIG_HOME: ${{ runner.temp }}/cfg
+          XDG_RUNTIME_DIR: ${{ runner.temp }}
+        run: ./bin/musicthingy --selftest
+
+      - name: Package AppImage
+        env:
+          QMAKE: qmake6
+          APPIMAGE_EXTRACT_AND_RUN: 1   # the runner has no FUSE
+          LINUXDEPLOY_OUTPUT_VERSION: ${{ github.ref_name }}
+        run: |
+          for tool in linuxdeploy linuxdeploy-plugin-qt; do
+            curl -fsSLO "https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-x86_64.AppImage"
+          done
+          chmod +x linuxdeploy*.AppImage
+          PATH="$PWD:$PATH" ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --executable bin/musicthingy \
+            --desktop-file resources/musicthingy.desktop \
+            --icon-file resources/musicthingy.svg \
+            --plugin qt --output appimage
+          ls -l *.AppImage
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: MusicThingy-*.AppImage
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" MusicThingy-*.AppImage --title "$GITHUB_REF_NAME" --generate-notes
