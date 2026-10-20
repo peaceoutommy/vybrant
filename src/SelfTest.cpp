@@ -1,4 +1,4 @@
-// Built-in self test (`musicthingy --selftest`): exercises the project model, serializer, undo, DSP and engine.
+// Built-in self test (`tactum --selftest`): exercises the project model, serializer, undo, DSP and engine.
 #include "ui/App.h"
 #include "project/ProjectSerializer.h"
 #include "dsp/NativeRegistry.h"
@@ -46,7 +46,7 @@ static int g_fail = 0;
     } while (0)
 
 int runSelfTest(App& app) {
-    std::printf("MusicThingy self test\n");
+    std::printf("Tactum self test\n");
     // ---- project round trip
     Project p = makeDefaultProject(true);
     QJsonObject j1 = ProjectSerializer::toJson(p);
@@ -172,7 +172,7 @@ int runSelfTest(App& app) {
             qputenv("LV2_PATH", lv2Dir.toLocal8Bit());
             PluginInfo info;
             for (auto& p : Lv2Plugin::scan())
-                if (p.uid == "urn:musicthingy:test-gain") info = p;
+                if (p.uid == "urn:tactum:test-gain") info = p;
             CHECK(info.format == "lv2" && info.category == "Effect" && info.numInputs == 2 && info.numOutputs == 2 && !info.hasEditor &&
                     !info.failed && info.path == bundle,
                 "LV2 scan finds the test plugin");
@@ -1190,12 +1190,12 @@ int runSelfTest(App& app) {
             scan.start(QCoreApplication::applicationFilePath(), {"--scan-plugin", so});
             scan.waitForFinished(30000);
             QJsonObject o = QJsonDocument::fromJson(scan.readAllStandardOutput().split('\n').first()).object();
-            CHECK(o["format"].toString() == "clap" && o["uid"].toString() == "org.musicthingy.test-gain" &&
+            CHECK(o["format"].toString() == "clap" && o["uid"].toString() == "org.tactum.test-gain" &&
                     o["category"].toString() == "Effect",
                 "out-of-process scan reports the CLAP plugin");
             PluginInfo info;
             info.format = "clap";
-            info.uid = "org.musicthingy.test-gain";
+            info.uid = "org.tactum.test-gain";
             info.name = "MT Test Gain";
             info.path = so;
             PluginHost host(app.pluginDb());
@@ -1239,7 +1239,7 @@ int runSelfTest(App& app) {
             }
             // multi-out: the extra output pair of an instrument plays on a mixer track of its own
             PluginInfo mi = info;
-            mi.uid = "org.musicthingy.test-multi";
+            mi.uid = "org.tactum.test-multi";
             mi.name = "MT Test Multi";
             mi.category = "Instrument";
             PluginInstanceData md = PluginHost::makeInstanceData(mi, app.project().newId());
@@ -1354,7 +1354,7 @@ int runSelfTest(App& app) {
 #include <QElapsedTimer>
 #include <QCoreApplication>
 namespace mt {
-// `musicthingy --preview-bench <dir>`: measures click-to-play latency of the browser preview for every file in a folder
+// `tactum --preview-bench <dir>`: measures click-to-play latency of the browser preview for every file in a folder
 int runPreviewBench(App& app, const QString& dir) {
     for (auto& f : QDir(dir).entryList({"*.wav", "*.flac", "*.ogg", "*.mp3"}, QDir::Files, QDir::Name)) {
         QString path = dir + "/" + f;
@@ -1382,7 +1382,7 @@ int runPreviewBench(App& app, const QString& dir) {
 #include <QMainWindow>
 #include <QPixmap>
 namespace mt {
-// `musicthingy --uitest <png>`: Ctrl+drag a selection rectangle in the playlist and screenshot the result
+// `tactum --uitest <png>`: Ctrl+drag a selection rectangle in the playlist and screenshot the result
 int runUiTest(QMainWindow* win, const QString& png) {
     QWidget* view = nullptr;
     for (auto* w : win->findChildren<QWidget*>())
@@ -1499,7 +1499,7 @@ int runDockTest(QMainWindow* win) {
 }
 }   // namespace mt
 
-// `musicthingy --embed-test` (on X11): the CLAP test plugin's editor embeds into our window, in-process and from its own
+// `tactum --embed-test` (on X11): the CLAP test plugin's editor embeds into our window, in-process and from its own
 // process. The window bypasses the window manager and sits off-screen, so nothing shows.
 #include <QVBoxLayout>
 #include <QJsonDocument>
@@ -1521,7 +1521,7 @@ static bool findWindow(Display* d, Window w, const char* name, XWindowAttributes
     if (kids) XFree(kids);
     return found;
 }
-// `musicthingy --plugin-test <name> [--no-editor] [--no-bridge]`: every installed plugin whose name contains <name>, in-process
+// `tactum --plugin-test <name> [--no-editor] [--no-bridge]`: every installed plugin whose name contains <name>, in-process
 // and in its own process: it loads, makes sound (instruments: a note; effects: a sine in), reports latency and extra outputs,
 // its state round-trips into a new instance, and (on X11) its editor draws inside our window. The window sits off-screen.
 static double editorVariance(Display* d, Window w, int* depth) {   // how much the pixels differ: 0 = an empty window
@@ -1548,7 +1548,7 @@ static double editorVariance(Display* d, Window w, int* depth) {   // how much t
     return n ? sq / n - (sum / n) * (sum / n) : 0;
 }
 int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
-    std::printf("MusicThingy plugin test: \"%s\"\n", qPrintable(filter));
+    std::printf("Tactum plugin test: \"%s\"\n", qPrintable(filter));
     std::vector<PluginInfo> found;
     for (auto& f : PluginScanner::candidateFiles(PluginDatabase::defaultDirectories())) {
         QProcess scan;
@@ -1709,7 +1709,7 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
     return bad ? 1 : 0;
 }
 int runEmbedTest(App& app) {
-    std::printf("MusicThingy editor embedding test\n");
+    std::printf("Tactum editor embedding test\n");
     if (QGuiApplication::platformName() != "xcb") {
         std::printf("  skip (needs X11, platform is %s)\n", qPrintable(QGuiApplication::platformName()));
         return 0;
@@ -1725,7 +1725,7 @@ int runEmbedTest(App& app) {
     }
     PluginInfo info;
     info.format = "clap";
-    info.uid = "org.musicthingy.test-gain";
+    info.uid = "org.tactum.test-gain";
     info.name = "MT Test Gain";
     info.path = so;
     PluginHost host(app.pluginDb());

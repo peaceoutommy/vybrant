@@ -641,7 +641,7 @@ QByteArray Lv2Plugin::stateBytes() {
     LilvState* s = lilv_state_new_from_instance(m_plugin, m_instance, &g_map, nullptr, nullptr, nullptr, nullptr, &Lv2Plugin::portValue,
         this, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, m_features);
     if (!s) return QByteArray();
-    char* str = lilv_state_to_string(world(), &g_map, &g_unmap, s, "urn:musicthingy:state", nullptr);
+    char* str = lilv_state_to_string(world(), &g_map, &g_unmap, s, "urn:musicthingy:state", nullptr);   // the old name, as in states saved before the rename
     QByteArray out(str);
     lilv_free(str);
     lilv_state_free(s);

@@ -16,16 +16,16 @@ removing features, which is out of scope. The biggest single win is item 4 (pian
 
 ```bash
 make -j16 2>&1 | grep -E "error|warning: unused"          # must print nothing
-QT_QPA_PLATFORM=offscreen bin/musicthingy --selftest      # must end "All checks passed"
+QT_QPA_PLATFORM=offscreen bin/tactum --selftest      # must end "All checks passed"
 python3 tests/ui_test.py                                  # only the 2 dock checks below may fail
-make install && cmp bin/musicthingy ~/.local/bin/musicthingy   # the user runs the installed copy
+make install && cmp bin/tactum ~/.local/bin/tactum   # the user runs the installed copy
 ```
 
 Known failures that existed before this plan (not caused by it, unrelated to the refactor):
 `bottom dock is restored after a restart` and `top dock is restored after a restart` in `tests/ui_test.py`.
 
 Rules while refactoring:
-- After adding a header or changing which headers include which, re-run `qmake6 MusicThingy.pro`; after changing a base
+- After adding a header or changing which headers include which, re-run `qmake6 Tactum.pro`; after changing a base
   class (`TimelineView`, `Project.h` structs) do `make clean && make`. qmake's dependency list is fixed at qmake time, and a
   stale object with an old class layout crashed the app at startup (2026-10-10).
 - Behaviour stays identical unless the item says it fixes a bug. When unsure, keep the old behaviour.
@@ -173,7 +173,7 @@ Load assumed: one person using a desktop app. The real-time audio thread must ne
 - Fix: `std::optional<QString> askName(QWidget*, title, current)` in `Controls.h`; `addPatternActions(QMenu&, ids)` used
   by the three menus. ~-50 lines.
 
-**10. Drag-and-drop format handled by hand everywhere** (12 uses of `"application/x-musicthingy-item"`)
+**10. Drag-and-drop format handled by hand everywhere** (12 uses of `"application/x-tactum-item"`)
 - Problem: the MIME string is repeated 12 times and the `"kind|value"` payload is parsed in 4 places (rack, playlist,
   mixer slots, project panel); each target also repeats the accept boilerplate.
 - Fix: in `InAppDrag.h`: `kItemMime`, `bool hasAppItem(const QMimeData*)`, `std::pair<QString,QString> appItem(const

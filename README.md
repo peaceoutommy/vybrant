@@ -1,4 +1,4 @@
-# MusicThingy
+# Tactum
 
 A Linux-native digital audio workstation with a pattern-based workflow: Channel Rack + step sequencer, Piano Roll,
 Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP/LV2 hosting,
@@ -6,7 +6,7 @@ automation, audio/MIDI recording and offline rendering. Original UI, original DS
 
 ## Download
 
-Each release on GitHub has an AppImage: make it executable and run it (`chmod +x MusicThingy-*.AppImage`). It runs on
+Each release on GitHub has an AppImage: make it executable and run it (`chmod +x Tactum-*.AppImage`). It runs on
 distributions with glibc 2.39 or newer (Ubuntu 24.04+, Fedora 40+, Arch) and uses the system's JACK library
 (`pipewire-jack` or `jack2`) for audio.
 
@@ -27,13 +27,13 @@ Dependencies (all available from common distro repositories):
 | LV2 hosting | lilv (+ LV2 headers) |
 
 ```bash
-qmake6 MusicThingy.pro && make -j$(nproc)      # primary build
+qmake6 Tactum.pro && make -j$(nproc)      # primary build
 # or
 cmake -B build-cmake && cmake --build build-cmake -j$(nproc)
-./bin/musicthingy
+./bin/tactum
 ```
 
-Command line: `musicthingy [project.mtp] [--render out.wav] [--selftest] [--screenshot file.png] [--quit]`.
+Command line: `tactum [project.mtp] [--render out.wav] [--selftest] [--screenshot file.png] [--quit]`.
 `--selftest` runs the built-in test suite (serializer round-trip, undo/redo, every native processor, delay
 compensation, routing-cycle detection, automation, offline render). `--scan-plugin <path>` is used internally by the
 out-of-process plugin scanner, and `--plugin-bridge <socket> <shm>` by plugins that run in their own process (plugin
@@ -46,10 +46,10 @@ the platform yourself.
 ## Tests and code style
 
 ```bash
-./bin/musicthingy --selftest          # engine / model checks (serializer, undo, processors, render)
+./bin/tactum --selftest          # engine / model checks (serializer, undo, processors, render)
 python3 tests/ui_test.py              # UI behaviour through the control socket, in an offscreen instance
 python3 tests/sync_test.py            # JACK transport and MIDI clock in, against a dummy jackd / ALSA client
-QT_QPA_PLATFORM=xcb ./bin/musicthingy --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
+QT_QPA_PLATFORM=xcb ./bin/tactum --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
 ```
 
 All but the embed test run in CI (`.github/workflows/ci.yml`). The UI test uses a private config directory and socket, so it is

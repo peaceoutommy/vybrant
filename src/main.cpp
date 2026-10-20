@@ -1,4 +1,4 @@
-// MusicThingy - Linux native DAW. Entry point.
+// Tactum - Linux native DAW. Entry point.
 #include "ui/App.h"
 #include "ui/MainWindow.h"
 #include "ui/ControlServer.h"
@@ -11,6 +11,8 @@
 #include <QTimer>
 #include <QFileInfo>
 #include <QDir>
+#include <QStandardPaths>
+#include <QFile>
 #include <cstring>
 #include <cstdio>
 namespace mt {
@@ -24,12 +26,26 @@ int runBackupTest(App& app);
 int runDockTest(QMainWindow* win);
 }   // namespace mt
 
+// The app was called MusicThingy until 2026-10: its settings, plugin database, presets, templates and autosaves move over
+static void migrateOldName() {
+    QString cfg = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    if (QDir(cfg + "/MusicThingy").exists() && !QDir(cfg + "/Tactum").exists()) {
+        QDir().rename(cfg + "/MusicThingy", cfg + "/Tactum");
+        QFile::rename(cfg + "/Tactum/MusicThingy.conf", cfg + "/Tactum/Tactum.conf");
+    }
+    if (QDir(data + "/MusicThingy/MusicThingy").exists() && !QDir(data + "/Tactum").exists()) {
+        QDir().rename(data + "/MusicThingy", data + "/Tactum");
+        QDir().rename(data + "/Tactum/MusicThingy", data + "/Tactum/Tactum");
+    }
+}
+
 int main(int argc, char** argv) {
     // Plugin scanning runs in a child process so a crashing plugin cannot take the DAW down.
     if (argc >= 3 && std::strcmp(argv[1], "--scan-plugin") == 0) {
         QCoreApplication core(argc, argv);
-        QCoreApplication::setOrganizationName("MusicThingy");
-        QCoreApplication::setApplicationName("MusicThingy");
+        QCoreApplication::setOrganizationName("Tactum");
+        QCoreApplication::setApplicationName("Tactum");
         return mt::PluginScanner::scanChildMain(QString::fromLocal8Bit(argv[2]));
     }
     // Plugin GUIs need an X11 window; run under XWayland when a Wayland session is detected and nothing else was requested.
@@ -44,8 +60,9 @@ int main(int argc, char** argv) {
         }
     }
     QApplication app(argc, argv);
-    QCoreApplication::setOrganizationName("MusicThingy");
-    QCoreApplication::setApplicationName("MusicThingy");
+    QCoreApplication::setOrganizationName("Tactum");
+    QCoreApplication::setApplicationName("Tactum");
+    migrateOldName();
     QApplication::setStyle("Fusion");
     mt::theme::setPalette(mt::theme::loadSavedTheme());
     app.setStyleSheet(mt::theme::stylesheet());
@@ -71,7 +88,7 @@ int main(int argc, char** argv) {
     if (argc >= 3 && std::strcmp(argv[1], "--preview-bench") == 0) return mt::runPreviewBench(daw, argv[2]);
     mt::MainWindow win(daw);
     win.show();
-    mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/musicthingy.sock)
+    mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/tactum.sock)
     QString openFile, screenshot, renderPath, panel;
     bool quitAfter = false;
     for (int i = 1; i < argc; ++i) {
@@ -87,7 +104,7 @@ int main(int argc, char** argv) {
     if (quitAfter) win.setForceClose(true);
     if (!openFile.isEmpty()) daw.openProject(openFile);
     else if (renderPath.isEmpty()) QTimer::singleShot(0, &win, [&win] { win.startupChecks(); });
-    if (!renderPath.isEmpty()) {   // batch render: musicthingy song.mtp --render out.wav [--quit]
+    if (!renderPath.isEmpty()) {   // batch render: tactum song.mtp --render out.wav [--quit]
         QTimer::singleShot(500, &win, [&daw, renderPath, quitAfter] {
             mt::RenderOptions o;
             o.path = renderPath;

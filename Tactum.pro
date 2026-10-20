@@ -1,6 +1,6 @@
-# MusicThingy DAW - qmake project (Linux native)
+# Tactum DAW - qmake project (Linux native)
 TEMPLATE = app
-TARGET = musicthingy
+TARGET = tactum
 QT += core gui widgets network
 CONFIG += c++20 link_pkgconfig
 CONFIG -= debug_and_release
@@ -20,8 +20,8 @@ HEADERS += $$files(src/*.h, true)
 
 # `make install` puts the binary and a launcher into the user's home (no root needed)
 target.path = $$(HOME)/.local/bin
-desktop.files = resources/musicthingy.desktop
+desktop.files = resources/tactum.desktop
 desktop.path = $$(HOME)/.local/share/applications
-icon.files = resources/musicthingy.svg
+icon.files = resources/tactum.svg
 icon.path = $$(HOME)/.local/share/icons/hicolor/scalable/apps
 INSTALLS += target desktop icon

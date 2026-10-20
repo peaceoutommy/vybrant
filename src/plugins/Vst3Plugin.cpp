@@ -237,7 +237,7 @@ struct HostApplication : RefCounted<IHostApplication> {
         return kNoInterface;
     }
     tresult getName(String128 name) override {
-        toU16("MusicThingy", name, 128);
+        toU16("Tactum", name, 128);
         return kResultOk;
     }
     tresult createInstance(TUID cid, TUID iid, void** obj) override {

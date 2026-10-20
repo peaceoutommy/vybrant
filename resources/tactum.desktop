@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=MusicThingy
+Name=Tactum
 Comment=Digital audio workstation
-Exec=musicthingy %f
-Icon=musicthingy
+Exec=tactum %f
+Icon=tactum
 Terminal=false
 Categories=AudioVideo;Audio;Music;
-MimeType=application/x-musicthingy-project;
+MimeType=application/x-tactum-project;

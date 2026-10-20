@@ -2,13 +2,13 @@
 """UI behaviour tests driven through the control socket (see src/ui/ControlServer.cpp).
 
 Starts an offscreen instance with a private config directory and socket, so it never touches a running
-MusicThingy or the user's settings. Run from the repository root after building:
+Tactum or the user's settings. Run from the repository root after building:
 
-    python3 tests/ui_test.py [path/to/musicthingy]
+    python3 tests/ui_test.py [path/to/tactum]
 """
 import os, socket, subprocess, sys, tempfile, time
 
-BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "bin", "musicthingy")
+BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "bin", "tactum")
 fails = 0
 
 
@@ -22,7 +22,7 @@ def check(cond, msg, detail=""):
 class Instance:
     def __init__(self, cfg, sock):
         self.sock = sock
-        env = dict(os.environ, XDG_CONFIG_HOME=cfg, QT_QPA_PLATFORM="offscreen", MT_CONTROL_SOCKET=sock)
+        env = dict(os.environ, XDG_CONFIG_HOME=cfg, XDG_DATA_HOME=os.path.join(cfg, "data"), QT_QPA_PLATFORM="offscreen", MT_CONTROL_SOCKET=sock)
         self.proc = subprocess.Popen([BIN, "--demo"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             time.sleep(0.2)
@@ -63,7 +63,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix="mt-uitest-")
     cfg, sock = os.path.join(tmp, "cfg"), os.path.join(tmp, "s.sock")  # short socket path: AF_UNIX limit
     os.makedirs(cfg)
-    print("MusicThingy UI test")
+    print("Tactum UI test")
 
     # ---- rack ⇄ piano roll: step-shaped notes stay steps, anything else becomes piano-roll notes
     ins = Instance(cfg, sock)
@@ -182,8 +182,8 @@ def main():
     with wave.open(os.path.join(lib, "snare_hit.wav"), "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 4410)
     cfg7 = os.path.join(tmp, "cfg7")
-    os.makedirs(os.path.join(cfg7, "MusicThingy"))
-    with open(os.path.join(cfg7, "MusicThingy", "MusicThingy.conf"), "w") as f:
+    os.makedirs(os.path.join(cfg7, "Tactum"))
+    with open(os.path.join(cfg7, "Tactum", "Tactum.conf"), "w") as f:
         f.write(f"[browser]\ndirs={lib}\n")
     ins = Instance(cfg7, sock)
     before = len(ins.send("channels").split(" | "))
@@ -340,6 +340,18 @@ def main():
     b, z = map(float, ins.send("plpinch 0.5").split())
     check(abs(z - b * 1.5) < 1e-6, "trackpad pinch zooms the playlist", f"{b} -> {z}")
     ins.quit()
+
+    # ---- the app was called MusicThingy: its settings and data move to the new name on the first start
+    cfg12 = os.path.join(tmp, "cfg12")
+    os.makedirs(os.path.join(cfg12, "MusicThingy"))
+    os.makedirs(os.path.join(cfg12, "data", "MusicThingy", "MusicThingy", "presets"))
+    with open(os.path.join(cfg12, "MusicThingy", "MusicThingy.conf"), "w") as f:
+        f.write("[ui]\nmigrated=1\n")
+    ins = Instance(cfg12, sock)
+    ins.quit()
+    moved = os.path.exists(os.path.join(cfg12, "Tactum", "Tactum.conf")) and os.path.isdir(os.path.join(cfg12, "data", "Tactum", "Tactum", "presets"))
+    check(moved and not os.path.exists(os.path.join(cfg12, "MusicThingy")), "settings and data from the old name move to Tactum",
+          sorted(os.path.relpath(os.path.join(r, n), cfg12) for r, ds, fs in os.walk(cfg12) for n in ds + fs))
 
     print("\n%s" % ("All UI checks passed" if fails == 0 else f"{fails} UI check(s) FAILED"))
     return 1 if fails else 0

@@ -21,7 +21,7 @@ jobs:
 
       - name: Build
         run: |
-          qmake6 MusicThingy.pro
+          qmake6 Tactum.pro
           make -j"$(nproc)"
 
       - name: Self test
@@ -29,12 +29,12 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           XDG_CONFIG_HOME: ${{ runner.temp }}/cfg
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: ./bin/musicthingy --selftest
+        run: ./bin/tactum --selftest
 
       - name: UI test (control socket)
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: python3 tests/ui_test.py ./bin/musicthingy
+        run: python3 tests/ui_test.py ./bin/tactum
 
       - name: CLAP ABI check (skips without the official headers)
         run: python3 tests/clap_abi_check.py
@@ -42,7 +42,7 @@ jobs:
       - name: Sync test (JACK transport, MIDI clock in; skips what the runner lacks)
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: python3 tests/sync_test.py ./bin/musicthingy
+        run: python3 tests/sync_test.py ./bin/tactum
 
   format-check:
     # Advisory: clang-format output differs slightly between versions, so a mismatch here doesn't fail the build

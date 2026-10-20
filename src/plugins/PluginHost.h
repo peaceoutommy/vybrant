@@ -73,7 +73,7 @@ public:
     void cancel();
     bool isScanning() const { return !m_queue.isEmpty() || !m_running.empty(); }
     static QStringList candidateFiles(const QStringList& dirs);
-    // In-process scan used by the child process (`musicthingy --scan-plugin <path>`), prints JSON to stdout
+    // In-process scan used by the child process (`tactum --scan-plugin <path>`), prints JSON to stdout
     static int scanChildMain(const QString& path);
 Q_SIGNALS:
     void progress(int done, int total, const QString& current);

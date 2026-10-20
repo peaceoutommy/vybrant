@@ -1,5 +1,0 @@
-#!/bin/sh
-# Send a command to the running MusicThingy instance (see src/ui/ControlServer.cpp for the command list).
-# MT_CONTROL_SOCKET selects a specific instance (tests use a private socket).
-S="${MT_CONTROL_SOCKET:-${XDG_RUNTIME_DIR:-/tmp}/musicthingy.sock}"
-printf '%s\n' "$*" | timeout 5 socat - "UNIX-CONNECT:$S" 2>/dev/null

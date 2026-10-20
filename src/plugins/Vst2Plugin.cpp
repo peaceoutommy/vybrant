@@ -59,10 +59,10 @@ intptr_t Vst2Plugin::hostCallback(AEffect* e, int32_t opcode, int32_t index, int
     case audioMasterGetCurrentProcessLevel: return 0;
     case audioMasterGetAutomationState: return 1;
     case audioMasterGetVendorString:
-        if (ptr) strncpy((char*)ptr, "MusicThingy", 64);
+        if (ptr) strncpy((char*)ptr, "Tactum", 64);
         return 1;
     case audioMasterGetProductString:
-        if (ptr) strncpy((char*)ptr, "MusicThingy DAW", 64);
+        if (ptr) strncpy((char*)ptr, "Tactum DAW", 64);
         return 1;
     case audioMasterGetVendorVersion: return 1000;
     case audioMasterCanDo: {

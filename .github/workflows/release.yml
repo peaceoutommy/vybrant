@@ -26,7 +26,7 @@ jobs:
 
       - name: Build
         run: |
-          qmake6 MusicThingy.pro
+          qmake6 Tactum.pro
           make -j"$(nproc)"
 
       - name: Self test
@@ -34,7 +34,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           XDG_CONFIG_HOME: ${{ runner.temp }}/cfg
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: ./bin/musicthingy --selftest
+        run: ./bin/tactum --selftest
 
       - name: Package AppImage
         env:
@@ -47,19 +47,19 @@ jobs:
           done
           chmod +x linuxdeploy*.AppImage
           PATH="$PWD:$PATH" ./linuxdeploy-x86_64.AppImage --appdir AppDir \
-            --executable bin/musicthingy \
-            --desktop-file resources/musicthingy.desktop \
-            --icon-file resources/musicthingy.svg \
+            --executable bin/tactum \
+            --desktop-file resources/tactum.desktop \
+            --icon-file resources/tactum.svg \
             --plugin qt --output appimage
           ls -l *.AppImage
 
       - uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: MusicThingy-*.AppImage
+          path: Tactum-*.AppImage
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" MusicThingy-*.AppImage --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" Tactum-*.AppImage --title "$GITHUB_REF_NAME" --generate-notes

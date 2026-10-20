@@ -147,7 +147,7 @@ private:
 MainWindow::MainWindow(App& app, QWidget* parent)
     : QMainWindow(parent)
     , m_app(app) {
-    setWindowTitle("MusicThingy");
+    setWindowTitle("Tactum");
     resize(1500, 900);
     setDockNestingEnabled(true);
     setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks | GroupedDragging);
@@ -758,10 +758,10 @@ void MainWindow::buildMenus() {
     auto* help = mb->addMenu("&Help");
     help->addAction(reg.add("help.help", "Quick help", "Help", QKeySequence("F1"), [this] { showHelp(); }, this));
     help->addAction(reg.add(
-        "help.about", "About MusicThingy", "Help", QKeySequence(),
+        "help.about", "About Tactum", "Help", QKeySequence(),
         [this] {
-            QMessageBox::about(this, "About MusicThingy",
-                "<b>MusicThingy</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
+            QMessageBox::about(this, "About Tactum",
+                "<b>Tactum</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
         },
         this));
 }
@@ -811,7 +811,7 @@ void MainWindow::uiTick() {
     }
 }
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("%1%2 - MusicThingy").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : ""));
+    setWindowTitle(QString("%1%2 - Tactum").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : ""));
 }
 
 void MainWindow::openEditor(Id id, const QString& titleIn) {
@@ -851,7 +851,7 @@ bool MainWindow::maybeSave() {
 bool MainWindow::doOpen(const QString& pathIn) {
     if (!maybeSave()) return false;
     QString path = pathIn;
-    if (path.isEmpty()) path = QFileDialog::getOpenFileName(this, "Open project", QString(), "MusicThingy project (*.mtp)");
+    if (path.isEmpty()) path = QFileDialog::getOpenFileName(this, "Open project", QString(), "Tactum project (*.mtp)");
     if (path.isEmpty()) return false;
     return m_app.openProject(path);
 }
@@ -860,7 +860,7 @@ bool MainWindow::doSave() {
     return m_app.saveProject();
 }
 bool MainWindow::doSaveAs() {
-    QString path = QFileDialog::getSaveFileName(this, "Save project", m_app.projectTitle() + ".mtp", "MusicThingy project (*.mtp)");
+    QString path = QFileDialog::getSaveFileName(this, "Save project", m_app.projectTitle() + ".mtp", "Tactum project (*.mtp)");
     if (path.isEmpty()) return false;
     if (!path.endsWith(".mtp")) path += ".mtp";
     bool ok = m_app.saveProjectAs(path);

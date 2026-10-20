@@ -198,7 +198,7 @@ bool ClapPlugin::init(const QString& path, const QString& pluginId, QString* err
     m_id = QString::fromUtf8(desc->id);
     m_name = QString::fromUtf8(desc->name);
     m_isInstrument = hasFeature(desc, CLAP_PLUGIN_FEATURE_INSTRUMENT);
-    m_host = {CLAP_VERSION, this, "MusicThingy", "MusicThingy", "", "1.0", ClapHost::extension,
+    m_host = {CLAP_VERSION, this, "Tactum", "Tactum", "", "1.0", ClapHost::extension,
         [](const clap_host* h) { ClapHost::self(h)->m_restartRequested = true; },
         [](const clap_host*) {},   // the engine calls process() every block anyway
         [](const clap_host* h) { ClapHost::self(h)->m_callbackRequested = true; }};

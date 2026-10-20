@@ -283,7 +283,7 @@ private:
         if (a.frames <= 0) return;
         // like recordings: a folder next to the project, or in the Music folder while the project is unsaved
         const QString proj = m_app.model().filePath();
-        QString dir = proj.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Edits"
+        QString dir = proj.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/Tactum Edits"
                                      : QFileInfo(proj).absolutePath() + "/Edits";
         QDir().mkpath(dir);
         QString base = QFileInfo(m_path).completeBaseName(), out;

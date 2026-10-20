@@ -45,12 +45,12 @@ public:
     bool searching() const { return !m_search.isEmpty(); }
     void reindex();   // rescan the library folders in the background (called when they change)
     QStringList mimeTypes() const override {
-        return {"text/uri-list", kItemMime, "application/x-musicthingy-folder"};
+        return {"text/uri-list", kItemMime, "application/x-tactum-folder"};
     }
     QMimeData* mimeData(const QModelIndexList& indexes) const override;
     bool dropMimeData(const QMimeData* data, Qt::DropAction action, int row, int column, const QModelIndex& parent) override;
     bool canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex& parent) const override {
-        return data->hasFormat("application/x-musicthingy-folder") && !parent.parent().isValid();
+        return data->hasFormat("application/x-tactum-folder") && !parent.parent().isValid();
     }
     Qt::DropActions supportedDropActions() const override {
         return Qt::CopyAction;

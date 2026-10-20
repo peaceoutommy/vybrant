@@ -2,8 +2,8 @@
 // (64 samples, 128 above 1.5x gain: changing it asks the host for a restart, as CLAP requires while active), and a
 // multi-out instrument that writes 0.25 to its main output pair and 0.5 to an extra "Kick" pair. Above 1.95x gain the
 // gain plugin crashes on purpose, for the out-of-process test. The gain plugin's editor is a plain 320x200 X11 window named
-// "mt-test-gain-editor" (`musicthingy --embed-test` looks for it inside the host's window).
-// `musicthingy --selftest` compiles it with the system C++ compiler against src/plugins/ClapAbi.h (not part of the app build).
+// "mt-test-gain-editor" (`tactum --embed-test` looks for it inside the host's window).
+// `tactum --selftest` compiles it with the system C++ compiler against src/plugins/ClapAbi.h (not part of the app build).
 #include "plugins/ClapAbi.h"
 #include <cstdio>
 #include <cstring>
@@ -120,7 +120,7 @@ const clap_plugin_audio_ports ports = {
 
 const char* const features[] = {"audio-effect", "utility", nullptr};
 const clap_plugin_descriptor desc = {
-    CLAP_VERSION, "org.musicthingy.test-gain", "MT Test Gain", "MusicThingy", "", "", "", "1.0", "Self-test gain", features};
+    CLAP_VERSION, "org.tactum.test-gain", "MT Test Gain", "Tactum", "", "", "", "1.0", "Self-test gain", features};
 
 const clap_plugin* create(const clap_host* host) {
     auto* g = new Gain();
@@ -172,7 +172,7 @@ const clap_plugin_audio_ports multiPorts = {
     },
 };
 const char* const multiFeatures[] = {"instrument", nullptr};
-const clap_plugin_descriptor multiDesc = {CLAP_VERSION, "org.musicthingy.test-multi", "MT Test Multi", "MusicThingy", "", "", "", "1.0",
+const clap_plugin_descriptor multiDesc = {CLAP_VERSION, "org.tactum.test-multi", "MT Test Multi", "Tactum", "", "", "", "1.0",
     "Self-test multi-out instrument", multiFeatures};
 
 const clap_plugin* createMulti() {

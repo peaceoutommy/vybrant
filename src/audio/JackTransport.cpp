@@ -16,7 +16,7 @@ JackTransport::~JackTransport() {
 }
 bool JackTransport::open(QString* error) {
     jack_status_t st;
-    auto* c = jack_client_open("MusicThingy transport", JackNoStartServer, &st);
+    auto* c = jack_client_open("Tactum transport", JackNoStartServer, &st);
     if (!c || jack_activate(c) != 0) {
         if (c) jack_client_close(c);
         if (error) *error = "JACK is not running";

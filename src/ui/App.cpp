@@ -1629,7 +1629,7 @@ void App::beginRecordPass() {
         if (t.armed && t.inputChannel >= 0) armed.push_back({t.id, t.inputStereo ? 2 : 1});
     if (armed.empty()) return;
     if (m_recorder->recordDirectory().isEmpty())
-        m_recorder->setRecordDirectory(QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Recordings");
+        m_recorder->setRecordDirectory(QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/Tactum Recordings");
     m_recorder->setSampleRate(m_engine->sampleRate());
     m_recorder->start(armed);
 }
@@ -2028,7 +2028,7 @@ bool App::exportAudio(const RenderOptions& opt, std::function<bool(double)> prog
 bool App::freezeMixerTrack(Id id, std::function<bool(double)> progress, QString* error) {
     const MixerTrack* mt = project().mixerTrack(id);
     if (!mt || mt->isMaster || mt->freezeTrackId) return false;
-    QString dir = m_model.filePath().isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/MusicThingy Recordings"
+    QString dir = m_model.filePath().isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/Tactum Recordings"
                                                : QFileInfo(m_model.filePath()).absolutePath() + "/Frozen";
     QDir().mkpath(dir);
     RenderOptions o;
