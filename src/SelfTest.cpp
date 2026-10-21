@@ -12,6 +12,7 @@
 #include "ui/widgets/Controls.h"
 #include "ui/dialogs/Dialogs.h"
 #include "ui/Theme.h"
+#include "ui/ProcessorPicker.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1370,6 +1371,20 @@ int runSelfTest(App& app) {
                 app.deleteChannel(bch);
             }
         }
+    }
+    {   // the processor picker sorts plugins by what they do, from VST3 / CLAP / LV2 categories and the name
+        auto cat = [](const char* category, const char* sub, const char* name) {
+            PluginInfo p;
+            p.category = category;
+            p.subCategories = sub;
+            p.name = name;
+            return ProcessorPicker::categoryOf(p);
+        };
+        CHECK(cat("Effect", "Fx|Dynamics", "Squash") == "Dynamics" && cat("Effect", "audio-effect|equalizer|stereo", "X") == "EQ / Filter" &&
+                  cat("Effect", "Reverb", "LSP Room Builder") == "Time" && cat("Effect", "audio-effect", "Step Sequencer") == "Other" &&
+                  cat("Effect", "Fx", "Tape Saturator") == "Distortion" && cat("Instrument", "instrument|synthesizer", "Surge XT") == "Synths" &&
+                  cat("Instrument", "Instrument|Drum", "Kit") == "Drums" && cat("Instrument", "Instrument Plugin", "LSP Multi-Sampler") == "Samplers",
+            "the processor picker puts plugins in the right category");
     }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
     return g_fail ? 1 : 0;

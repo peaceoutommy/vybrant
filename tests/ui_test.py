@@ -358,6 +358,25 @@ def main():
     check(ins.send("projpanel") == first, "clicking the clip again goes back to its pattern", ins.send("projpanel"))
     ins.quit()
 
+    # ---- the effect / instrument picker: cards by default, a remembered list view, search, a star that makes a favourite
+    cfg14 = os.path.join(tmp, "cfg14")
+    os.makedirs(cfg14)
+    ins = Instance(cfg14, sock)
+    png = os.path.join(tmp, "picker.png")
+    r = ins.send(f"picker effect - {png}")
+    check(r.startswith("view=cards ") and "sections=Dynamics,EQ / Filter,Time" in r and os.path.getsize(png) > 0,
+          "the effect picker opens as cards, grouped by what the effects do", r)
+    ins.send(f"picker effect list {png}")
+    r = ins.send(f"picker instrument - {png}")
+    check(r.startswith("view=list ") and "Synths" in r, "the list view is remembered for the next picker", r)
+    r = ins.send(f"picker effect cards {png} param eq")
+    check("items=1 " in r and r.endswith("first=Parametric EQ"), "the picker's search filters by name", r)
+    r = ins.send(f"picker effect star {png}")
+    check("sections=Favorites,Dynamics" in r, "clicking a card's star lists it under Favorites", r)
+    r = ins.send(f"picker effect - {png}")
+    check("sections=Favorites,Dynamics" in r, "favourites are kept for the next picker", r)
+    ins.quit()
+
     # ---- the app was called MusicThingy: its settings and data move to the new name on the first start
     cfg12 = os.path.join(tmp, "cfg12")
     os.makedirs(os.path.join(cfg12, "MusicThingy"))

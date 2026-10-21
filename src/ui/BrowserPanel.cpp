@@ -41,7 +41,15 @@ BrowserModel::BrowserModel(App& app, QObject* parent)
     : QStandardItemModel(parent)
     , m_app(app) {
     QSettings s;
-    m_favorites = QSet<QString>(s.value("browser/favorites").toStringList().begin(), s.value("browser/favorites").toStringList().end());
+    auto loadFavorites = [this] {
+        const QStringList f = QSettings().value("browser/favorites").toStringList();
+        m_favorites = QSet<QString>(f.begin(), f.end());
+    };
+    loadFavorites();
+    connect(&app, &App::favoritesChanged, this, [this, loadFavorites] {
+        loadFavorites();
+        rebuild();
+    });
     auto tagMap = s.value("browser/tags").toMap();
     for (auto it = tagMap.begin(); it != tagMap.end(); ++it) m_tags[it.key()] = it.value().toStringList();
     m_dirs = s.value("browser/dirs").toStringList();

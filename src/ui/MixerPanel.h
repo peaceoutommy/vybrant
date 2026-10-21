@@ -15,24 +15,6 @@
 class QToolButton;
 namespace mt {
 
-// Searchable picker for native effects/instruments and scanned plugins
-class ProcessorPicker : public QDialog {
-    Q_OBJECT
-public:
-    ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent = nullptr);
-    QString nativeKey() const { return m_nativeKey; }
-    const PluginInfo* plugin() const { return m_plugin; }
-
-private:
-    void rebuild(const QString& filter);
-    App& m_app;
-    ProcessorKind m_kind;
-    QLineEdit* m_search;
-    QListWidget* m_list;
-    QString m_nativeKey;
-    const PluginInfo* m_plugin = nullptr;
-};
-
 class EffectSlotList : public QWidget {
     Q_OBJECT
 public:

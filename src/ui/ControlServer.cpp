@@ -7,6 +7,10 @@
 #include "ui/Theme.h"
 #include "ui/MainWindow.h"
 #include "ui/MixerPanel.h"
+#include "ui/ProcessorPicker.h"
+#include <QLineEdit>
+#include <QListWidget>
+#include <QToolButton>
 #include "ui/PianoRollPanel.h"
 #include "ui/PlaylistPanel.h"
 #include "ui/ProjectSamplesPanel.h"
@@ -515,6 +519,28 @@ QString ControlServer::handle(const QString& line) {
                 return e->grab().save(a[1]) ? "ok" : "err save";
             }
         return "err no audio clip";
+    }
+    if (c == "picker" && a.size() >= 4) {   // open the effect / instrument picker: picker effect|instrument cards|list|-|star <png> [search words]
+        ProcessorPicker dlg(m_app, a[1] == "instrument" ? ProcessorKind::Instrument : ProcessorKind::Effect, &m_win);
+        if (a[2] == "cards" || a[2] == "list") dlg.findChild<QToolButton*>(a[2] == "list" ? "pickerList" : "pickerCards")->click();
+        dlg.findChild<QLineEdit*>("pickerSearch")->setText(a.mid(4).join(' '));
+        dlg.show();
+        QCoreApplication::processEvents();
+        auto* items = dlg.findChild<QListWidget*>("pickerItems");
+        if (a[2] == "star" && items->currentItem()) {   // click the current card's star (cards view)
+            QRect r = items->visualItemRect(items->currentItem());
+            sendDrag(items->viewport(), QPoint(r.right() - 20, r.top() + 18), QPoint(r.right() - 20, r.top() + 18), 0);
+            QCoreApplication::processEvents();
+            QCoreApplication::processEvents();
+        }
+        QStringList sections, names;
+        for (int r = 0; r < items->count(); ++r)
+            (items->item(r)->flags() & Qt::ItemIsSelectable ? names : sections) << items->item(r)->text();
+        if (!dlg.grab().save(a[3])) return "err save";
+        return QString("view=%1 items=%2 current=%3 sections=%4 first=%5")
+            .arg(dlg.cards() ? "cards" : "list")
+            .arg(names.size())
+            .arg(items->currentItem() ? items->currentItem()->text() : "-", sections.join(','), names.value(0));
     }
     if (c == "quit") {
         QTimer::singleShot(0, qApp, [] { qApp->quit(); });

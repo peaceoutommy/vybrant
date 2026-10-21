@@ -1,4 +1,5 @@
 #include "ui/MixerPanel.h"
+#include "ui/ProcessorPicker.h"
 #include "ui/InAppDrag.h"
 #include <QMessageBox>
 #include <QProgressDialog>
@@ -28,60 +29,6 @@ namespace mt {
 static void renameTrack(MixerTrack& t, const QString& name) {
     t.customName = !name.trimmed().isEmpty();
     if (t.customName) t.name = name.trimmed();
-}
-
-// ---------------------------------------------------------------- picker
-ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
-    : QDialog(parent)
-    , m_app(app)
-    , m_kind(kind) {
-    setWindowTitle(kind == ProcessorKind::Instrument ? "Choose instrument" : "Choose effect");
-    resize(360, 460);
-    auto* lay = new QVBoxLayout(this);
-    m_search = new QLineEdit(this);
-    m_search->setPlaceholderText("Search...");
-    lay->addWidget(m_search);
-    m_list = new QListWidget(this);
-    lay->addWidget(m_list, 1);
-    auto* bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
-    lay->addWidget(bb);
-    connect(bb, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(bb, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(m_search, &QLineEdit::textChanged, this, [this](const QString& t) { rebuild(t); });
-    connect(m_list, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem*) { accept(); });
-    connect(this, &QDialog::accepted, this, [this] {
-        auto* it = m_list->currentItem();
-        if (!it) return;
-        QString v = it->data(Qt::UserRole).toString();
-        if (v.startsWith("native:")) m_nativeKey = v.mid(7);
-        else if (v.startsWith("plugin:")) {
-            for (auto& p : m_app.pluginDb().plugins())
-                if (p.key() == v.mid(7)) m_plugin = &p;
-        }
-    });
-    rebuild(QString());
-    m_search->setFocus();
-}
-void ProcessorPicker::rebuild(const QString& f) {
-    m_list->clear();
-    for (auto& i : NativeRegistry::instance().all()) {
-        if (i.kind != m_kind) continue;
-        if (!f.isEmpty() && !i.name.contains(f, Qt::CaseInsensitive) && !i.category.contains(f, Qt::CaseInsensitive)) continue;
-        auto* it = new QListWidgetItem(QString("%1  —  %2").arg(i.name, i.category));
-        it->setData(Qt::UserRole, "native:" + i.key);
-        m_list->addItem(it);
-    }
-    for (auto& p : m_app.pluginDb().plugins()) {
-        if (p.failed || p.hidden) continue;
-        bool inst = p.category == "Instrument";
-        if (inst != (m_kind == ProcessorKind::Instrument)) continue;
-        if (!f.isEmpty() && !p.name.contains(f, Qt::CaseInsensitive) && !p.vendor.contains(f, Qt::CaseInsensitive)) continue;
-        auto* it = new QListWidgetItem(QString("%1%2  —  %3 [%4]").arg(p.favorite ? "★ " : "", p.name, p.vendor, p.format.toUpper()));
-        it->setData(Qt::UserRole, "plugin:" + p.key());
-        it->setForeground(QColor("#ffd27f"));
-        m_list->addItem(it);
-    }
-    if (m_list->count()) m_list->setCurrentRow(0);
 }
 
 // ---------------------------------------------------------------- slot list

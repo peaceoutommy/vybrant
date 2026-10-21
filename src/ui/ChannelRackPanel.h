@@ -128,7 +128,6 @@ private:
     void fitStepsToWidth();
     App& m_app;
     RackView* m_view;
-    QMenu* m_addMenu = nullptr;
     QScrollArea* m_scroll;
     QTimer* m_fitTimer = nullptr;
     QLabel* m_patName;

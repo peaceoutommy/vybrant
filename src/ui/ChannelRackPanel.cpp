@@ -1,4 +1,5 @@
 #include "ui/ChannelRackPanel.h"
+#include "ui/ProcessorPicker.h"
 #include "ui/AudioEditor.h"
 #include "project/MidiFile.h"
 #include "ui/InAppDrag.h"
@@ -24,6 +25,21 @@
 #include <QToolTip>
 
 namespace mt {
+
+// The instrument picker: a new channel with the chosen instrument (id 0), or channel `id` switched to it
+static void pickInstrument(App& app, QWidget* parent, Id id) {
+    ProcessorPicker dlg(app, ProcessorKind::Instrument, parent);
+    if (dlg.exec() != QDialog::Accepted) return;
+    const QString k = dlg.nativeKey();
+    if (const PluginInfo* p = dlg.plugin()) {
+        if (!id) app.addPluginChannel(*p);
+        else {
+            PluginInstanceData d = PluginHost::makeInstanceData(*p, app.project().newId());
+            app.model().insert<PluginInstanceData>(d, "Add plugin");
+            app.changeChannelInstrument(id, "plugin", d.id);
+        }
+    } else if (!k.isEmpty()) id ? app.changeChannelInstrument(id, k) : (void)app.addChannel(channelTypeForKey(k), k);
+}
 
 // ---------------------------------------------------------------- RackView
 RackView::RackView(App& app, QWidget* parent)
@@ -686,7 +702,7 @@ void RackView::wheelEvent(QWheelEvent* e) {
 void RackView::contextMenuEvent(QContextMenuEvent* e) {
     HitInfo h = hitTest(e->pos());
     if (h.hit == Name || h.hit == Enable || h.hit == Grip) showChannelMenu(h.row, e->globalPos());
-    else if (h.row < 0 && h.hit == None) Q_EMIT addChannelRequested(e->globalPos());   // the same menu as the '+' row (plugins included)
+    else if (h.row < 0 && h.hit == None) Q_EMIT addChannelRequested(e->globalPos());   // the instrument picker, as from the "+" row
 }
 std::vector<Id> RackView::selectedIds() const {
     std::vector<Id> ids;
@@ -880,17 +896,7 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
         update();
     });
     m.addSeparator();
-    auto* inst = m.addMenu("Change instrument");
-    for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument))
-        inst->addAction(i->name, [this, id, k = i->key] { m_app.changeChannelInstrument(id, k); });
-    auto* plug = inst->addMenu("Plugins");
-    for (auto& p : m_app.pluginDb().plugins())
-        if (!p.failed && !p.hidden && p.category == "Instrument")
-            plug->addAction(p.name, [this, id, p] {
-                PluginInstanceData d = PluginHost::makeInstanceData(p, m_app.project().newId());
-                m_app.model().insert<PluginInstanceData>(d, "Add plugin");
-                m_app.changeChannelInstrument(id, "plugin", d.id);
-            });
+    m.addAction("Change instrument...", [this, id] { pickInstrument(m_app, this, id); });
     fillMixerTrackMenu(m.addMenu("Route to mixer track"), proj, c.mixerTrackId, [this, id](Id tid) { m_app.setChannelMixerTrack(id, tid); });
     if (IProcessor* proc = m_app.processor(id); proc && proc->auxOutputCount() > 0) {   // multi-out instruments
         auto* outs = m.addMenu("Plugin outputs");
@@ -1028,18 +1034,6 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
         }
         m.exec(m_patName->mapToGlobal(pos));
     });
-    auto* addMenu = new QMenu(this);
-    m_addMenu = addMenu;
-    for (auto* i : NativeRegistry::instance().byKind(ProcessorKind::Instrument))
-        addMenu->addAction(i->name, [this, k = i->key] { m_app.addChannel(channelTypeForKey(k), k); });
-    auto* plugMenu = addMenu->addMenu("Plugin instruments");
-    connect(plugMenu, &QMenu::aboutToShow, this, [this, plugMenu] {
-        plugMenu->clear();
-        for (auto& p : m_app.pluginDb().plugins())
-            if (!p.failed && !p.hidden && p.category == "Instrument")
-                plugMenu->addAction(p.name + " [" + p.format.toUpper() + "]", [this, p] { m_app.addPluginChannel(p); });
-        if (plugMenu->isEmpty()) plugMenu->addAction("(none scanned)")->setEnabled(false);
-    });
     auto* l1 = theme::dimLabel("Steps", this);
     m_steps = new DragValue(this);
     m_steps->setRange(4, 128, 1, 0);
@@ -1076,7 +1070,7 @@ ChannelRackPanel::ChannelRackPanel(App& app, QWidget* parent)
     m_scroll->setFrameShape(QFrame::NoFrame);
     theme::roundedFrame(m_scroll);
     lay->addWidget(m_scroll);
-    connect(m_view, &RackView::addChannelRequested, this, [this](const QPoint& g) { m_addMenu->popup(g); });
+    connect(m_view, &RackView::addChannelRequested, this, [this](const QPoint&) { pickInstrument(m_app, this, 0); });
     connect(m_view, &RackView::openEditor, this, &ChannelRackPanel::openEditor);
     connect(m_view, &RackView::openPianoRoll, this, &ChannelRackPanel::openPianoRoll);
     connect(m_steps, &DragValue::editingFinished, this, [this] {
