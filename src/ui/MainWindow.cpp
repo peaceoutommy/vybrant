@@ -838,7 +838,9 @@ void MainWindow::openEditor(Id id, const QString& titleIn) {
     auto* w = new PluginWindow(m_app, id, title, this);
     m_editors[id] = w;
     connect(w, &QObject::destroyed, this, [this, id] { m_editors.erase(id); });
-    w->move(screen()->availableGeometry().center() - w->rect().center());   // left alone, the window manager puts it top left
+    const QRect area = screen()->availableGeometry();   // left alone, the window manager puts it top left
+    const QPoint centred = area.center() - w->rect().center();
+    w->move(std::max(centred.x(), area.left()), std::max(centred.y(), area.top()));   // too big to fit: its title bar stays on screen
     w->show();
 }
 

@@ -61,13 +61,16 @@ private:
     void tick();
     void showPresetMenu();
     Id pluginInstanceId() const;   // of the channel or effect slot this window edits (0 = native processor)
-    void grabThumbnail(QPointer<QWidget> editor, const QString& file, int attempt);   // a picture of the GUI for the picker
+    // a picture of the GUI for the picker: captured every 1.5 s until two in a row look the same (the GUI has drawn)
+    void grabThumbnail(int gen);
+    void offerThumbnail(const QImage& img);
     Q_SLOT void portalScreenshot(uint code, const QVariantMap& results);
     struct {
         QPointer<QWidget> editor;
         QString file;
-        int attempt = 0;
-    } m_thumb;   // the screenshot asked of the desktop portal is for this
+        int gen = 0, attempt = 0;
+        QImage last;   // the previous capture, small
+    } m_thumb;
     App& m_app;
     Id m_owner;
     IProcessor* m_proc = nullptr;

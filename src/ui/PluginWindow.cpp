@@ -290,7 +290,10 @@ void PluginWindow::build() {
         if (auto* br = dynamic_cast<BridgedPlugin*>(m_proc)) br->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (const PluginInstanceData* d = m_app.project().plugin(pluginInstanceId())) {   // first time this GUI is shown: picture it
             const QString file = ProcessorPicker::thumbnailPath(d->format + ":" + d->identifier + "@" + d->path);
-            if (!QFile::exists(file)) QTimer::singleShot(2500, this, [this, ed = QPointer<QWidget>(custom), file] { grabThumbnail(ed, file, 0); });
+            if (!QFile::exists(file)) {
+                m_thumb = {custom, file, m_thumb.gen + 1, 0, {}};
+                QTimer::singleShot(2500, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
+            }
         }
     } else {
         auto* sc = new QScrollArea(this);
@@ -318,12 +321,11 @@ static void saveThumbnail(const QImage& img, const QString& file) {
 // The editor is a plugin's own window inside ours, so it is read back from the screen, not rendered by Qt. X can read a
 // GUI drawn through X; one drawn with OpenGL / Vulkan (Wine with DXVK, many JUCE plugins) reads back black, so then the
 // desktop portal takes a screenshot (what the compositor shows) and the editor's part is cut out of it.
-void PluginWindow::grabThumbnail(QPointer<QWidget> editor, const QString& file, int attempt) {
-    if (!editor || editor != m_body || !isVisible() || QFile::exists(file)) return;
+void PluginWindow::grabThumbnail(int gen) {
+    QWidget* editor = m_thumb.editor;
+    if (gen != m_thumb.gen || !editor || editor != m_body || !isVisible() || QFile::exists(m_thumb.file) || ++m_thumb.attempt > 12) return;
     const QImage img = screen()->grabWindow(winId(), editor->x(), editor->y(), editor->width(), editor->height()).toImage();
-    if (!flatImage(img)) return saveThumbnail(img, file);
-    if (attempt >= 3) return;
-    m_thumb = {editor, file, attempt};
+    if (!flatImage(img)) return offerThumbnail(img);
     auto bus = QDBusConnection::sessionBus();
     const QString token = QString("tactum%1").arg(QRandomGenerator::global()->generate());
     const QString request = "/org/freedesktop/portal/desktop/request/" + bus.baseService().mid(1).replace('.', '_') + "/" + token;
@@ -338,18 +340,32 @@ void PluginWindow::portalScreenshot(uint code, const QVariantMap& results) {
     const QString shot = QUrl(results.value("uri").toString()).toLocalFile();
     const QImage full(shot);
     QFile::remove(shot);   // a whole-screen picture made only for this
-    auto [editor, file, attempt] = m_thumb;
+    QWidget* editor = m_thumb.editor;
     if (code != 0 || full.isNull() || !editor || editor != m_body || !isVisible()) return;
     // the shot is of this screen or of the whole desktop: whichever matches its shape; scale its pixels to ours
     QRect area = screen()->geometry();
     auto aspect = [](QSizeF s) { return s.width() / s.height(); };
     if (std::fabs(aspect(full.size()) - aspect(screen()->virtualGeometry().size())) < std::fabs(aspect(full.size()) - aspect(area.size())))
         area = screen()->virtualGeometry();
-    const QRect r(editor->mapToGlobal(QPoint()) - area.topLeft(), editor->size());
+    const QRect r = QRect(editor->mapToGlobal(QPoint()) - area.topLeft(), editor->size()).intersected(QRect(QPoint(), area.size()));   // on screen
     const double sx = full.width() / double(area.width()), sy = full.height() / double(area.height());
-    const QImage img = full.copy(QRect(int(r.x() * sx), int(r.y() * sy), int(r.width() * sx), int(r.height() * sy)));
-    if (isActiveWindow() && !flatImage(img)) saveThumbnail(img, file);   // active: nothing was covering it
-    else QTimer::singleShot(3000, this, [this, editor, file, attempt] { grabThumbnail(editor, file, attempt + 1); });
+    offerThumbnail(isActiveWindow() ? full.copy(QRect(int(r.x() * sx), int(r.y() * sy), int(r.width() * sx), int(r.height() * sy)))
+                                    : QImage());   // not active: something may be covering it
+}
+// Saved once two captures in a row look the same: a slow plugin shows nothing (what is behind it) or half a frame at first
+void PluginWindow::offerThumbnail(const QImage& img) {
+    const QImage small = flatImage(img) ? QImage() : img.scaled(32, 32).convertToFormat(QImage::Format_RGB32);
+    if (!small.isNull() && small.size() == m_thumb.last.size()) {
+        double diff = 0;
+        for (int y = 0; y < 32; ++y)
+            for (int x = 0; x < 32; ++x) {
+                QRgb a = small.pixel(x, y), b = m_thumb.last.pixel(x, y);
+                diff += std::abs(qRed(a) - qRed(b)) + std::abs(qGreen(a) - qGreen(b)) + std::abs(qBlue(a) - qBlue(b));
+            }
+        if (diff / (32 * 32 * 3) < 6) return saveThumbnail(img, m_thumb.file);   // meters may move; the picture stays
+    }
+    m_thumb.last = small;
+    QTimer::singleShot(1500, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
 }
 Id PluginWindow::pluginInstanceId() const {
     if (const Channel* c = m_app.project().channel(m_owner)) return c->pluginInstanceId;
