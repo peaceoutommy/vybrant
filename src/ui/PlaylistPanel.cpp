@@ -905,7 +905,9 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         }
         if (e->button() == Qt::LeftButton) {
             setBrush(*c);   // FL: the clicked clip is what the draw tool places next
-            if (c->type == ClipType::Pattern && c->sourceId != proj.selectedPatternId) m_app.selectPattern(c->sourceId);
+            if (c->type == ClipType::Pattern) m_app.selectPattern(c->sourceId);
+            else if (auto* a = c->type == ClipType::Audio ? proj.audioSource(c->sourceId) : nullptr) Q_EMIT m_app.revealInProject("audio|" + a->filePath);
+            else if (c->type == ClipType::Automation) Q_EMIT m_app.revealInProject("lane|" + QString::number(c->sourceId));
         }
         beginEdit();
         m_dragClip = c->id;

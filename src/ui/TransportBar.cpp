@@ -144,12 +144,6 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_pattern->setFixedHeight(26);
     m_pattern->setToolTip("Selected pattern: edited in the Channel Rack and Piano Roll, played in pattern mode");
     row2->addWidget(m_pattern);
-    m_newPattern = new QToolButton(this);
-    m_newPattern->setText("+");
-    m_newPattern->setToolTip("New pattern (F4)");
-    m_newPattern->setFixedSize(26, 26);
-    m_newPattern->setFocusPolicy(Qt::NoFocus);
-    row2->addWidget(m_newPattern);
     sepIn(row2);
     m_midiLed = new QLabel("MIDI", this);
     theme::styled(m_midiLed, "color:@focus@; font-weight:bold; font-size:7.5pt;");
@@ -204,9 +198,10 @@ TransportBar::TransportBar(App& app, QWidget* parent)
         if (!m_updating) m_app.model().editTransport("Record mode", [i](TransportSettings& t) { t.recordMode = i; });
     });
     connect(m_pattern, &QComboBox::currentIndexChanged, this, [this](int i) {
-        if (!m_updating && i >= 0) m_app.selectPattern((Id)m_pattern->itemData(i).toULongLong());
+        if (m_updating || i < 0) return;
+        if (Id id = (Id)m_pattern->itemData(i).toULongLong()) m_app.selectPattern(id);
+        else QTimer::singleShot(0, this, [this] { m_app.addPattern(); });   // "+ New pattern": not rebuilt from inside its own signal
     });
-    connect(m_newPattern, &QToolButton::clicked, this, [this] { m_app.addPattern(); });
     m_position->installEventFilter(this);
     refresh(ChangeAll);
 }
@@ -217,6 +212,9 @@ void TransportBar::rebuildPatternCombo() {
         m_pattern->addItem(p.name, (qulonglong)p.id);
         m_pattern->setItemData(m_pattern->count() - 1, p.color, Qt::DecorationRole);
     }
+    m_pattern->insertSeparator(m_pattern->count());
+    m_pattern->addItem("+ New pattern", (qulonglong)0);
+    m_pattern->setItemData(m_pattern->count() - 1, "New pattern (F4)", Qt::ToolTipRole);
     for (int i = 0; i < m_pattern->count(); ++i)
         if ((Id)m_pattern->itemData(i).toULongLong() == m_app.project().selectedPatternId) m_pattern->setCurrentIndex(i);
 }

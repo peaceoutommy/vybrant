@@ -333,12 +333,29 @@ def main():
     ins.send(f"audioclip {wav}")   # track 0 at 0: a quarter-second sample
     hat = ins.send("clips").split()[-1]
     ins.send("pldrag 0 10 0 10")   # click it
+    panel = ins.send("projpanel")
+    check(panel.startswith("tab=0 current=audio|") and panel.endswith("hat.wav"), "clicking an audio clip shows its sample in the project strip", panel)
     ins.send("pldrag 3 3840 3 3840")
     placed = ins.send("clips").split()[-1]
     check(hat.endswith("A") and placed == "3:3840+" + hat.split("+")[1], "clicking a sample makes the draw tool place that sample",
           f"{hat} -> {placed}")
     b, z = map(float, ins.send("plpinch 0.5").split())
     check(abs(z - b * 1.5) < 1e-6, "trackpad pinch zooms the playlist", f"{b} -> {z}")
+    ins.quit()
+
+    # ---- the project strip follows what was picked: a pattern clip, the pattern dropdown's "+ New pattern"
+    cfg13 = os.path.join(tmp, "cfg13")
+    os.makedirs(cfg13)
+    ins = Instance(cfg13, sock)
+    ins.send("pldrag 0 10 0 10")   # the demo's pattern clip
+    first = ins.send("projpanel")
+    check(first.startswith("tab=1 current=pattern|"), "clicking a pattern clip shows that pattern in the strip's Patterns tab", first)
+    r = ins.send("patcombo")
+    second = ins.send("projpanel")
+    check(r == "selected=Pattern 2 patterns=2" and second.startswith("tab=1 current=pattern|") and second != first,
+          "'+ New pattern' in the pattern dropdown adds a pattern, selects it and shows it in the strip", f"{r} {second}")
+    ins.send("pldrag 0 10 0 10")
+    check(ins.send("projpanel") == first, "clicking the clip again goes back to its pattern", ins.send("projpanel"))
     ins.quit()
 
     # ---- the app was called MusicThingy: its settings and data move to the new name on the first start

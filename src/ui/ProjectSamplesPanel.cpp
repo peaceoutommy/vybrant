@@ -137,6 +137,23 @@ void ProjectSamplesPanel::setTab(int t) {
     QSettings().setValue("ui/projectTab", m_tab);
     rebuild();
 }
+void ProjectSamplesPanel::reveal(const QString& payload) {
+    QString kind = payload.section('|', 0, 0);
+    int tab = kind == "pattern" ? Patterns : kind == "lane" ? Automation : Samples;
+    if (tab != m_tab) setTab(tab);
+    QSignalBlocker b(m_list);   // selecting it here must not select (or preview) it again
+    for (int i = 0; i < m_list->count(); ++i)
+        if (auto* x = m_list->item(i); x->data(ProjectItemList::PayloadRole).toString() == payload) {
+            m_list->clearSelection();
+            m_list->setCurrentItem(x);
+            x->setSelected(true);
+            m_list->scrollToItem(x);
+        }
+}
+QString ProjectSamplesPanel::debugState() const {
+    auto* it = m_list->currentItem();
+    return QString("tab=%1 current=%2").arg(m_tab).arg(it && it->isSelected() ? it->data(ProjectItemList::PayloadRole).toString() : QString());
+}
 void ProjectSamplesPanel::refresh(uint32_t flags) {
     if (flags & (ChangeAudio | ChangePlaylist | ChangeChannels | ChangeStructure | ChangePatterns | ChangeAutomation | ChangeAll))
         rebuild();

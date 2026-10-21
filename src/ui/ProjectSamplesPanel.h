@@ -74,6 +74,8 @@ public:
     explicit ProjectSamplesPanel(App& app, QWidget* parent = nullptr);
     void refresh(uint32_t flags);
     void setTab(int t);
+    void reveal(const QString& payload);   // switch to the row's tab and select it (App::revealInProject)
+    QString debugState() const;   // tests: "tab=<n> current=<payload>"
     QSize sizeHint() const override { return {170, 600}; }
     void debugDoubleClickFirst();   // tests: double-click the first row of the current tab
     bool debugDropFile(const QString& path);   // tests: a browser drop of a file onto the list

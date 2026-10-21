@@ -62,7 +62,6 @@ private:
     DragValue *m_bpm, *m_tsNum, *m_tsDen;
     QComboBox *m_pattern, *m_recMode;
     QLabel *m_position, *m_stats, *m_midiLed;
-    QToolButton* m_newPattern;
     int m_lastMidiActivity = 0;
     bool m_updating = false;
     QHBoxLayout* m_winLayout;

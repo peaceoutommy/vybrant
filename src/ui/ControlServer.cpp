@@ -423,6 +423,14 @@ QString ControlServer::handle(const QString& line) {
                 toast = l->text();
         return QString("channels=%1 toast=%2").arg(m_app.project().channels.size()).arg(toast);
     }
+    if (c == "projpanel") return m_win.samplesPanel()->debugState();
+    if (c == "patcombo") {   // pick the transport bar's "+ New pattern" entry: "selected=<name> patterns=<n>"
+        for (auto* cb : m_win.findChildren<QComboBox*>())
+            if (cb->toolTip().startsWith("Selected pattern")) cb->setCurrentIndex(cb->count() - 1);
+        QCoreApplication::processEvents();
+        const Pattern* p = m_app.project().pattern(m_app.project().selectedPatternId);
+        return QString("selected=%1 patterns=%2").arg(p ? p->name : QString()).arg(m_app.project().patterns.size());
+    }
     if (c == "samples" && a.size() >= 2) {   // project panel: samples drop <path> | samples open | samples show
         auto* sp = m_win.samplesPanel();
         if (a[1] == "drop" && a.size() >= 3) return sp->debugDropFile(a[2]) ? QString("sources=%1").arg(m_app.project().audioSources.size()) : "err";

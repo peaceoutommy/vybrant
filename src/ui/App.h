@@ -213,6 +213,7 @@ Q_SIGNALS:
     void projectLoaded();
     void midiLearnChanged(bool active, const QString& name);
     void previewChanged(const QString& path);   // preview started / stopped / loading state changed
+    void revealInProject(const QString& payload);   // the project strip shows this row: "pattern|<id>", "audio|<path>", "lane|<id>"
 
 private:
     void onModelChanged(uint32_t flags);

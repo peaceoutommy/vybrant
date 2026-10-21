@@ -605,10 +605,12 @@ Tick App::snapTick(Tick t, bool force) const {
     return (t + s / 2) / s * s;
 }
 void App::selectPattern(Id id) {
-    if (project().selectedPatternId == id) return;
-    project().selectedPatternId = id;
-    m_engine->setSelectedPattern(id);
-    m_model.notify(ChangePatterns | ChangeMeta);
+    if (project().selectedPatternId != id) {
+        project().selectedPatternId = id;
+        m_engine->setSelectedPattern(id);
+        m_model.notify(ChangePatterns | ChangeMeta);
+    }
+    if (id) Q_EMIT revealInProject("pattern|" + QString::number(id));   // also when it already was: the strip may show another tab
 }
 void App::selectChannel(Id id) {
     if (project().selectedChannelId == id) return;
