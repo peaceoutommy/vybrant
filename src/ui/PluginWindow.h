@@ -64,7 +64,6 @@ private:
     // a picture of the GUI for the picker: captured every 1.5 s until two in a row look the same (the GUI has drawn)
     void grabThumbnail(int gen);
     void offerThumbnail(const QImage& img);
-    Q_SLOT void portalScreenshot(uint code, const QVariantMap& results);
     struct {
         QPointer<QWidget> editor;
         QString file;

@@ -9,10 +9,16 @@
 #include "ui/ProcessorPicker.h"
 #include <QDir>
 #include <QScreen>
-#include <QDBusConnection>
-#include <QDBusMessage>
-#include <QRandomGenerator>
-#include <QUrl>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#undef Bool
+#undef None
+#undef Status
+#undef KeyPress
+#undef KeyRelease
+#undef FocusIn
+#undef FocusOut
+#undef Unsorted
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -318,39 +324,34 @@ static void saveThumbnail(const QImage& img, const QString& file) {
     QDir().mkpath(QFileInfo(file).path());
     img.scaledToWidth(std::min(img.width(), 480), Qt::SmoothTransformation).save(file);
 }
-// The editor is a plugin's own window inside ours, so it is read back from the screen, not rendered by Qt. X can read a
-// GUI drawn through X; one drawn with OpenGL / Vulkan (Wine with DXVK, many JUCE plugins) reads back black, so then the
-// desktop portal takes a screenshot (what the compositor shows) and the editor's part is cut out of it.
+// The plugin's own window, read back from X: just that window, never the screen (QScreen::grabWindow reads the root window,
+// which is empty under XWayland). Only the part on screen; an empty image when X cannot give it.
+static QImage grabX11Window(unsigned long wid) {
+    auto* x11 = qApp->nativeInterface<QNativeInterface::QX11Application>();
+    Display* d = x11 ? x11->display() : nullptr;
+    XWindowAttributes a;
+    if (!d || !XGetWindowAttributes(d, wid, &a) || a.map_state != IsViewable) return {};
+    int rx = 0, ry = 0;
+    Window child;
+    XTranslateCoordinates(d, wid, a.root, 0, 0, &rx, &ry, &child);
+    XWindowAttributes ra;
+    XGetWindowAttributes(d, a.root, &ra);
+    const QRect on = QRect(rx, ry, a.width, a.height).intersected(QRect(0, 0, ra.width, ra.height)).translated(-rx, -ry);
+    if (on.isEmpty()) return {};
+    auto old = XSetErrorHandler([](Display*, XErrorEvent*) { return 0; });   // a window that just went away: no image, no exit
+    XImage* im = XGetImage(d, wid, on.x(), on.y(), on.width(), on.height(), AllPlanes, ZPixmap);
+    XSync(d, False);
+    XSetErrorHandler(old);
+    if (!im) return {};
+    QImage img;
+    if (im->bits_per_pixel == 32) img = QImage((const uchar*)im->data, im->width, im->height, im->bytes_per_line, QImage::Format_RGB32).copy();
+    XDestroyImage(im);
+    return img;
+}
 void PluginWindow::grabThumbnail(int gen) {
     QWidget* editor = m_thumb.editor;
     if (gen != m_thumb.gen || !editor || editor != m_body || !isVisible() || QFile::exists(m_thumb.file) || ++m_thumb.attempt > 12) return;
-    const QImage img = screen()->grabWindow(winId(), editor->x(), editor->y(), editor->width(), editor->height()).toImage();
-    if (!flatImage(img)) return offerThumbnail(img);
-    auto bus = QDBusConnection::sessionBus();
-    const QString token = QString("tactum%1").arg(QRandomGenerator::global()->generate());
-    const QString request = "/org/freedesktop/portal/desktop/request/" + bus.baseService().mid(1).replace('.', '_') + "/" + token;
-    bus.connect("org.freedesktop.portal.Desktop", request, "org.freedesktop.portal.Request", "Response", this,
-        SLOT(portalScreenshot(uint, QVariantMap)));
-    QDBusMessage m = QDBusMessage::createMethodCall(
-        "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Screenshot", "Screenshot");
-    m << QString() << QVariantMap{{"interactive", false}, {"handle_token", token}};
-    bus.send(m);   // the answer is the Response signal
-}
-void PluginWindow::portalScreenshot(uint code, const QVariantMap& results) {
-    const QString shot = QUrl(results.value("uri").toString()).toLocalFile();
-    const QImage full(shot);
-    QFile::remove(shot);   // a whole-screen picture made only for this
-    QWidget* editor = m_thumb.editor;
-    if (code != 0 || full.isNull() || !editor || editor != m_body || !isVisible()) return;
-    // the shot is of this screen or of the whole desktop: whichever matches its shape; scale its pixels to ours
-    QRect area = screen()->geometry();
-    auto aspect = [](QSizeF s) { return s.width() / s.height(); };
-    if (std::fabs(aspect(full.size()) - aspect(screen()->virtualGeometry().size())) < std::fabs(aspect(full.size()) - aspect(area.size())))
-        area = screen()->virtualGeometry();
-    const QRect r = QRect(editor->mapToGlobal(QPoint()) - area.topLeft(), editor->size()).intersected(QRect(QPoint(), area.size()));   // on screen
-    const double sx = full.width() / double(area.width()), sy = full.height() / double(area.height());
-    offerThumbnail(isActiveWindow() ? full.copy(QRect(int(r.x() * sx), int(r.y() * sy), int(r.width() * sx), int(r.height() * sy)))
-                                    : QImage());   // not active: something may be covering it
+    offerThumbnail(grabX11Window(editor->winId()));
 }
 // Saved once two captures in a row look the same: a slow plugin shows nothing (what is behind it) or half a frame at first
 void PluginWindow::offerThumbnail(const QImage& img) {
