@@ -20,7 +20,8 @@ public:
     QString nativeKey() const { return m_nativeKey; }
     const PluginInfo* plugin() const { return m_plugin; }
     static QString categoryOf(const PluginInfo& p);   // what a plugin does, from its own categories and name
-    static QString thumbnailPath(const QString& pluginKey);   // picture of a plugin's GUI (PluginInfo::key()), saved by PluginWindow
+    // picture of a plugin's GUI, saved by PluginWindow; one per plugin, whatever its format (VST2, VST3, CLAP, LV2)
+    static QString thumbnailPath(const QString& vendor, const QString& name);
     bool cards() const { return m_cards; }
     bool isFavorite(const QString& key) const { return m_favorites.contains(key); }
     void toggleFavorite(const QString& key);

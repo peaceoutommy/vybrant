@@ -415,9 +415,9 @@ void fitItems(QListWidget* w, bool cards) {
 }
 }   // namespace
 
-QString ProcessorPicker::thumbnailPath(const QString& pluginKey) {
+QString ProcessorPicker::thumbnailPath(const QString& vendor, const QString& name) {
     return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/thumbnails/" +
-        QCryptographicHash::hash(pluginKey.toUtf8(), QCryptographicHash::Md5).toHex() + ".png";
+        QCryptographicHash::hash((vendor + '/' + name).toLower().toUtf8(), QCryptographicHash::Md5).toHex() + ".png";
 }
 
 // What a plugin does, from the categories it reports (VST3 "Fx|Dynamics", CLAP features, the LV2 class) and its name
@@ -625,7 +625,7 @@ void ProcessorPicker::rebuild(bool keepPlace) {
             it->setData(VendorRole, e->vendor);
             it->setData(FormatRole, e->format);
             it->setData(CategoryRole, e->category);
-            const QString thumb = m_pictures && e->key.startsWith("plugin:") ? thumbnailPath(e->key.mid(7)) : QString();
+            const QString thumb = m_pictures && e->key.startsWith("plugin:") ? thumbnailPath(e->vendor, e->name) : QString();
             const bool hasThumb = !thumb.isEmpty() && QFile::exists(thumb);
             it->setData(ThumbRole, hasThumb ? thumb : QString());
             it->setToolTip(QString("%1<b>%2</b><br>%3  ·  %4  ·  %5")

@@ -295,7 +295,7 @@ void PluginWindow::build() {
         if (auto* l2 = dynamic_cast<Lv2Plugin*>(m_proc)) l2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* br = dynamic_cast<BridgedPlugin*>(m_proc)) br->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (const PluginInstanceData* d = m_app.project().plugin(pluginInstanceId())) {   // first time this GUI is shown: picture it
-            const QString file = ProcessorPicker::thumbnailPath(d->format + ":" + d->identifier + "@" + d->path);
+            const QString file = ProcessorPicker::thumbnailPath(d->manufacturer, d->name);
             if (!QFile::exists(file)) {
                 m_thumb = {custom, file, m_thumb.gen + 1, 0, {}};
                 QTimer::singleShot(1000, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
