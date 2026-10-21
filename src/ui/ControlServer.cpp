@@ -527,9 +527,10 @@ QString ControlServer::handle(const QString& line) {
             }
         return "err no audio clip";
     }
-    if (c == "picker" && a.size() >= 4) {   // open the effect / instrument picker: picker effect|instrument cards|list|-|star <png> [search words]
+    if (c == "picker" && a.size() >= 4) {   // open the effect / instrument picker: picker effect|instrument cards|list|pictures|-|star <png> [search words]
         ProcessorPicker dlg(m_app, a[1] == "instrument" ? ProcessorKind::Instrument : ProcessorKind::Effect, &m_win);
         if (a[2] == "cards" || a[2] == "list") dlg.findChild<QToolButton*>(a[2] == "list" ? "pickerList" : "pickerCards")->click();
+        if (a[2] == "pictures") dlg.findChild<QToolButton*>("pickerPictures")->click();   // toggles the plugins' own pictures
         dlg.findChild<QLineEdit*>("pickerSearch")->setText(a.mid(4).join(' '));
         dlg.show();
         QCoreApplication::processEvents();

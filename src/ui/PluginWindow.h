@@ -61,7 +61,7 @@ private:
     void tick();
     void showPresetMenu();
     Id pluginInstanceId() const;   // of the channel or effect slot this window edits (0 = native processor)
-    // a picture of the GUI for the picker: captured every 1.5 s until two in a row look the same (the GUI has drawn)
+    // a picture of the GUI for the picker: captured every second until two in a row look the same (the GUI has drawn), or on close
     void grabThumbnail(int gen);
     void offerThumbnail(const QImage& img);
     struct {

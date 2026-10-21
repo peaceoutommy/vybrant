@@ -378,7 +378,8 @@ public:
     }
 };
 
-QIcon viewIcon(bool grid) {
+enum class ViewIcon { Grid, List, Picture };
+QIcon viewIcon(ViewIcon kind) {
     QPixmap pm(28, 28);
     pm.setDevicePixelRatio(2);
     pm.fill(Qt::transparent);
@@ -386,10 +387,19 @@ QIcon viewIcon(bool grid) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(Qt::NoPen);
     p.setBrush(theme::iconColor());
-    if (grid)
+    if (kind == ViewIcon::Grid)
         for (int k = 0; k < 4; ++k) p.drawRoundedRect(QRectF(2 + (k % 2) * 6, 2 + (k / 2) * 6, 4.5, 4.5), 1, 1);
-    else
+    else if (kind == ViewIcon::List)
         for (int k = 0; k < 3; ++k) p.drawRoundedRect(QRectF(2, 2.5 + k * 4, 10, 2), 0.8, 0.8);
+    else {   // a framed picture: a sun over hills
+        p.setPen(QPen(theme::iconColor(), 1.2));
+        p.setBrush(Qt::NoBrush);
+        p.drawRoundedRect(QRectF(1.5, 2.5, 11, 9), 1.5, 1.5);
+        p.setPen(Qt::NoPen);
+        p.setBrush(theme::iconColor());
+        p.drawEllipse(QPointF(9.5, 5.5), 1.2, 1.2);
+        p.drawPolygon(QPolygonF({QPointF(2, 11), QPointF(5.5, 6.5), QPointF(8, 9.5), QPointF(9.5, 8), QPointF(12, 11)}));
+    }
     return QIcon(pm);
 }
 
@@ -445,6 +455,7 @@ ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
     const QStringList favs = s.value("browser/favorites").toStringList();
     m_favorites = QSet<QString>(favs.begin(), favs.end());
     m_recent = s.value("picker/recent").toStringList();
+    m_pictures = s.value("picker/pictures", true).toBool();
     for (auto& i : NativeRegistry::instance().all())
         if (i.kind == kind) m_entries.push_back({"native:" + i.key, i.name, "Tactum", "native", inst ? nativeInstrumentCategory(i.key) : i.category});
     for (auto& p : m_app.pluginDb().plugins()) {
@@ -485,11 +496,24 @@ ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
         }
     }
     top->addSpacing(12);
+    auto* pictures = new QToolButton(this);   // the plugins' own GUIs on the cards, or the drawings only
+    pictures->setObjectName("pickerPictures");
+    pictures->setIcon(viewIcon(ViewIcon::Picture));
+    pictures->setToolTip("Show pictures of the plugins' own windows (taken the first time each one is opened)");
+    pictures->setCheckable(true);
+    pictures->setAutoRaise(true);
+    pictures->setChecked(m_pictures);
+    connect(pictures, &QToolButton::toggled, this, [this](bool on) {
+        m_pictures = on;
+        QSettings().setValue("picker/pictures", on);
+        rebuild(true);
+    });
+    top->addWidget(pictures);
     auto* views = new QButtonGroup(this);
     for (bool grid : {true, false}) {
         auto* b = new QToolButton(this);
         b->setObjectName(grid ? "pickerCards" : "pickerList");
-        b->setIcon(viewIcon(grid));
+        b->setIcon(viewIcon(grid ? ViewIcon::Grid : ViewIcon::List));
         b->setToolTip(grid ? "Cards" : "List");
         b->setCheckable(true);
         b->setAutoRaise(true);
@@ -601,7 +625,7 @@ void ProcessorPicker::rebuild(bool keepPlace) {
             it->setData(VendorRole, e->vendor);
             it->setData(FormatRole, e->format);
             it->setData(CategoryRole, e->category);
-            const QString thumb = e->key.startsWith("plugin:") ? thumbnailPath(e->key.mid(7)) : QString();
+            const QString thumb = m_pictures && e->key.startsWith("plugin:") ? thumbnailPath(e->key.mid(7)) : QString();
             const bool hasThumb = !thumb.isEmpty() && QFile::exists(thumb);
             it->setData(ThumbRole, hasThumb ? thumb : QString());
             it->setToolTip(QString("%1<b>%2</b><br>%3  ·  %4  ·  %5")

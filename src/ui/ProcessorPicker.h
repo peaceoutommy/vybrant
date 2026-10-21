@@ -39,7 +39,7 @@ private:
     QSet<QString> m_favorites;
     QStringList m_recent;
     QString m_category, m_format;   // rail and chip filters ("" = all)
-    bool m_cards = true;
+    bool m_cards = true, m_pictures = true;   // m_pictures: the plugins' own GUIs on the cards
     QLineEdit* m_search;
     QListWidget* m_rail;
     QListWidget* m_items;

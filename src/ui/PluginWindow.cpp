@@ -298,7 +298,7 @@ void PluginWindow::build() {
             const QString file = ProcessorPicker::thumbnailPath(d->format + ":" + d->identifier + "@" + d->path);
             if (!QFile::exists(file)) {
                 m_thumb = {custom, file, m_thumb.gen + 1, 0, {}};
-                QTimer::singleShot(2500, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
+                QTimer::singleShot(1000, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
             }
         }
     } else {
@@ -350,7 +350,7 @@ static QImage grabX11Window(unsigned long wid) {
 }
 void PluginWindow::grabThumbnail(int gen) {
     QWidget* editor = m_thumb.editor;
-    if (gen != m_thumb.gen || !editor || editor != m_body || !isVisible() || QFile::exists(m_thumb.file) || ++m_thumb.attempt > 12) return;
+    if (gen != m_thumb.gen || !editor || editor != m_body || !isVisible() || QFile::exists(m_thumb.file) || ++m_thumb.attempt > 20) return;
     offerThumbnail(grabX11Window(editor->winId()));
 }
 // Saved once two captures in a row look the same: a slow plugin shows nothing (what is behind it) or half a frame at first
@@ -366,7 +366,7 @@ void PluginWindow::offerThumbnail(const QImage& img) {
         if (diff / (32 * 32 * 3) < 6) return saveThumbnail(img, m_thumb.file);   // meters may move; the picture stays
     }
     m_thumb.last = small;
-    QTimer::singleShot(1500, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
+    QTimer::singleShot(1000, this, [this, gen = m_thumb.gen] { grabThumbnail(gen); });
 }
 Id PluginWindow::pluginInstanceId() const {
     if (const Channel* c = m_app.project().channel(m_owner)) return c->pluginInstanceId;
@@ -412,6 +412,9 @@ void PluginWindow::showPresetMenu() {
 }
 void PluginWindow::closeEvent(QCloseEvent* e) {
     m_timer.stop();
+    // closed before two captures matched: what is on show now has been seen drawn, so keep that
+    if (m_thumb.editor && m_thumb.editor == m_body && !QFile::exists(m_thumb.file))
+        if (const QImage img = grabX11Window(m_thumb.editor->winId()); !flatImage(img)) saveThumbnail(img, m_thumb.file);
     QWidget::closeEvent(e);
 }
 
