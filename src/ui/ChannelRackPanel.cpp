@@ -144,7 +144,7 @@ void RackView::paintEvent(QPaintEvent*) {
         bool hot = QRectF(0, y, m_leftW, m_rowH).contains(mapFromGlobal(QCursor::pos()));
         p.setPen(Qt::NoPen);
         p.setBrush(theme::withAlpha(theme::raised(), hot ? 110 : 60));
-        p.drawRoundedRect(rr.adjusted(2, 1, -2, -1), theme::kRadius, theme::kRadius);
+        p.drawRoundedRect(rr.adjusted(2, 1, -2, -1), theme::radius(), theme::radius());
         QRectF nb(30, y + 3, 102, m_rowH - 6);
         p.setPen(QPen(hot ? theme::accent() : theme::border(), 1, Qt::DashLine));
         p.setBrush(hot ? theme::withAlpha(theme::accent(), 25) : Qt::NoBrush);
@@ -156,11 +156,11 @@ void RackView::paintEvent(QPaintEvent*) {
         p.setPen(QPen(theme::border(), 1, Qt::DashLine));
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(QRectF(15, y + 10, 8, 8));
-        p.drawRoundedRect(QRectF(136, y + 6, 15, 16), theme::kRadius, theme::kRadius);
-        p.drawRoundedRect(QRectF(154, y + 6, 15, 16), theme::kRadius, theme::kRadius);
+        p.drawRoundedRect(QRectF(136, y + 6, 15, 16), theme::radius(), theme::radius());
+        p.drawRoundedRect(QRectF(154, y + 6, 15, 16), theme::radius(), theme::radius());
         p.drawEllipse(QRectF(174, y + 4, 20, 20));
         p.drawEllipse(QRectF(200, y + 4, 20, 20));
-        p.drawRoundedRect(QRectF(226, y + 5, 28, m_rowH - 10), theme::kRadius, theme::kRadius);
+        p.drawRoundedRect(QRectF(226, y + 5, 28, m_rowH - 10), theme::radius(), theme::radius());
     }
     if (chans.empty()) {   // empty project: explain how to get a first channel in
         QRect r = QRect(8, m_rowH + 2, width() - 16, height() - m_rowH - 8);
@@ -183,11 +183,11 @@ void RackView::paintEvent(QPaintEvent*) {
         QRectF band = QRectF(rr).adjusted(2, 0, -2, -1);
         p.setPen(Qt::NoPen);
         p.setBrush((selected || multi) ? QColor(0x27, 0x2c, 0x33) : (r % 2 ? theme::panel() : theme::altRow()));
-        p.drawRoundedRect(band, theme::kRadius, theme::kRadius);
+        p.drawRoundedRect(band, theme::radius(), theme::radius());
         if (multi) {
             p.save();
             QPainterPath clip;
-            clip.addRoundedRect(band, theme::kRadius, theme::kRadius);
+            clip.addRoundedRect(band, theme::radius(), theme::radius());
             p.setClipPath(clip);
             p.fillRect(QRectF(band.left(), band.top(), 3, band.height()), theme::accent());
             p.restore();
@@ -221,7 +221,7 @@ void RackView::paintEvent(QPaintEvent*) {
         auto smallBtn = [&](QRectF r, const QString& t, bool on, QColor col) {
             p.setPen(QPen(on ? col.darker(120) : theme::border(), 1));
             p.setBrush(on ? col : theme::panel());
-            p.drawRoundedRect(r, theme::kRadius, theme::kRadius);
+            p.drawRoundedRect(r, theme::radius(), theme::radius());
             p.setPen(on ? theme::bg() : theme::textDim());
             p.setFont(theme::smallFont());
             p.drawText(r, Qt::AlignCenter, t);
@@ -245,7 +245,7 @@ void RackView::paintEvent(QPaintEvent*) {
         QRectF mb(226, rr.top() + 5, 28, m_rowH - 10);
         p.setPen(QPen(theme::border(), 1));
         p.setBrush(theme::surface());
-        p.drawRoundedRect(mb, theme::kRadius, theme::kRadius);
+        p.drawRoundedRect(mb, theme::radius(), theme::radius());
         int mi = proj.mixerIndex(c.mixerTrackId);
         p.setPen(theme::textDim());
         p.setFont(theme::smallFont());
@@ -305,7 +305,7 @@ void RackView::paintEvent(QPaintEvent*) {
             if (on && !beatA) lit = lit.darker(132);   // lit steps alternate per beat too, so a full row still shows the beats
             p.setPen(Qt::NoPen);
             p.setBrush(lit);
-            p.drawRoundedRect(sr, theme::kRadius, theme::kRadius);
+            p.drawRoundedRect(sr, theme::radius(), theme::radius());
             if (on) {
                 p.setPen(QPen(theme::withAlpha(Qt::white, 40), 1));
                 p.setBrush(Qt::NoBrush);

@@ -55,7 +55,7 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
     // three tabs styled like the browser's search box: one segmented control
     auto* tabs = new QWidget(this);
     tabs->setObjectName("projTabs");
-    theme::styled(tabs, "QWidget#projTabs { background: @surface@; border: 1px solid @border@; border-radius: 3px; }");
+    theme::styled(tabs, "QWidget#projTabs { background: @surface@; border: 1px solid @border@; border-radius: @radius@; }");
     tabs->setFixedHeight(26);
     auto* tl = new QHBoxLayout(tabs);
     tl->setContentsMargins(2, 2, 2, 2);
@@ -72,14 +72,14 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
         b->setCursor(Qt::PointingHandCursor);
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         theme::styled(b,
-            "QToolButton { color:@textDim@; background: transparent; border: none; border-radius: 3px; padding: 0 2px; font-size: 8pt; } QToolButton:hover { color:@text@; } QToolButton:checked { color:@text@; background:@raised@; font-weight: bold; }");
+            "QToolButton { color:@textDim@; background: transparent; border: none; border-radius: @radius@; padding: 0 2px; font-size: 8pt; } QToolButton:hover { color:@text@; } QToolButton:checked { color:@text@; background:@raised@; font-weight: bold; }");
         tl->addWidget(b);
         m_tabs[i] = b;
         connect(b, &QToolButton::clicked, this, [this, i] { setTab(i); });
     }
     lay->addWidget(tabs);
     auto* box = new QWidget(this);
-    theme::styled(box, "QWidget#sampleBox { background: @surface@; border: 1px solid @border@; border-radius: 3px; }");
+    theme::styled(box, "QWidget#sampleBox { background: @surface@; border: 1px solid @border@; border-radius: @radius@; }");
     box->setObjectName("sampleBox");
     auto* bl = new QVBoxLayout(box);
     bl->setContentsMargins(2, 2, 2, 2);

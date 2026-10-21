@@ -789,6 +789,21 @@ ThemeDialog::ThemeDialog(QWidget* parent)
         grid->addWidget(new QLabel(theme::paletteRoleLabel(role), this), r / 2, (r % 2) * 2 + 1);
         ++r;
     }
+    auto* radiusRow = new QHBoxLayout();
+    radiusRow->addWidget(new QLabel("Corner radius", this));
+    auto* radius = new QSlider(Qt::Horizontal, this);
+    radius->setRange(0, 12);
+    radius->setValue((int)std::lround(theme::radius()));
+    radius->setToolTip("Roundness of buttons, boxes, clips and list rows, in pixels");
+    auto* radiusValue = new QLabel(QString("%1 px").arg(radius->value()), this);
+    radiusRow->addWidget(radius, 1);
+    radiusRow->addWidget(radiusValue);
+    right->addLayout(radiusRow);
+    connect(radius, &QSlider::valueChanged, this, [radiusValue](int v) {
+        radiusValue->setText(QString("%1 px").arg(v));
+        theme::setRadius(v);
+        theme::applyTheme(theme::current());
+    });
     right->addStretch(1);
 
     auto* btns = new QHBoxLayout();

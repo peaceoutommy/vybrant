@@ -152,7 +152,7 @@ void Fader::paintEvent(QPaintEvent*) {
     QRectF h(trackX - 8, y - 5, 16, 10);
     p.setPen(QPen(QColor(0x3a, 0x40, 0x48), 1));
     p.setBrush(QColor(0x2e, 0x33, 0x3a));
-    p.drawRoundedRect(h, theme::kRadius, theme::kRadius);
+    p.drawRoundedRect(h, theme::radius(), theme::radius());
     p.setPen(theme::text());
     p.drawLine(QPointF(h.left() + 3, h.center().y()), QPointF(h.right() - 3, h.center().y()));
 }
@@ -359,7 +359,7 @@ void LedButton::paintEvent(QPaintEvent*) {
     QRectF r = rect().adjusted(0, 0, -1, -1);
     p.setPen(QPen(m_checked ? m_on.darker(120) : theme::border(), 1));
     p.setBrush(m_checked ? m_on : theme::panel());
-    p.drawRoundedRect(r, theme::kRadius, theme::kRadius);
+    p.drawRoundedRect(r, theme::radius(), theme::radius());
     p.setPen(m_checked ? theme::bg() : theme::textDim());
     p.setFont(theme::smallFont());
     p.drawText(r, Qt::AlignCenter, m_text);

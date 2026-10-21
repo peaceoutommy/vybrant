@@ -432,9 +432,11 @@ void PreviewBar::tick() {
 }
 void PreviewBar::paintEvent(QPaintEvent*) {
     QPainter p(this);
-    p.fillRect(rect(), theme::surface());
+    p.setRenderHint(QPainter::Antialiasing);
     p.setPen(theme::border());
-    p.drawRect(rect().adjusted(0, 0, -1, -1));
+    p.setBrush(theme::surface());
+    p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), theme::radius(), theme::radius());
+    p.setRenderHint(QPainter::Antialiasing, false);
     QString path = m_app.previewPath();
     auto b = m_app.previewBuffer();
     QRect wave = rect().adjusted(2, 16, -2, -2);
@@ -506,7 +508,7 @@ public:
         p->setRenderHint(QPainter::Antialiasing);
         p->setPen(Qt::NoPen);
         p->setBrush(hot ? theme::accent() : theme::withAlpha(theme::accent(), 150));
-        p->drawRoundedRect(QRectF(r), 3, 3);
+        p->drawRoundedRect(QRectF(r), theme::radiusFor(r.height()), theme::radiusFor(r.height()));
         p->setPen(QPen(QColor(0x14, 0x16, 0x1a), 2));
         QPointF c = QRectF(r).center();
         p->drawLine(QPointF(c.x() - 4, c.y()), QPointF(c.x() + 4, c.y()));
@@ -547,6 +549,7 @@ BrowserPanel::BrowserPanel(App& app, QWidget* parent)
     m_tree->viewport()->setAttribute(Qt::WA_Hover);
     m_tree->viewport()->installEventFilter(this);
     lay->addWidget(m_tree);
+    theme::roundedFrame(m_tree);
     m_previewBar = new PreviewBar(app, this);
     lay->addWidget(m_previewBar);
     connect(&app, &App::previewChanged, this, [this](const QString& path) {

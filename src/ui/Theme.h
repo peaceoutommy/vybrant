@@ -119,10 +119,11 @@ inline QColor withAlpha(QColor c, int a) {
     return c;
 }
 QString noteName(int midi);
-// Corner radius shared by painted buttons, cells and clips (matches the 3px of the stylesheet's buttons and boxes)
-constexpr double kRadius = 3.0;
+// Corner radius shared by painted buttons, cells, clips and the stylesheet's boxes (@radius@): a setting, Options > Theme
+double radius();
+void setRadius(double r);   // saved; follow with applyTheme(current()) so stylesheets and painted caches pick it up
 // Radius for small painted shapes: use the full radius unless the shape is too short for it
-inline double radiusFor(double h) { return std::min(kRadius, h / 2.5); }
+inline double radiusFor(double h) { return std::min(radius(), h / 2.5); }
 // Gives a square widget (a scroll area, a painted view) rounded corners and a 1px border: a mouse-transparent overlay
 // covers the corners with the panel background and strokes the frame, so the widget itself needs no changes
 void roundedFrame(QWidget* host);

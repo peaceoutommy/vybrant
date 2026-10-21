@@ -98,7 +98,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     sep();
     m_position = new QLabel("001:1:000", this);
     theme::styled(m_position,
-        "QLabel { background:@surface@; color:@accent@; border:1px solid @border@; border-radius:3px; padding:1px 9px; font-family: monospace; font-size: 12pt; }");
+        "QLabel { background:@surface@; color:@accent@; border:1px solid @border@; border-radius:@radius@; padding:1px 9px; font-family: monospace; font-size: 12pt; }");
     m_position->setFixedHeight(28);
     m_position->setToolTip("Song position in bars : beats : ticks - click to jump to a bar");
     lay->addWidget(m_position);
@@ -127,7 +127,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     // The hint fills the rest of row 1, flush with the right edge of the window.
     m_hint = new QLabel(this);
     theme::styled(m_hint,
-        "QLabel { color:@textDim@; font-size:8pt; padding:0 6px; background:@surface@; border:1px solid @border@; border-radius:3px; }");
+        "QLabel { color:@textDim@; font-size:8pt; padding:0 6px; background:@surface@; border:1px solid @border@; border-radius:@radius@; }");
     m_hint->setFixedHeight(theme::kBarH);
     m_hint->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);   // shrinks (even away) on small screens instead of widening the window
     lay->addWidget(m_hint, 1);

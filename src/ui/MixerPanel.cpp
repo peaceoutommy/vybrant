@@ -115,7 +115,7 @@ void EffectSlotList::paintEvent(QPaintEvent*) {
             if (crashed || !available) c = QColor(0x4a, 0x24, 0x24);
             p.setPen(Qt::NoPen);
             p.setBrush(c);
-            p.drawRoundedRect(rr, theme::kRadius, theme::kRadius);
+            p.drawRoundedRect(rr, theme::radius(), theme::radius());
             p.setPen(Qt::NoPen);
             p.setBrush(e.bypass ? theme::textDim() : theme::green());
             p.drawEllipse(QRect(rr.left() + 3, rr.top() + 5, 6, 6));
@@ -125,13 +125,13 @@ void EffectSlotList::paintEvent(QPaintEvent*) {
             if (m_dragging && m_dragSlot == slot) {
                 p.setPen(QPen(theme::accent(), 1));
                 p.setBrush(Qt::NoBrush);
-                p.drawRoundedRect(rr, theme::kRadius, theme::kRadius);
+                p.drawRoundedRect(rr, theme::radius(), theme::radius());
             }
         } else {
             bool hot = slot == m_hoverSlot;
             p.setPen(QPen(hot ? theme::withAlpha(theme::accent(), 140) : theme::grid(), 1));
             p.setBrush(hot ? theme::withAlpha(theme::text(), 18) : Qt::NoBrush);
-            p.drawRoundedRect(rr, theme::kRadius, theme::kRadius);
+            p.drawRoundedRect(rr, theme::radius(), theme::radius());
             if (hot) {
                 p.setPen(theme::textDim());
                 p.drawText(rr, Qt::AlignCenter, "+");
@@ -449,7 +449,7 @@ void MixerStrip::refresh() {
     m_name->setText(t->freezeTrackId ? t->name + " \u2744" : t->name);   // snowflake: frozen
     // Kept as a theme template so a live theme change re-applies it; the track colour is this strip's own, not the theme's.
     theme::styled(m_name,
-        QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:3px; background:%1; color:%2; border-bottom: 2px solid %3;")
+        QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:@radius@; background:%1; color:%2; border-bottom: 2px solid %3;")
             .arg(m_selected ? "@hover@" : "@panel@", m_selected ? "@accent@" : "@text@", t->color.name()));
     m_input->setText(t->inputChannel < 0 ? "In: -"
             : t->inputStereo             ? QString("In %1+%2").arg(t->inputChannel + 1).arg(t->inputChannel + 2)
@@ -490,7 +490,7 @@ void MixerStrip::paintEvent(QPaintEvent*) {
     p.setRenderHint(QPainter::Antialiasing);
     p.setPen(QPen(theme::border(), 1));
     p.setBrush(m_selected ? theme::hover() : theme::panel());
-    p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), theme::kRadius, theme::kRadius);   // each strip is a rounded card
+    p.drawRoundedRect(QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5), theme::radius(), theme::radius());   // each strip is a rounded card
 }
 void MixerStrip::mousePressEvent(QMouseEvent* e) {
     if (e->button() == Qt::LeftButton) Q_EMIT selected(m_track, e->modifiers());

@@ -330,13 +330,19 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
     bool sel = m_selected.count(c.id);
     QColor col = clipColor(c);
     if (c.muted) col = col.darker(220);
-    p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(col.darker(125), 1));
-    p.setBrush(col.darker(sel ? 135 : 190));
-    p.drawRoundedRect(r, theme::kRadius, theme::kRadius);
-    p.setClipRect(
-        r.adjusted(1, 1, -1, -1), Qt::IntersectClip);   // intersect, so a clip scrolled off the left never paints over the track headers
-    // header strip
-    p.fillRect(QRect(r.left(), r.top(), r.width(), 13), theme::withAlpha(col, sel ? 230 : 170));
+    // body and header are one rounded shape: a square header strip inside rounded corners left notched corners
+    double rad = theme::radiusFor(r.height());
+    QPainterPath shape;
+    shape.addRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), rad, rad);   // on pixel centres, so the border is crisp
+    QPainterPath head;
+    head.addRect(QRectF(r.left(), r.top(), r.width(), 13.5));
+    p.setRenderHint(QPainter::Antialiasing);
+    p.fillPath(shape, col.darker(sel ? 135 : 190));
+    p.fillPath(shape.intersected(head), theme::withAlpha(col, sel ? 230 : 170));
+    p.setRenderHint(QPainter::Antialiasing, false);
+    // the content (notes, waveform, automation) stays inside the rounded shape; intersect, so a clip scrolled off the left
+    // never paints over the track headers. The border, drawn last and antialiased, covers the clip's hard edge.
+    p.setClipPath(shape, Qt::IntersectClip);
     p.setPen(theme::bg());
     p.setFont(theme::smallFont());
     p.drawText(QRect(r.left() + 4, r.top(), r.width() - 8, 13), Qt::AlignVCenter | Qt::AlignLeft, c.name + (c.muted ? " (muted)" : ""));
@@ -469,7 +475,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
                                          : QString("%1%2 dB").arg(c.gain > 1.f ? "+" : "").arg(20.0 * std::log10(c.gain), 0, 'f', 1));
                 p.setPen(Qt::NoPen);
                 p.setBrush(hot ? theme::withAlpha(theme::accent(), 200) : QColor(0, 0, 0, unity ? 60 : 120));
-                p.drawRoundedRect(ir, 3, 3);
+                p.drawRoundedRect(ir, theme::radiusFor(ir.height()), theme::radiusFor(ir.height()));
                 p.setPen(hot ? theme::bg() : QColor(255, 255, 255, unity ? 130 : 230));
                 p.drawText(ir, Qt::AlignCenter, txt);
             }
@@ -501,6 +507,13 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
             }
         }
     }
+    p.restore();
+    p.save();
+    if (alpha < 0.999) p.setOpacity(alpha);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(sel ? QPen(Qt::white, 1.2) : QPen(col.darker(125), 1));
+    p.setBrush(Qt::NoBrush);
+    p.drawPath(shape);
     p.restore();
 }
 void PlaylistView::renderCache() {
@@ -593,7 +606,7 @@ void PlaylistView::renderCache() {
         auto btn = [&](QRect r, const QString& s, bool on, QColor c) {
             p.setPen(QPen(on ? c.darker(120) : theme::border(), 1));
             p.setBrush(on ? c : QColor(0x16, 0x19, 0x1e));
-            p.drawRoundedRect(r, theme::kRadius, theme::kRadius);
+            p.drawRoundedRect(r, theme::radius(), theme::radius());
             p.setPen(on ? theme::bg() : theme::textDim());
             p.setFont(theme::smallFont());
             p.drawText(r, Qt::AlignCenter, s);
@@ -687,10 +700,11 @@ void PlaylistView::paintEvent(QPaintEvent*) {
                     trackH(tr) - 2);
                 p.save();
                 p.setClipRect(L.area);
-                p.setRenderHint(QPainter::Antialiasing, false);
+                p.setRenderHint(QPainter::Antialiasing);
                 p.setPen(QPen(theme::withAlpha(pc, 200), 1));
                 p.setBrush(theme::withAlpha(pc, 40));
-                p.drawRect(r);
+                double rad = theme::radiusFor(r.height());
+                p.drawRoundedRect(QRectF(r).adjusted(0.5, 0.5, -0.5, -0.5), rad, rad);
                 p.restore();
             }
         }
