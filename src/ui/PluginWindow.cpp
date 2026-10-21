@@ -6,6 +6,13 @@
 #include "plugins/ClapPlugin.h"
 #include "plugins/Lv2Plugin.h"
 #include "plugins/PluginBridge.h"
+#include "ui/ProcessorPicker.h"
+#include <QDir>
+#include <QScreen>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QRandomGenerator>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -281,6 +288,10 @@ void PluginWindow::build() {
         if (auto* c = dynamic_cast<ClapPlugin*>(m_proc)) c->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* l2 = dynamic_cast<Lv2Plugin*>(m_proc)) l2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* br = dynamic_cast<BridgedPlugin*>(m_proc)) br->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
+        if (const PluginInstanceData* d = m_app.project().plugin(pluginInstanceId())) {   // first time this GUI is shown: picture it
+            const QString file = ProcessorPicker::thumbnailPath(d->format + ":" + d->identifier + "@" + d->path);
+            if (!QFile::exists(file)) QTimer::singleShot(2500, this, [this, ed = QPointer<QWidget>(custom), file] { grabThumbnail(ed, file, 0); });
+        }
     } else {
         auto* sc = new QScrollArea(this);
         sc->setWidgetResizable(true);
@@ -293,6 +304,52 @@ void PluginWindow::build() {
         resize(6 * 86 + 40, std::min(760, 64 + rows * 84));
     }
     adjustSize();
+}
+static bool flatImage(const QImage& img) {   // nothing, or one flat colour: the GUI has not drawn yet
+    const QImage probe = img.scaled(8, 8).convertToFormat(QImage::Format_RGB32);
+    for (int k = 1; k < 64 && !img.isNull(); ++k)
+        if (probe.pixel(k % 8, k / 8) != probe.pixel(0, 0)) return false;
+    return true;
+}
+static void saveThumbnail(const QImage& img, const QString& file) {
+    QDir().mkpath(QFileInfo(file).path());
+    img.scaledToWidth(std::min(img.width(), 480), Qt::SmoothTransformation).save(file);
+}
+// The editor is a plugin's own window inside ours, so it is read back from the screen, not rendered by Qt. X can read a
+// GUI drawn through X; one drawn with OpenGL / Vulkan (Wine with DXVK, many JUCE plugins) reads back black, so then the
+// desktop portal takes a screenshot (what the compositor shows) and the editor's part is cut out of it.
+void PluginWindow::grabThumbnail(QPointer<QWidget> editor, const QString& file, int attempt) {
+    if (!editor || editor != m_body || !isVisible() || QFile::exists(file)) return;
+    const QImage img = screen()->grabWindow(winId(), editor->x(), editor->y(), editor->width(), editor->height()).toImage();
+    if (!flatImage(img)) return saveThumbnail(img, file);
+    if (attempt >= 3) return;
+    m_thumb = {editor, file, attempt};
+    auto bus = QDBusConnection::sessionBus();
+    const QString token = QString("tactum%1").arg(QRandomGenerator::global()->generate());
+    const QString request = "/org/freedesktop/portal/desktop/request/" + bus.baseService().mid(1).replace('.', '_') + "/" + token;
+    bus.connect("org.freedesktop.portal.Desktop", request, "org.freedesktop.portal.Request", "Response", this,
+        SLOT(portalScreenshot(uint, QVariantMap)));
+    QDBusMessage m = QDBusMessage::createMethodCall(
+        "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop", "org.freedesktop.portal.Screenshot", "Screenshot");
+    m << QString() << QVariantMap{{"interactive", false}, {"handle_token", token}};
+    bus.send(m);   // the answer is the Response signal
+}
+void PluginWindow::portalScreenshot(uint code, const QVariantMap& results) {
+    const QString shot = QUrl(results.value("uri").toString()).toLocalFile();
+    const QImage full(shot);
+    QFile::remove(shot);   // a whole-screen picture made only for this
+    auto [editor, file, attempt] = m_thumb;
+    if (code != 0 || full.isNull() || !editor || editor != m_body || !isVisible()) return;
+    // the shot is of this screen or of the whole desktop: whichever matches its shape; scale its pixels to ours
+    QRect area = screen()->geometry();
+    auto aspect = [](QSizeF s) { return s.width() / s.height(); };
+    if (std::fabs(aspect(full.size()) - aspect(screen()->virtualGeometry().size())) < std::fabs(aspect(full.size()) - aspect(area.size())))
+        area = screen()->virtualGeometry();
+    const QRect r(editor->mapToGlobal(QPoint()) - area.topLeft(), editor->size());
+    const double sx = full.width() / double(area.width()), sy = full.height() / double(area.height());
+    const QImage img = full.copy(QRect(int(r.x() * sx), int(r.y() * sy), int(r.width() * sx), int(r.height() * sy)));
+    if (isActiveWindow() && !flatImage(img)) saveThumbnail(img, file);   // active: nothing was covering it
+    else QTimer::singleShot(3000, this, [this, editor, file, attempt] { grabThumbnail(editor, file, attempt + 1); });
 }
 Id PluginWindow::pluginInstanceId() const {
     if (const Channel* c = m_app.project().channel(m_owner)) return c->pluginInstanceId;

@@ -1383,7 +1383,8 @@ int runSelfTest(App& app) {
         CHECK(cat("Effect", "Fx|Dynamics", "Squash") == "Dynamics" && cat("Effect", "audio-effect|equalizer|stereo", "X") == "EQ / Filter" &&
                   cat("Effect", "Reverb", "LSP Room Builder") == "Time" && cat("Effect", "audio-effect", "Step Sequencer") == "Other" &&
                   cat("Effect", "Fx", "Tape Saturator") == "Distortion" && cat("Instrument", "instrument|synthesizer", "Surge XT") == "Synths" &&
-                  cat("Instrument", "Instrument|Drum", "Kit") == "Drums" && cat("Instrument", "Instrument Plugin", "LSP Multi-Sampler") == "Samplers",
+                  cat("Instrument", "Instrument|Drum", "Kit") == "Drums" && cat("Instrument", "Instrument Plugin", "LSP Multi-Sampler") == "Samplers" &&
+                  cat("Instrument", "Instrument", "SRX PIANO 1") == "Keys",
             "the processor picker puts plugins in the right category");
     }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);

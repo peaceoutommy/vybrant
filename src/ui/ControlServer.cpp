@@ -19,6 +19,7 @@
 #include "ui/ChannelRackPanel.h"
 #include "audio/RenderEngine.h"
 #include <QLocalSocket>
+#include <QScreen>
 #include <QStandardPaths>
 #include <QTimer>
 #include <QDir>
@@ -466,8 +467,14 @@ QString ControlServer::handle(const QString& line) {
     }
     if (c == "editors") {   // visible plugin / instrument editor windows
         int n = 0;
-        for (auto* pw : m_win.findChildren<PluginWindow*>()) n += pw->isVisible();
-        return QString::number(n);
+        QString geo;   // "editors geo": where the last visible one sits, as its centre's offset from the screen's centre
+        for (auto* pw : m_win.findChildren<PluginWindow*>())
+            if (pw->isVisible()) {
+                ++n;
+                QPoint d = pw->geometry().center() - pw->screen()->availableGeometry().center();
+                geo = QString("%1 %2").arg(d.x()).arg(d.y());
+            }
+        return a.value(1) == "geo" ? geo : QString::number(n);
     }
     if (c == "key" && a.size() >= 3) {   // a key press on a view: key pr|pl <QKeySequence text, e.g. Ctrl+A, Shift+I, PgUp, Del, 1>
         QWidget* v = a[1] == "pl" ? (QWidget*)m_win.playlist()->view() : (QWidget*)m_win.pianoRoll()->view();

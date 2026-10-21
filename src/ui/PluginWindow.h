@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QToolButton>
 #include <QTimer>
+#include <QPointer>
 #include <functional>
 class QComboBox;
 class QCheckBox;
@@ -60,6 +61,13 @@ private:
     void tick();
     void showPresetMenu();
     Id pluginInstanceId() const;   // of the channel or effect slot this window edits (0 = native processor)
+    void grabThumbnail(QPointer<QWidget> editor, const QString& file, int attempt);   // a picture of the GUI for the picker
+    Q_SLOT void portalScreenshot(uint code, const QVariantMap& results);
+    struct {
+        QPointer<QWidget> editor;
+        QString file;
+        int attempt = 0;
+    } m_thumb;   // the screenshot asked of the desktop portal is for this
     App& m_app;
     Id m_owner;
     IProcessor* m_proc = nullptr;

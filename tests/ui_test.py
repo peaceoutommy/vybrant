@@ -375,6 +375,9 @@ def main():
     check("sections=Favorites,Dynamics" in r, "clicking a card's star lists it under Favorites", r)
     r = ins.send(f"picker effect - {png}")
     check("sections=Favorites,Dynamics" in r, "favourites are kept for the next picker", r)
+    ins.send("editor 0")
+    dx, dy = map(int, ins.send("editors geo").split())
+    check(abs(dx) <= 2 and abs(dy) <= 40, "an editor window opens in the middle of the screen", f"{dx} {dy}")
     ins.quit()
 
     # ---- the app was called MusicThingy: its settings and data move to the new name on the first start

@@ -838,6 +838,7 @@ void MainWindow::openEditor(Id id, const QString& titleIn) {
     auto* w = new PluginWindow(m_app, id, title, this);
     m_editors[id] = w;
     connect(w, &QObject::destroyed, this, [this, id] { m_editors.erase(id); });
+    w->move(screen()->availableGeometry().center() - w->rect().center());   // left alone, the window manager puts it top left
     w->show();
 }
 

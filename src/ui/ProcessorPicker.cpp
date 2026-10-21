@@ -2,6 +2,10 @@
 #include "ui/Theme.h"
 #include "dsp/NativeRegistry.h"
 #include <QButtonGroup>
+#include <QCryptographicHash>
+#include <QFile>
+#include <QPixmapCache>
+#include <QStandardPaths>
 #include <QDialogButtonBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -23,15 +27,15 @@
 namespace mt {
 
 namespace {
-enum Role { KeyRole = Qt::UserRole, VendorRole, FormatRole, CategoryRole, HeaderRole, CountRole };
+enum Role { KeyRole = Qt::UserRole, VendorRole, FormatRole, CategoryRole, HeaderRole, CountRole, ThumbRole };
 const QStringList kEffectCats = {"Dynamics", "EQ / Filter", "Time", "Modulation", "Distortion", "Utility", "Other"};
-const QStringList kInstrumentCats = {"Synths", "Samplers", "Drums", "Other"};
+const QStringList kInstrumentCats = {"Synths", "Keys", "Samplers", "Drums", "Other"};
 const QColor kStar(0xf5, 0xc5, 0x42);
 
 QColor categoryColor(const QString& c) {
     static const QHash<QString, QColor> colors = {{"Dynamics", QColor(0xe8, 0xa2, 0x4a)}, {"EQ / Filter", QColor(0x5a, 0xb0, 0xf0)},
         {"Time", QColor(0x9b, 0x7c, 0xf0)}, {"Modulation", QColor(0x4f, 0xd1, 0xa5)}, {"Distortion", QColor(0xf0, 0x6a, 0x5a)},
-        {"Utility", QColor(0xa0, 0xa8, 0xb0)}, {"Synths", QColor(0xf0, 0xc7, 0x5a)}, {"Samplers", QColor(0x6f, 0xc2, 0xe8)},
+        {"Utility", QColor(0xa0, 0xa8, 0xb0)}, {"Synths", QColor(0xf0, 0xc7, 0x5a)}, {"Keys", QColor(0xe0, 0xd6, 0xc4)}, {"Samplers", QColor(0x6f, 0xc2, 0xe8)},
         {"Drums", QColor(0xf0, 0x8a, 0x5a)}};
     return colors.value(c, QColor(0x8a, 0x96, 0xa0));
 }
@@ -172,6 +176,15 @@ void drawSignal(QPainter& p, const QRectF& r, const QString& cat, const QString&
                 path.lineTo(at(x + w, 0.92));
             }
         } else path = wave([=](double t) { return 2 * std::fabs(2 * std::fmod(t * cyc + 0.25, 1.0) - 1) - 1; }, 48);
+    } else if (cat == "Keys") {   // a stretch of keyboard
+        const int white = 7 + int(v(0) * 3.99);
+        const double w = 1.0 / white;
+        for (int k = 0; k < white; ++k) path.addRect(QRectF(at(k * w, 0.04), at((k + 1) * w, 0.96)));
+        p.drawPath(path);
+        path = QPainterPath();
+        p.setBrush(c);
+        for (int k = 0; k < white - 1; ++k)
+            if (k % 7 != 2 && k % 7 != 6) path.addRect(QRectF(at((k + 0.68) * w, 0.04), at((k + 1.32) * w, 0.6)));
     } else if (cat == "Samplers") {   // a recorded waveform
         const double f = 1.1 + 2 * v(0), ph = 6 * v(1), len = 18 + 8 * v(2);
         path = bars(18, [=](int i) { return (0.2 + 0.8 * std::fabs(std::sin(i * f + ph))) * std::max(0.08, 1 - i / len); }, 0, true);
@@ -189,6 +202,24 @@ void drawSignal(QPainter& p, const QRectF& r, const QString& cat, const QString&
     } else path = wave([=](double t) { return 0.6 * std::sin(2 * M_PI * (1 + v(0)) * t); }, 48);
     p.drawPath(path);
     p.restore();
+}
+
+// The plugin's own GUI, as captured the first time it was opened (PluginWindow), filling r from its top left corner, where
+// most GUIs carry their name. False when there is no picture yet.
+bool drawThumb(QPainter& p, const QRectF& r, const QString& file, bool lit) {
+    QPixmap pm;
+    if (file.isEmpty() || (!QPixmapCache::find(file, &pm) && !(pm.load(file) && QPixmapCache::insert(file, pm)))) return false;
+    const QSizeF cover = QSizeF(pm.size()).scaled(r.size(), Qt::KeepAspectRatioByExpanding);
+    const QRectF src(0, 0, r.width() * pm.width() / cover.width(), r.height() * pm.height() / cover.height());
+    QPainterPath clip;
+    clip.addRoundedRect(r, theme::radiusFor(r.height()), theme::radiusFor(r.height()));
+    p.save();
+    p.setClipPath(clip, Qt::IntersectClip);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    p.setOpacity(lit ? 1.0 : 0.85);
+    p.drawPixmap(r, pm, src);
+    p.restore();
+    return true;
 }
 
 void drawStar(QPainter& p, const QRectF& r, bool on, bool hot) {
@@ -253,11 +284,11 @@ public:
             p->setPen(QPen(sel ? theme::accent() : hot ? theme::gridStrong() : theme::border(), sel ? 1.5 : 1));
             p->setBrush(hot ? theme::hover() : theme::panelLight());
             p->drawRoundedRect(card, theme::radius(), theme::radius());
-            QRectF scope(card.left() + 6, card.top() + 6, card.width() - 12, 30);
+            QRectF scope(card.left() + 6, card.top() + 6, card.width() - 12, 46);
             p->setPen(Qt::NoPen);
             p->setBrush(theme::withAlpha(cc, sel || hot ? 48 : 28));
-            p->drawRoundedRect(scope, theme::radiusFor(30), theme::radiusFor(30));
-            drawSignal(*p, scope.adjusted(10, 5, -30, -5), cat, name, cc);
+            p->drawRoundedRect(scope, theme::radiusFor(46), theme::radiusFor(46));
+            if (!drawThumb(*p, scope, i.data(ThumbRole).toString(), sel || hot)) drawSignal(*p, scope.adjusted(10, 8, -30, -8), cat, name, cc);
             if (fav || hot) drawStar(*p, starRect(o.rect), fav, hot);
             QRectF bottom(card.left() + 8, card.bottom() - 20, card.width() - 16, 14);
             QRectF badge = drawBadge(*p, bottom.right(), bottom.center().y(), format);
@@ -280,7 +311,7 @@ public:
             p->setPen(Qt::NoPen);
             p->setBrush(theme::withAlpha(cc, 36));
             p->drawRoundedRect(icon, theme::radiusFor(icon.height()), theme::radiusFor(icon.height()));
-            drawSignal(*p, icon.adjusted(4, 3, -4, -3), cat, name, cc);
+            if (!drawThumb(*p, icon, i.data(ThumbRole).toString(), sel || hot)) drawSignal(*p, icon.adjusted(4, 3, -4, -3), cat, name, cc);
             if (fav || hot) drawStar(*p, starRect(o.rect), fav, hot);
             QRectF badge = drawBadge(*p, row.right() - 28, row.center().y(), format);
             p->setFont(theme::smallFont());
@@ -369,10 +400,15 @@ void fitItems(QListWidget* w, bool cards) {
     for (int r = 0; r < w->count(); ++r) {
         auto* it = w->item(r);
         const bool header = it->data(HeaderRole).toBool();
-        it->setSizeHint(cards ? (header ? QSize(room - sp, 28) : QSize(cardW, 90)) : QSize(0, header ? 28 : 30));
+        it->setSizeHint(cards ? (header ? QSize(room - sp, 28) : QSize(cardW, 106)) : QSize(0, header ? 28 : 30));
     }
 }
 }   // namespace
+
+QString ProcessorPicker::thumbnailPath(const QString& pluginKey) {
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/thumbnails/" +
+        QCryptographicHash::hash(pluginKey.toUtf8(), QCryptographicHash::Md5).toHex() + ".png";
+}
 
 // What a plugin does, from the categories it reports (VST3 "Fx|Dynamics", CLAP features, the LV2 class) and its name
 QString ProcessorPicker::categoryOf(const PluginInfo& p) {
@@ -385,7 +421,8 @@ QString ProcessorPicker::categoryOf(const PluginInfo& p) {
     };
     if (p.category == "Instrument") {
         if (any({"drum", "percussion", "808", "909"})) return "Drums";
-        if (any({"sampler", "sample", "rompler", "piano"})) return "Samplers";
+        if (any({"piano", "keys", "organ", "rhodes", "wurli", "clav", "epiano", "harpsi", "celest"})) return "Keys";
+        if (any({"sampler", "sample", "rompler"})) return "Samplers";
         return "Synths";
     }
     if (any({"compress", "limit", "gate", "expand", "dynamic", "transient", "clipper", "deess"})) return "Dynamics";
@@ -564,7 +601,12 @@ void ProcessorPicker::rebuild(bool keepPlace) {
             it->setData(VendorRole, e->vendor);
             it->setData(FormatRole, e->format);
             it->setData(CategoryRole, e->category);
-            it->setToolTip(QString("%1\n%2  ·  %3  ·  %4").arg(e->name, e->vendor, e->category, e->format.toUpper()));
+            const QString thumb = e->key.startsWith("plugin:") ? thumbnailPath(e->key.mid(7)) : QString();
+            const bool hasThumb = !thumb.isEmpty() && QFile::exists(thumb);
+            it->setData(ThumbRole, hasThumb ? thumb : QString());
+            it->setToolTip(QString("%1<b>%2</b><br>%3  ·  %4  ·  %5")
+                    .arg(hasThumb ? QString("<img src=\"%1\" width=\"360\"><br>").arg(thumb.toHtmlEscaped()) : QString(),
+                        e->name.toHtmlEscaped(), e->vendor.toHtmlEscaped(), e->category, e->format.toUpper()));
         }
     };
     // with nothing typed, "All" opens on what was used last and the favourites; both are also in their own category
