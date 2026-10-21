@@ -20,8 +20,9 @@ HEADERS += $$files(src/*.h, true)
 
 # `make install` puts the binary and a launcher into the user's home (no root needed)
 target.path = $$(HOME)/.local/bin
-desktop.files = resources/tactum.desktop
+# the launcher gets the full path: not every desktop's launcher has ~/.local/bin on its PATH
 desktop.path = $$(HOME)/.local/share/applications
+desktop.extra = sed \"s|^Exec=tactum|Exec=$$(HOME)/.local/bin/tactum|\" $$PWD/resources/tactum.desktop > $(INSTALL_ROOT)$$desktop.path/tactum.desktop
 icon.files = resources/tactum.svg
 icon.path = $$(HOME)/.local/share/icons/hicolor/scalable/apps
 INSTALLS += target desktop icon
