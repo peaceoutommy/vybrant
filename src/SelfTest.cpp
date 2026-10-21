@@ -10,6 +10,11 @@
 #include "project/MidiFile.h"
 #include "ui/PianoRollPanel.h"
 #include "ui/widgets/Controls.h"
+#include "ui/dialogs/Dialogs.h"
+#include "ui/Theme.h"
+#include <QSlider>
+#include <QPushButton>
+#include <QSettings>
 #include "ui/AudioEditor.h"
 #include "ui/PlaylistPanel.h"
 #include "plugins/Lv2Plugin.h"
@@ -236,6 +241,28 @@ int runSelfTest(App& app) {
         };
         CHECK(r && files.size() >= 5 && peak("_00 Master") > 0.1f && peak(" Kick") > 0.1f && peak(" Snare") >= 0 && peak(" Snare") < 1e-4f,
             "stems: one file per used mixer track, each holding only what plays there (the demo snare has no steps)");
+    }
+    // ---- theme dialog: the corner radius previews live; closing without Save puts it back, Save keeps it
+    {
+        double r0 = theme::radius();
+        auto saved = [] { return QSettings().value("theme/radius", -1.0).toDouble(); };
+        double s0 = saved();
+        ThemeDialog d;
+        auto* slider = d.findChild<QSlider*>();
+        slider->setValue((int)r0 + 3);
+        bool live = theme::radius() == r0 + 3 && saved() == s0;
+        d.reject();
+        bool reverted = theme::radius() == r0 && saved() == s0;
+        ThemeDialog d2;
+        d2.findChild<QSlider*>()->setValue((int)r0 + 2);
+        for (auto* b : d2.findChildren<QPushButton*>())
+            if (b->text() == "Save") b->click();
+        bool kept = theme::radius() == r0 + 2 && saved() == r0 + 2;
+        CHECK(live && reverted && kept, "theme radius: previews live, Cancel puts it back, only Save keeps it");
+        theme::setRadius(r0);
+        if (s0 < 0) QSettings().remove("theme/radius");
+        else QSettings().setValue("theme/radius", s0);
+        theme::applyTheme(theme::current());
     }
     // ---- freeze: the insert's render plays in its place, so the song sounds the same - also with a latency effect on it
     {

@@ -184,6 +184,7 @@ void saveTheme(const Palette& p) {
     QSettings s;
     s.beginGroup("theme");
     s.setValue("preset", p.id);
+    s.setValue("radius", radius());
     // Only colours that differ from the preset are stored, so tweaking a preset later still reaches existing users.
     // A user theme has no preset behind it - it is written in full by saveUserTheme - so nothing is diffed here.
     const Palette* base = isUserTheme(p.id) ? nullptr : preset(p.id);
@@ -279,10 +280,7 @@ double radius() {
     if (g_radius < 0) g_radius = std::clamp(QSettings().value("theme/radius", 3.0).toDouble(), 0.0, 12.0);
     return g_radius;
 }
-void setRadius(double r) {
-    g_radius = std::clamp(r, 0.0, 12.0);
-    QSettings().setValue("theme/radius", g_radius);
-}
+void setRadius(double r) { g_radius = std::clamp(r, 0.0, 12.0); }
 QString css(const QString& tmpl) {
     QString out = tmpl;
     auto v = themeTokens();

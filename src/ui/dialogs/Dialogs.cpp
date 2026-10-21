@@ -756,6 +756,7 @@ ThemeDialog::ThemeDialog(QWidget* parent)
     resize(560, 460);
     m_palette = theme::current();
     m_entry = m_palette;
+    m_entryRadius = theme::radius();
     auto* lay = new QVBoxLayout(this);
     auto* row = new QHBoxLayout();
     lay->addLayout(row, 1);
@@ -791,15 +792,15 @@ ThemeDialog::ThemeDialog(QWidget* parent)
     }
     auto* radiusRow = new QHBoxLayout();
     radiusRow->addWidget(new QLabel("Corner radius", this));
-    auto* radius = new QSlider(Qt::Horizontal, this);
-    radius->setRange(0, 12);
-    radius->setValue((int)std::lround(theme::radius()));
-    radius->setToolTip("Roundness of buttons, boxes, clips and list rows, in pixels");
-    auto* radiusValue = new QLabel(QString("%1 px").arg(radius->value()), this);
-    radiusRow->addWidget(radius, 1);
+    m_radius = new QSlider(Qt::Horizontal, this);
+    m_radius->setRange(0, 12);
+    m_radius->setValue((int)std::lround(theme::radius()));
+    m_radius->setToolTip("Roundness of buttons, boxes, clips and list rows, in pixels");
+    auto* radiusValue = new QLabel(QString("%1 px").arg(m_radius->value()), this);
+    radiusRow->addWidget(m_radius, 1);
     radiusRow->addWidget(radiusValue);
     right->addLayout(radiusRow);
-    connect(radius, &QSlider::valueChanged, this, [radiusValue](int v) {
+    connect(m_radius, &QSlider::valueChanged, this, [radiusValue](int v) {
         radiusValue->setText(QString("%1 px").arg(v));
         theme::setRadius(v);
         theme::applyTheme(theme::current());
@@ -827,7 +828,10 @@ ThemeDialog::ThemeDialog(QWidget* parent)
     connect(m_presets, &QListWidget::currentItemChanged, this, [this](QListWidgetItem* it, QListWidgetItem*) {
         if (it) selectPalette(it->data(Qt::UserRole).toString());
     });
-    connect(reset, &QPushButton::clicked, this, [this] { selectPalette(m_palette.id); });
+    connect(reset, &QPushButton::clicked, this, [this] {
+        m_radius->setValue((int)std::lround(m_entryRadius));
+        selectPalette(m_palette.id);
+    });
     connect(m_saveAs, &QPushButton::clicked, this, [this] {
         auto name = askName(this, "New theme", m_palette.name + " (custom)");
         if (!name) return;
@@ -848,10 +852,7 @@ ThemeDialog::ThemeDialog(QWidget* parent)
         theme::deleteUserTheme(m_palette.id);
         reloadList("midnight");
     });
-    connect(cancel, &QPushButton::clicked, this, [this] {
-        theme::applyTheme(m_entry);
-        reject();
-    });   // put back what was there
+    connect(cancel, &QPushButton::clicked, this, &ThemeDialog::reject);
     connect(ok, &QPushButton::clicked, this, [this] {
         if (theme::isUserTheme(m_palette.id)) theme::saveUserTheme(m_palette);
         theme::saveTheme(m_palette);
@@ -897,6 +898,11 @@ void ThemeDialog::selectPalette(const QString& id) {
     refreshSwatches();
 }
 void ThemeDialog::apply() { theme::applyTheme(m_palette); }
+void ThemeDialog::reject() {
+    theme::setRadius(m_entryRadius);
+    theme::applyTheme(m_entry);
+    QDialog::reject();
+}
 void ThemeDialog::refreshSwatches() {
     for (auto& [role, sw] : m_swatches) {
         QColor c = theme::paletteRole(m_palette, role);

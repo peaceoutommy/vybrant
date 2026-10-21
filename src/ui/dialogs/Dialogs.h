@@ -124,6 +124,7 @@ class ThemeDialog : public QDialog {
     Q_OBJECT
 public:
     explicit ThemeDialog(QWidget* parent = nullptr);
+    void reject() override;   // closed without Save: what was there comes back
 
 private:
     void reloadList(const QString& selectId);
@@ -132,6 +133,8 @@ private:
     void refreshSwatches();
     theme::Palette m_palette;
     theme::Palette m_entry;   // working copy, and what was active when the dialog opened
+    double m_entryRadius;
+    QSlider* m_radius;
     QListWidget* m_presets;
     std::map<QString, QToolButton*> m_swatches;
     QPushButton *m_saveAs, *m_delete;
