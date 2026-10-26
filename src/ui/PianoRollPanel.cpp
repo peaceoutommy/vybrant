@@ -614,7 +614,7 @@ void PianoRollView::beginEdit() {
     }
     m_baseNotes = d->notes; /* drag reference: includes steps just turned into notes */
 }
-void PianoRollView::commitEdit(const QString& desc) {
+void PianoRollView::commitEdit(const QString& desc, int mergeId) {
     PatternChannelData* d = data();
     if (!d || !m_editing) return;
     m_editing = false;
@@ -678,9 +678,11 @@ void PianoRollView::commitEdit(const QString& desc) {
             after.steps = std::move(steps);
             m_selected = ksel;
             TimeSignature ts = m_app.project().transport.timeSig;
-            m_app.edit<Pattern>(pid, desc, [after, ch, ts](Pattern& p) {
-                p.ensureChannel(ch) = after;
-                int spb = std::max(1, (int)(ts.ticksPerBar() / p.stepTicks()));
+            m_app.edit<Pattern>(
+                pid, desc,
+                [after, ch, ts](Pattern& p) {
+                    p.ensureChannel(ch) = after;
+                    int spb = std::max(1, (int)(ts.ticksPerBar() / p.stepTicks()));
                 int last = -1;
                 for (auto& c : p.channels)
                     for (size_t i = 0; i < c.steps.size(); ++i)
@@ -691,11 +693,12 @@ void PianoRollView::commitEdit(const QString& desc) {
                     for (auto& c : p.channels)
                         if ((int)c.steps.size() < need) c.steps.resize(need);
                 }
-            });
+                },
+                mergeId);
             return;
         }
     }
-    m_app.edit<Pattern>(pid, desc, [after, ch](Pattern& p) { p.ensureChannel(ch) = after; });
+    m_app.edit<Pattern>(pid, desc, [after, ch](Pattern& p) { p.ensureChannel(ch) = after; }, mergeId);
 }
 // Note preview policy (Options > Note preview): 0 = when placing / re-pitching while the transport is stopped (default), 1 = always, 2 = never
 bool PianoRollView::previewAllowed() const {
@@ -1194,6 +1197,15 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
     if (m_laneLabelRect.contains(e->position().toPoint()) ||
         (L.vel.contains(e->position().toPoint()) && e->position().toPoint().y() < L.vel.top() + 20)) {
         setLane(((m_lane + (dy > 0 ? kLaneCount - 1 : 1)) % kLaneCount));
+        e->accept();
+        return;
+    }
+    if ((e->modifiers() & Qt::AltModifier) && !m_selected.empty() && data()) {   // Alt+wheel on a selection: its velocity, not the zoom
+        int dv = e->angleDelta().y() != 0 ? e->angleDelta().y() : e->angleDelta().x();
+        beginEdit();
+        for (auto& n : data()->notes)
+            if (m_selected.count(n.id)) n.velocity = clamp(n.velocity + dv / 120.f * 0.02f, 0.f, 1.f);   // 2% a notch
+        commitEdit("Change velocity", 0x56454c);   // a run of notches is one undo step
         e->accept();
         return;
     }

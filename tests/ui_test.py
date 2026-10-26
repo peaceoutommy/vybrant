@@ -169,6 +169,14 @@ def main():
     check(vel() == before, "Alt+drag in the velocity lane restores the original velocities", f"{before} -> {vel()}")
     ins.send(f"prmouse {tx(0) + 1} {vt + 25} {tx(3000)} {vb - 10}")
     check(len(set(vel().split(","))) > 1, "a plain velocity drag still follows the cursor", vel())
+    ins.send("key pr Ctrl+A")
+    v0 = [int(x) for x in vel().split(",")]
+    ins.send("prwheel 3 alt")   # three notches up on the selection: +6% each, not a zoom
+    v1 = [int(x) for x in vel().split(",")]
+    ins.send("action edit.undo")
+    check(all(abs(b - a - min(6, 100 - a)) <= 1 for a, b in zip(v0, v1)) and [int(x) for x in vel().split(",")] == v0,
+          "Alt+wheel on selected notes raises their velocity (2% a notch), and one undo takes the whole run back", f"{v0} -> {v1}")
+    ins.send("key pr Escape")
     # the Release lane edits stick (its edits used to be compared away and undone on release)
     ins.send("prlane 2")
     rel0 = ins.send("prrel")

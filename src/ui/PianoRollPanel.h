@@ -151,7 +151,7 @@ private:
     int minTopPitch() const;
     Note* noteAt(const QPoint& p, bool* nearEdge = nullptr) const;
     void beginEdit();
-    void commitEdit(const QString& desc);
+    void commitEdit(const QString& desc, int mergeId = 0);   // mergeId: consecutive edits with the same id are one undo step
     void seekToPatternTick(Tick t);
     QRect timeArea() const override { return layout().grid; }
     int rulerHeight() const override { return layout().rulerH; }
