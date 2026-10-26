@@ -18,7 +18,7 @@ bool RenderEngine::render(
     if (end <= start) {
         end = opt.songMode ? std::max<Tick>(project.songLength(), PPQ * 4) : PPQ * 4;
         if (!opt.songMode) {
-            if (auto* pat = project.pattern(project.selectedPatternId)) end = pat->effectiveLength(project.transport.timeSig);
+            if (auto* pat = project.pattern(project.selectedPatternId)) end = project.patternLength(*pat);
         }
     }
     const bool wasRunning = engine.deviceRunning();

@@ -1017,11 +1017,16 @@ int runSelfTest(App& app) {
         bool follows = pr.patternPosAt(c, 4 * PPQ + PPQ) == PPQ && pr.patternPosAt(c, 4 * PPQ + bar) == -1 && pr.patternPosAt(c, 0) == -1;
         c.length = 4 * bar;
         c.loopSource = true;
+        pr.clips = {c};
         bool repeats = pr.patternPosAt(c, 4 * PPQ + 2 * bar + PPQ) == PPQ;
+        bool kept = pr.patternLength(pr.patterns[0]) == bar;   // a repeating clip leaves the pattern one bar long
         c.loopSource = false;
-        bool once = pr.patternPosAt(c, 4 * PPQ + PPQ) == PPQ && pr.patternPosAt(c, 4 * PPQ + 2 * bar + PPQ) == -1;
-        CHECK(follows && repeats && once,
-            "the rack's play position: in a clip of the pattern's own length, a repeating longer clip, and a longer clip that plays it once");
+        pr.clips = {c};
+        bool stretched = pr.patternLength(pr.patterns[0]) == 4 * bar && pr.patternPosAt(c, 4 * PPQ + 2 * bar + PPQ) == 2 * bar + PPQ &&
+            pr.patternPosAt(c, 4 * PPQ + 4 * bar) == -1;
+        CHECK(follows && repeats && kept && stretched,
+            "a pattern's play position: in a clip of its own length and a repeating clip; a clip stretched to 4 bars that plays it "
+            "once makes the pattern 4 bars");
     }
     // ---- song mode with no loop area repeats the song from its start at the last clip's whole bar; an export runs straight on
     {

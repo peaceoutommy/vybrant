@@ -61,7 +61,7 @@ const Step* RackView::stepAt(Id ch, int step) const {
 int RackView::patternSteps() const {
     Pattern* p = pattern();
     if (!p) return 16;
-    return (int)(p->effectiveLength(m_app.project().transport.timeSig) / p->stepTicks());
+    return (int)(m_app.project().patternLength(*p) / p->stepTicks());
 }
 // The rack shows the whole pattern plus enough extra (dimmed) steps to fill the window; only the pattern's own steps play
 int RackView::visibleSteps() const { return std::max(patternSteps(), m_fitSteps); }
@@ -267,7 +267,7 @@ void RackView::paintEvent(QPaintEvent*) {
             p.setPen(QPen(theme::border(), 1));
             p.setBrush(theme::surface());
             p.drawRoundedRect(area, 3, 3);
-            Tick plen = std::max<Tick>(pat->effectiveLength(proj.transport.timeSig), 1);
+            Tick plen = std::max<Tick>(proj.patternLength(*pat), 1);
             int lo = 127, hi = 0;
             for (auto& n : d->notes) {
                 lo = std::min(lo, n.pitch);

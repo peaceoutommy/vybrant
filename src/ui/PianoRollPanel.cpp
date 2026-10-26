@@ -213,7 +213,7 @@ void PianoRollView::updateScrollbars() {
     m_updatingBars = true;
     Pattern* p = pattern();
     Tick visible = (Tick)(layout().grid.width() / m_ppt);
-    Tick len = std::max<Tick>((p ? p->effectiveLength(m_app.project().transport.timeSig) : PPQ * 16) + PPQ * 8, m_scrollTick + visible);
+    Tick len = std::max<Tick>((p ? m_app.project().patternLength(*p) : PPQ * 16) + PPQ * 8, m_scrollTick + visible);
     int hmax = (int)std::max<Tick>(0, (len - visible) * 16 / PPQ);
     m_hbar->setRange(0, hmax);
     m_hbar->setPageStep((int)(visible * 16 / PPQ));
@@ -233,7 +233,7 @@ void PianoRollView::refresh() {
 void PianoRollView::zoomToFit() {
     Pattern* p = pattern();
     if (!p) return;
-    Tick len = std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), PPQ);
+    Tick len = std::max<Tick>(m_app.project().patternLength(*p), PPQ);
     m_ppt = std::max(0.01, (double)layout().grid.width() / (len + PPQ));
     m_scrollTick = 0;
     int lo = 127, hi = 0;
@@ -255,7 +255,7 @@ void PianoRollView::uiTick() {
             for (auto& c : m_app.project().clips)
                 if (c.type == ClipType::Pattern && c.sourceId == p->id && tv.positionTicks >= c.start &&
                     tv.positionTicks < c.start + m_app.project().clipLength(c)) {
-                    Tick len = std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), 1);
+                    Tick len = std::max<Tick>(m_app.project().patternLength(*p), 1);
                     double local = tv.positionTicks - c.start + c.sourceOffset;
                     pt = c.loopSource ? std::fmod(local, (double)len) : local;
                     break;
@@ -278,7 +278,7 @@ void PianoRollView::renderCache() {
     Pattern* pat = pattern();
     PatternChannelData* d = data();
     const auto& ts = m_app.project().transport.timeSig;
-    Tick patLen = pat ? pat->effectiveLength(ts) : 0;
+    Tick patLen = pat ? m_app.project().patternLength(*pat) : 0;
     // grid rows
     p.setClipRect(L.grid);
     for (int pitch = m_topPitch; pitch >= 0; --pitch) {
@@ -556,7 +556,7 @@ void PianoRollView::seekToPatternTick(Tick t) {
         m_app.statusMessage("Pattern is not in the playlist - switched to pattern mode", 3000);
         return;
     }
-    Tick len = std::max<Tick>(p->effectiveLength(proj.transport.timeSig), 1);
+    Tick len = std::max<Tick>(proj.patternLength(*p), 1);
     Tick local = std::max<Tick>(0, t - best->sourceOffset);
     if (best->loopSource) local %= len;
     m_app.seek(best->start + local);

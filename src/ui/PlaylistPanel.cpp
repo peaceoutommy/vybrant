@@ -354,7 +354,7 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
     QRect body = r.adjusted(1, 14, -1, -1);
     if (c.type == ClipType::Pattern) {
         if (auto* pat = proj.pattern(c.sourceId)) {
-            Tick plen = std::max<Tick>(pat->effectiveLength(proj.transport.timeSig), 1);
+            Tick plen = std::max<Tick>(proj.patternLength(*pat), 1);
             int lo = 127, hi = 0;
             for (auto& ch : pat->channels) {
                 for (auto& n : ch.notes) {
@@ -1032,7 +1032,7 @@ Tick PlaylistView::brushLength() const {
     auto& proj = m_app.project();
     if (const Clip* b = brush()) return proj.clipLength(*b);
     const Pattern* p = proj.pattern(proj.selectedPatternId);
-    return p ? p->effectiveLength(proj.transport.timeSig) : 0;
+    return p ? proj.patternLength(*p) : 0;
 }
 void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     m_hoverPos = e->pos();

@@ -435,7 +435,7 @@ void AudioEngine::rebuild(const Project& p) {
     for (auto& pat : p.patterns) {
         RtPattern rp;
         rp.id = pat.id;
-        rp.length = pat.effectiveLength(ts);
+        rp.length = p.patternLength(pat);
         rp.swing = pat.swing;
         for (auto& pc : pat.channels) {
             if (!chanIdx.count(pc.id)) continue;

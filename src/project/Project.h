@@ -400,10 +400,19 @@ struct Project {
             if (mixerTracks[i].id == id) return (int)i;
         return -1;
     }
+    // A pattern's length: its own (notes, steps, step count), or longer where a clip that plays it once was stretched past
+    // that, so the stretched clip shows and edits as one longer pattern (a clip that repeats the pattern keeps its length)
+    Tick patternLength(const Pattern& p) const {
+        Tick len = p.effectiveLength(transport.timeSig), bar = transport.timeSig.ticksPerBar();
+        for (auto& c : clips)
+            if (c.type == ClipType::Pattern && c.sourceId == p.id && !c.loopSource && c.length > 0)
+                len = std::max(len, (c.sourceOffset + c.length + bar - 1) / bar * bar);
+        return len;
+    }
     Tick clipLength(const Clip& c) const {
         if (c.type == ClipType::Pattern && c.length <= 0) {
             const Pattern* p = pattern(c.sourceId);
-            return p ? p->effectiveLength(transport.timeSig) : PPQ * 4;
+            return p ? patternLength(*p) : PPQ * 4;
         }
         return c.length;
     }
@@ -412,7 +421,7 @@ struct Project {
     Tick patternPosAt(const Clip& c, Tick t) const {
         if (c.type != ClipType::Pattern || t < c.start || t >= c.start + clipLength(c)) return -1;
         const Pattern* p = pattern(c.sourceId);
-        Tick len = p ? std::max<Tick>(p->effectiveLength(transport.timeSig), 1) : 1, off = t - c.start + c.sourceOffset;
+        Tick len = p ? std::max<Tick>(patternLength(*p), 1) : 1, off = t - c.start + c.sourceOffset;
         return c.loopSource ? off % len : (off < len ? off : -1);
     }
     Tick songLength() const {

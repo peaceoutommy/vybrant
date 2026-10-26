@@ -1767,7 +1767,7 @@ void App::onRecordedMidi(const MidiEvent& e, double tick) {
     Id pid = m_recPatternId;
     Id cid = project().selectedChannelId;
     if (!pid || !cid || !project().pattern(pid)) return;
-    Tick patLen = project().pattern(pid)->effectiveLength(project().transport.timeSig);
+    Tick patLen = project().patternLength(*project().pattern(pid));
     Tick local = (Tick)tick;
     if (m_recSong) {
         auto clip = std::find_if(project().clips.begin(), project().clips.end(), [&](const Clip& c) {
@@ -1956,13 +1956,13 @@ bool App::exportMidiFile(const QString& path, Id patternId) {
             const PlaylistTrack* t = p.track(c.trackId);
             if (c.type != ClipType::Pattern || !pat || !t || c.muted || t->mute) continue;
             // the clip plays pattern ticks [sourceOffset, sourceOffset + length), repeating the pattern when it loops
-            Tick len = std::max<Tick>(pat->effectiveLength(p.transport.timeSig), 1), end = c.sourceOffset + p.clipLength(c);
+            Tick len = std::max<Tick>(p.patternLength(*pat), 1), end = c.sourceOffset + p.clipLength(c);
             for (Tick k = c.sourceOffset / len; k * len < end && (c.loopSource || k == 0); ++k)
                 add(*pat, c.start - c.sourceOffset + k * len, std::max<Tick>(c.sourceOffset - k * len, 0),
                     std::min<Tick>(end - k * len, len));
         }
     } else if (const Pattern* pat = single ? single : p.pattern(p.selectedPatternId))
-        add(*pat, 0, 0, pat->effectiveLength(p.transport.timeSig));
+        add(*pat, 0, 0, p.patternLength(*pat));
     for (auto& ch : p.channels)
         if (auto it = parts.find(ch.id); it != parts.end() && (!it->second.notes.empty() || !it->second.controls.empty())) {
             it->second.name = ch.name;
