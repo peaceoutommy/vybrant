@@ -30,6 +30,8 @@
 #include <QDragEnterEvent>
 #include <QUrl>
 #include <QMimeData>
+#include <QMenu>
+#include <QInputDialog>
 #include <QMouseEvent>
 #include <QWheelEvent>
 
@@ -515,6 +517,36 @@ QString ControlServer::handle(const QString& line) {
         sendDrag(v, p1, p2);
         const Clip* after = m_app.project().clip(id);
         return after ? QString("gain=%1").arg(after->gain, 0, 'f', 2) : "err clip gone";
+    }
+    if (c == "plclipmenu" && a.size() >= 2) {   // the first audio clip's menu button: plclipmenu <action prefix> [int typed into its prompt]
+        auto& cl = m_app.project().clips;
+        auto it = std::find_if(cl.begin(), cl.end(), [](const Clip& x) { return x.type == ClipType::Audio; });
+        if (it == cl.end()) return "err no audio clip";
+        Id id = it->id;
+        QString prefix = a[1], titles;
+        int value = a.value(2).toInt();
+        QTimer::singleShot(0, [&titles, prefix, value] {
+            auto* m = qobject_cast<QMenu*>(QApplication::activePopupWidget());
+            if (!m) return;
+            QAction* pick = nullptr;
+            for (auto* act : m->actions()) {
+                if (!act->text().isEmpty()) titles += act->text().section('\t', 0, 0) + ";";
+                if (!pick && act->text().startsWith(prefix)) pick = act;
+            }
+            QTimer::singleShot(0, [value] {
+                if (auto* d = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) {
+                    d->setIntValue(value);
+                    d->accept();
+                }
+            });
+            m->close();
+            if (pick) pick->trigger();
+        });
+        auto* v = m_win.playlist()->view();
+        QPoint at = v->debugMenuButton(id);
+        sendDrag(v, at, at, 0);
+        const Clip* after = m_app.project().clip(id);
+        return QString("menu=%1 pitch=%2").arg(titles).arg(after ? after->pitch : -99);
     }
     if (c == "clips") {   // clips as track:start+length, then L = loops, A = audio; in project order
         QStringList out;

@@ -370,6 +370,18 @@ def main():
     check(abs(z - b * 1.5) < 1e-6, "trackpad pinch zooms the playlist", f"{b} -> {z}")
     ins.quit()
 
+    # ---- an audio clip's menu button (top left of its header) opens its menu; Transpose sets its semitones
+    cfg16 = os.path.join(tmp, "cfg16")
+    os.makedirs(cfg16)
+    ins = Instance(cfg16, sock)
+    pad = os.path.join(tmp, "pad.wav")
+    with wave.open(pad, "wb") as w:   # two seconds: wide enough for the button at the default zoom
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 88200)
+    ins.send(f"audioclip {pad}")
+    r = ins.send("plclipmenu Transpose 5")
+    check("Transpose...;" in r and r.endswith("pitch=5"), "the audio clip's menu button opens its menu, and Transpose sets the semitones", r)
+    ins.quit()
+
     # ---- the project strip follows what was picked: a pattern clip, the pattern dropdown's "+ New pattern"
     cfg13 = os.path.join(tmp, "cfg13")
     os.makedirs(cfg13)

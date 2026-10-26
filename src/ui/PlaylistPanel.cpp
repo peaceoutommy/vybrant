@@ -1696,6 +1696,16 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             double db = QInputDialog::getDouble(this, "Clip gain", "dB:", gainToDb(g), -60, 24, 1, &ok);
             if (ok) m_app.edit<Clip>(id, "Clip gain", [db](Clip& x) { x.gain = dbToGain((float)db); });
         });
+        m.addAction("Transpose...", [this, st = (int)std::lround(c->pitch)] {
+            bool ok;
+            int v = QInputDialog::getInt(this, "Transpose", "Semitones (every selected audio clip):", st, -24, 24, 1, &ok);
+            if (!ok) return;
+            std::vector<std::unique_ptr<Command>> cmds;
+            for (Id sid : m_selected)
+                if (const Clip* x = m_app.project().clip(sid); x && x->type == ClipType::Audio)
+                    cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_app.model(), sid, "", [v](Clip& y) { y.pitch = (float)v; }, 0));
+            if (!cmds.empty()) m_app.model().macro("Transpose clips", std::move(cmds));
+        });
         m.addAction("Fade in...", [this, id, c] {
             bool ok;
             double beats = QInputDialog::getDouble(this, "Fade in", "Beats:", ticksToBeats(c->fadeIn), 0, 64, 2, &ok);
