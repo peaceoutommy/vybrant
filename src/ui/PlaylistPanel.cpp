@@ -605,7 +605,7 @@ void PlaylistView::renderCache() {
             p.fontMetrics().elidedText(t.name, Qt::ElideRight, L.headerW - 16));
         auto btn = [&](QRect r, const QString& s, bool on, QColor c) {
             p.setPen(QPen(on ? c.darker(120) : theme::border(), 1));
-            p.setBrush(on ? c : QColor(0x16, 0x19, 0x1e));
+            p.setBrush(on ? c : theme::surface());
             p.drawRoundedRect(r, theme::radius(), theme::radius());
             p.setPen(on ? theme::bg() : theme::textDim());
             p.setFont(theme::smallFont());

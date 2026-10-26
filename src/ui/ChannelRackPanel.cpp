@@ -163,7 +163,7 @@ void RackView::paintEvent(QPaintEvent*) {
         p.drawRoundedRect(rr.adjusted(2, 1, -2, -1), theme::radius(), theme::radius());
         QRectF nb(30, y + 3, 102, m_rowH - 6);
         p.setPen(QPen(hot ? theme::accent() : theme::border(), 1, Qt::DashLine));
-        p.setBrush(hot ? theme::withAlpha(theme::accent(), 25) : Qt::NoBrush);
+        p.setBrush(hot ? QBrush(theme::withAlpha(theme::accent(), 25)) : QBrush(Qt::NoBrush));   // QBrush: a bare Qt::NoBrush in ?: becomes the colour black
         p.drawRoundedRect(nb, 3, 3);
         p.setPen(hot ? theme::accent() : theme::textDim());
         QFont bf = theme::boldFont();
@@ -198,7 +198,7 @@ void RackView::paintEvent(QPaintEvent*) {
         // rows are rounded bands (like the mixer's strip cards), inset 2px from the view edges
         QRectF band = QRectF(rr).adjusted(2, 0, -2, -1);
         p.setPen(Qt::NoPen);
-        p.setBrush((selected || multi) ? QColor(0x27, 0x2c, 0x33) : (r % 2 ? theme::panel() : theme::altRow()));
+        p.setBrush((selected || multi) ? theme::hover() : (r % 2 ? theme::panel() : theme::altRow()));
         p.drawRoundedRect(band, theme::radius(), theme::radius());
         if (multi) {
             p.save();
@@ -309,7 +309,7 @@ void RackView::paintEvent(QPaintEvent*) {
             bool beatA = (s / 4) % 2 == 0;
             const Step* st = (d && s < (int)d->steps.size()) ? &d->steps[s] : nullptr;
             bool on = st && st->enabled;
-            QColor base = beatA ? QColor(0x2a, 0x2f, 0x37) : theme::raised();
+            QColor base = beatA ? theme::hover() : theme::raised();
             if (s >= patSteps) base = base.darker(150);
             if (m_playStep == s) base = base.lighter(140);
             double pulse = m_pulses.value(r * 4096 + s);

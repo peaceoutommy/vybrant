@@ -77,7 +77,7 @@ void EffectSlotList::paintEvent(QPaintEvent*) {
         } else {
             bool hot = slot == m_hoverSlot;
             p.setPen(QPen(hot ? theme::withAlpha(theme::accent(), 140) : theme::grid(), 1));
-            p.setBrush(hot ? theme::withAlpha(theme::text(), 18) : Qt::NoBrush);
+            p.setBrush(hot ? QBrush(theme::withAlpha(theme::text(), 18)) : QBrush(Qt::NoBrush));   // QBrush: a bare Qt::NoBrush in ?: becomes the colour black
             p.drawRoundedRect(rr, theme::radius(), theme::radius());
             if (hot) {
                 p.setPen(theme::textDim());

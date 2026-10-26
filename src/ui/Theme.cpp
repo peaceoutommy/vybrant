@@ -56,7 +56,7 @@ const std::vector<Palette>& presets() {
     static const std::vector<Palette> all = {
         //    id          name        dark  bg         panel      panelLight surface    raised     hover      border     grid       gridStrong text       textDim    accent     accent2    green      red        playhead
         // Vybrant: the website's look - near-black, cool greys, a soft white for "on", the one warm colour kept for the playhead
-        mk("vybrant", "Vybrant", true, "#05070a", "#0a0d12", "#11151b", "#07090c", "#12161d", "#181d25", "#1b2029", "#0e1217", "#1a1f27",
+        mk("vybrant", "Vybrant", true, "#05070a", "#13161b", "#191d23", "#0f1216", "#1b1f26", "#222730", "#232831", "#1a1e24", "#272c35",
             "#eef1f5", "#8b94a1", "#e6e9ee", "#8b9cc4", "#5fc08a", "#e5675c", "#f2a93b"),
         mk("midnight", "Midnight", true, "#15171b", "#1c1f24", "#24282e", "#111316", "#23272d", "#252930", "#2b3037", "#22262b", "#30363d",
             "#d3d7dd", "#7e8691", "#f0a13a", "#55a0f0", "#5fc074", "#e05a5a", "#ffd266"),

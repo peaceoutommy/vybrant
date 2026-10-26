@@ -221,7 +221,7 @@ static float meterPos(float lin) {
 }   // -60 .. +6 dB
 void LevelMeter::paintEvent(QPaintEvent*) {
     QPainter p(this);
-    p.fillRect(rect(), theme::bg());
+    p.fillRect(rect(), theme::surface());
     auto drawBar = [&](QRect r, float lv, float hold) {
         float f = meterPos(lv);
         QLinearGradient g;

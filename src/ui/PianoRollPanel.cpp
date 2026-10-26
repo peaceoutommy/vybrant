@@ -285,10 +285,9 @@ void PianoRollView::renderCache() {
         int y = pitchToY(pitch);
         if (y > L.grid.bottom()) break;
         bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10);
-        QColor c = black ? QColor(0x17, 0x1a, 0x1f) : QColor(0x1c, 0x1f, 0x25);
+        QColor c = black ? theme::panel() : theme::panelLight();
         if (m_scale > 0)
-            c = inScale(pitch) ? QColor(0x1c, 0x1f, 0x25)
-                               : QColor(0x17, 0x1a, 0x1f);   // scale: the same two colours, but light = in the scale, dark = outside it
+            c = inScale(pitch) ? theme::panelLight() : theme::panel();   // scale: the same two colours, but light = in the scale, dark = outside it
         p.fillRect(QRect(L.grid.left(), y, L.grid.width(), m_rowH), c);
         if (pitch % 12 == 0) {
             p.setPen(theme::gridStrong());
