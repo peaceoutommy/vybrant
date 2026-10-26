@@ -145,8 +145,8 @@ GenericParamPanel::GenericParamPanel(
             connect(row.check, &QCheckBox::customContextMenuRequested, this,
                 [contextMenu, cb = row.check](const QPoint& p) { contextMenu(cb->mapToGlobal(p)); });
         } else {
-            cellW = knobCell(this, QString::fromStdString(d.name), ps.getNormalized(id), d.toNormalized(d.def), d.min < 0 && d.max > 0, row.knob,
-                row.value);
+            cellW = knobCell(this, QString::fromStdString(d.name), ps.getNormalized(id), d.toNormalized(d.def), d.min < 0 && d.max > 0,
+                row.knob, row.value);
             row.value->setText(proc->formatValue(id));
             if (!d.automatable) row.knob->setColor(theme::textDim());
             if ((d.unit == ParamUnit::Semitones || d.unit == ParamUnit::Bpm) && !d.steps)
@@ -344,7 +344,8 @@ static QImage grabX11Window(unsigned long wid) {
     XSetErrorHandler(old);
     if (!im) return {};
     QImage img;
-    if (im->bits_per_pixel == 32) img = QImage((const uchar*)im->data, im->width, im->height, im->bytes_per_line, QImage::Format_RGB32).copy();
+    if (im->bits_per_pixel == 32)
+        img = QImage((const uchar*)im->data, im->width, im->height, im->bytes_per_line, QImage::Format_RGB32).copy();
     XDestroyImage(im);
     return img;
 }
@@ -441,7 +442,8 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
         c0.sourceId = s->id;
         c0.loopSource = false;   // as App::addAudioClip
         if (s->hasPlaceDefaults) copyClipSettings(s->placeDefaults, c0);
-        c0.length = secondsToTicks(4.0 * (s->sampleRate > 0 ? s->frames / s->sampleRate : 1.0), app.project().transport.bpm);   // never cuts the drawing
+        c0.length = secondsToTicks(
+            4.0 * (s->sampleRate > 0 ? s->frames / s->sampleRate : 1.0), app.project().transport.bpm);   // never cuts the drawing
         m_clip = 0;
     }
     const Clip* c = &c0;
@@ -513,7 +515,9 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
                 copyClipSettings(d, a.placeDefaults);
             });
     };
-    wave->caption = [sampleOnly] { return QString(sampleOnly ? "not on the playlist yet: settings apply when placed" : "click to set the start"); };
+    wave->caption = [sampleOnly] {
+        return QString(sampleOnly ? "not on the playlist yet: settings apply when placed" : "click to set the start");
+    };
     lay->addWidget(wave);
     // commit the working copy's fields this editor owns (never position / length / track, which the playlist may change meanwhile)
     auto commit = [this, sid](const QString& desc, bool source) {
@@ -609,19 +613,22 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
     auto num = [](double v, int dec, const char* unit) { return QString::number(v, 'f', dec) + unit; };
     // Level
     auto* level = group("Level", 0, 0);
-    knob(level, "Gain", (float)((gainToDb(c->gain) + 60) / 84), 60.f / 84, false, [num](float p) { return num(p * 84 - 60, 1, " dB"); },
+    knob(
+        level, "Gain", (float)((gainToDb(c->gain) + 60) / 84), 60.f / 84, false, [num](float p) { return num(p * 84 - 60, 1, " dB"); },
         [this](float p) { m_draft.gain = dbToGain(p * 84 - 60); }, "Clip gain", false);
     check(level, "Normalize", s->normalize, [this](bool b) { m_draftSrc.normalize = b; }, "Normalize", true);
     // Fades: quadratic so short fades get most of the knob travel
     auto fadePos = [](Tick t) { return (float)std::sqrt(std::min(1.0, ticksToBeats(t) / 32.0)); };
     auto fadeText = [num](float p) { return num(32.0 * p * p, 2, " beats"); };
     auto* fades = group("Fades", 0, 1);
-    knob(fades, "Fade in", fadePos(c->fadeIn), 0.f, false, fadeText, [this](float p) { m_draft.fadeIn = beatsToTicks(32.0 * p * p); },
+    knob(
+        fades, "Fade in", fadePos(c->fadeIn), 0.f, false, fadeText, [this](float p) { m_draft.fadeIn = beatsToTicks(32.0 * p * p); },
         "Fade in", false);
-    knob(fades, "Fade out", fadePos(c->fadeOut), 0.f, false, fadeText, [this](float p) { m_draft.fadeOut = beatsToTicks(32.0 * p * p); },
+    knob(
+        fades, "Fade out", fadePos(c->fadeOut), 0.f, false, fadeText, [this](float p) { m_draft.fadeOut = beatsToTicks(32.0 * p * p); },
         "Fade out", false);
-    auto combo = [&](QHBoxLayout* cells, const QString& name, const std::vector<std::string>& items, int cur, std::function<void(int)> apply,
-                     const QString& desc) {
+    auto combo = [&](QHBoxLayout* cells, const QString& name, const std::vector<std::string>& items, int cur,
+                     std::function<void(int)> apply, const QString& desc) {
         QComboBox* cb;
         QWidget* w = choiceCell(this, name, items, cur, cb);
         w->setFixedWidth(2 * GenericParamPanel::kCellW + 8);   // a choice spans two cells, as in the sampler
@@ -635,47 +642,58 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
     };
     // Pitch & time
     auto* pt = group("Pitch & Time", 0, 2);
-    combo(pt, "Mode", stretchModeNames(), clamp(c->stretchMode, 0, (int)stretchModeNames().size() - 1),
+    combo(
+        pt, "Mode", stretchModeNames(), clamp(c->stretchMode, 0, (int)stretchModeNames().size() - 1),
         [this](int i) { m_draft.stretchMode = i; }, "Stretch mode")
         ->setToolTip("Resample: pitch, stretch and tempo change the speed together, like a turntable.\n"
                      "Stretch modes: pitch and length are independent (rendered with Rubber Band), tuned for drums, pads or vocals.");
-    knob(pt, "Pitch", (c->pitch + 24.f) / 48.f, 0.5f, true, [num](float p) { return num(p * 48 - 24, 2, " st"); },
+    knob(
+        pt, "Pitch", (c->pitch + 24.f) / 48.f, 0.5f, true, [num](float p) { return num(p * 48 - 24, 2, " st"); },
         [this](float p) { m_draft.pitch = p * 48 - 24; }, "Pitch", false)
         ->snap = Knob::wholeStepSnap(-24, 24);   // lands on whole semitones
-    knob(pt, "Stretch", (float)(std::log(clamp(c->timeStretch, 0.25, 4.0) / 0.25) / std::log(16.0)), 0.5f, false,
-        [num](float p) { return num(0.25 * std::pow(16.0, p), 3, " x"); }, [this](float p) { m_draft.timeStretch = 0.25 * std::pow(16.0, p); },
-        "Time stretch", false);
+    knob(
+        pt, "Stretch", (float)(std::log(clamp(c->timeStretch, 0.25, 4.0) / 0.25) / std::log(16.0)), 0.5f, false,
+        [num](float p) { return num(0.25 * std::pow(16.0, p), 3, " x"); },
+        [this](float p) { m_draft.timeStretch = 0.25 * std::pow(16.0, p); }, "Time stretch", false);
     // Region
     auto* region = group("Region", 1, 0);
     double lenBeats = std::max(0.01, srcSec * bpm() / 60.0);
-    knob(region, "Start offset", (float)std::min(1.0, ticksToBeats(c->sourceOffset) / lenBeats), 0.f, false,
+    knob(
+        region, "Start offset", (float)std::min(1.0, ticksToBeats(c->sourceOffset) / lenBeats), 0.f, false,
         [num, lenBeats](float p) { return num(p * lenBeats, 2, " beats"); },
         [this, lenBeats](float p) { m_draft.sourceOffset = beatsToTicks(p * lenBeats); }, "Start offset", false);
-    knob(region, "Trim start", (float)s->trimStart / frames, 0.f, false, [num, srcSec](float p) { return num(p * srcSec, 2, " s"); },
+    knob(
+        region, "Trim start", (float)s->trimStart / frames, 0.f, false, [num, srcSec](float p) { return num(p * srcSec, 2, " s"); },
         [this, frames](float p) { m_draftSrc.trimStart = (int64_t)(p * frames); }, "Trim", true);
-    knob(region, "Trim end", s->trimEnd > 0 ? (float)s->trimEnd / frames : 1.f, 1.f, false,
+    knob(
+        region, "Trim end", s->trimEnd > 0 ? (float)s->trimEnd / frames : 1.f, 1.f, false,
         [num, srcSec](float p) { return p >= 0.999f ? QString("end") : num(p * srcSec, 2, " s"); },
         [this, frames](float p) { m_draftSrc.trimEnd = p >= 0.999f ? 0 : (int64_t)(p * frames); }, "Trim", true);   // 0 = end of file
     // Tempo: follow the project tempo, treating the file as recorded at 'Source BPM' (read from names like "loop 83 bpm.wav")
     auto* tempo = group("Tempo", 1, 2);
     auto bpmKnob = std::make_shared<Knob*>(nullptr);   // created after the checkbox that may set it
     auto bpmPos = [](double b) { return (float)((clamp(b, 40.0, 250.0) - 40.0) / 210.0); };
-    check(tempo, "Fit tempo", c->fitTempo, [this, path, trimSec, bpm, bpmKnob](bool b) {
-        m_draft.fitTempo = b;
-        if (!b) return;
-        if (m_draft.sourceBpm <= 0) {
-            double guess = AudioFile::bpmFromName(path);
-            m_draft.sourceBpm = guess > 0 ? guess : bpm();
-            if (*bpmKnob) (*bpmKnob)->setValue((float)((m_draft.sourceBpm - 40.0) / 210.0), true);
-        }
-        // the clip takes the fitted length of the (trimmed) audio
-        double sec = (trimSec(true) - trimSec(false)) / clipSourceSpeed(m_draft, bpm());
-        m_draft.length = std::max<Tick>(PPQ / 4, secondsToTicks(sec, bpm()));
-        m_lengthDirty = true;
-    }, "Fit tempo", false);
+    check(
+        tempo, "Fit tempo", c->fitTempo,
+        [this, path, trimSec, bpm, bpmKnob](bool b) {
+            m_draft.fitTempo = b;
+            if (!b) return;
+            if (m_draft.sourceBpm <= 0) {
+                double guess = AudioFile::bpmFromName(path);
+                m_draft.sourceBpm = guess > 0 ? guess : bpm();
+                if (*bpmKnob) (*bpmKnob)->setValue((float)((m_draft.sourceBpm - 40.0) / 210.0), true);
+            }
+            // the clip takes the fitted length of the (trimmed) audio
+            double sec = (trimSec(true) - trimSec(false)) / clipSourceSpeed(m_draft, bpm());
+            m_draft.length = std::max<Tick>(PPQ / 4, secondsToTicks(sec, bpm()));
+            m_lengthDirty = true;
+        },
+        "Fit tempo", false);
     double bpm0 = c->sourceBpm > 0 ? c->sourceBpm : AudioFile::bpmFromName(path);
-    *bpmKnob = knob(tempo, "Source BPM", bpmPos(bpm0 > 0 ? bpm0 : bpm()), bpmPos(120), false,
-        [num](float p) { return num(40.0 + p * 210.0, 1, " BPM"); }, [this](float p) { m_draft.sourceBpm = 40.0 + p * 210.0; }, "Source BPM", false);
+    *bpmKnob = knob(
+        tempo, "Source BPM", bpmPos(bpm0 > 0 ? bpm0 : bpm()), bpmPos(120), false,
+        [num](float p) { return num(40.0 + p * 210.0, 1, " BPM"); }, [this](float p) { m_draft.sourceBpm = 40.0 + p * 210.0; },
+        "Source BPM", false);
     (*bpmKnob)->snap = Knob::wholeStepSnap(40, 250);
     // Options
     auto* opts = group("Options", 1, 1);
@@ -684,7 +702,9 @@ AudioClipEditor::AudioClipEditor(App& app, Id clipId, QWidget* parent, Id source
     check(opts, "Mute", c->muted, [this](bool b) { m_draft.muted = b; }, "Mute", false);
     grid->setColumnStretch(3, 1);
     lay->addLayout(grid);
-    auto* note = theme::dimLabel("Edits are non-destructive: the original file is never modified. Loop repeats the audio when the clip is longer.", this, "font-size:8pt;");
+    auto* note = theme::dimLabel(
+        "Edits are non-destructive: the original file is never modified. Loop repeats the audio when the clip is longer.", this,
+        "font-size:8pt;");
     lay->addWidget(note);
 }
 

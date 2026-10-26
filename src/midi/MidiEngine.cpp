@@ -289,5 +289,4 @@ void MidiEngine::flushOutput() {
     if (sent) snd_seq_drain_output(seq);
 }
 
-
 }   // namespace mt

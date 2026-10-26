@@ -22,4 +22,4 @@ inline DropItem dropItem(const QMimeData* m) {
     return {s.section('|', 0, 0), s.section('|', 1)};
 }
 inline void setDropItem(QMimeData* m, const QString& payload) { m->setData(kItemMime, payload.toUtf8()); }
-}
+}   // namespace mt

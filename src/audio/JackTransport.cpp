@@ -41,7 +41,8 @@ void JackTransport::poll() {
     jack_position_t pos;
     jack_transport_state_t st = jack_transport_query((jack_client_t*)m_client, &pos);
     m_applying = true;
-    if ((pos.valid & JackPositionBBT) && pos.beats_per_minute > 0) m_host.setBpm(pos.beats_per_minute);   // every poll: transport edits reset it
+    if ((pos.valid & JackPositionBBT) && pos.beats_per_minute > 0)
+        m_host.setBpm(pos.beats_per_minute);   // every poll: transport edits reset it
     bool rolling = st == JackTransportRolling;
     Tick jackTick = (Tick)std::llround(m_host.tickAt(pos.frame / (double)(pos.frame_rate ? pos.frame_rate : frameRate())));
     if (rolling != m_host.playing()) {

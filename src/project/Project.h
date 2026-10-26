@@ -99,7 +99,7 @@ struct Pattern {
 enum class ChannelType : uint8_t { Sampler = 0, DrumSampler, Synth, MidiOut, AudioGenerator, Plugin };
 // the channel type a native instrument key creates (every other native instrument is synth-like)
 inline ChannelType channelTypeForKey(const QString& key) {
-    return key == "native.sampler"   ? ChannelType::Sampler
+    return key == "native.sampler"    ? ChannelType::Sampler
         : key == "native.drumsampler" ? ChannelType::DrumSampler
         : key == "native.midiout"     ? ChannelType::MidiOut
         : key == "native.tonegen"     ? ChannelType::AudioGenerator

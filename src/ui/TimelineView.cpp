@@ -184,7 +184,8 @@ bool TimelineView::handleSharedKey(QKeyEvent* e) {
 bool TimelineView::handleTimeWheel(QWheelEvent* e) {
     int dy = e->angleDelta().y();
     if (e->modifiers() & Qt::ControlModifier) {
-        if (dy != 0) zoomTimeAt(e->position().toPoint().x(), std::pow(1.15, dy / 120.0));   // proportional: a trackpad sends many small deltas
+        if (dy != 0)
+            zoomTimeAt(e->position().toPoint().x(), std::pow(1.15, dy / 120.0));   // proportional: a trackpad sends many small deltas
         e->accept();
         return true;
     }

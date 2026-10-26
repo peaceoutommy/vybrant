@@ -158,7 +158,8 @@ void RackView::paintEvent(QPaintEvent*) {
         p.drawRoundedRect(rr.adjusted(2, 1, -2, -1), theme::radius(), theme::radius());
         QRectF nb(30, y + 3, 102, m_rowH - 6);
         p.setPen(QPen(hot ? theme::accent() : theme::border(), 1, Qt::DashLine));
-        p.setBrush(hot ? QBrush(theme::withAlpha(theme::accent(), 25)) : QBrush(Qt::NoBrush));   // QBrush: a bare Qt::NoBrush in ?: becomes the colour black
+        p.setBrush(hot ? QBrush(theme::withAlpha(theme::accent(), 25))
+                       : QBrush(Qt::NoBrush));   // QBrush: a bare Qt::NoBrush in ?: becomes the colour black
         p.drawRoundedRect(nb, 3, 3);
         p.setPen(hot ? theme::accent() : theme::textDim());
         QFont bf = theme::boldFont();
@@ -892,7 +893,8 @@ void RackView::showChannelMenu(int row, const QPoint& global) {
     });
     m.addSeparator();
     m.addAction("Change instrument...", [this, id] { pickInstrument(m_app, this, id); });
-    fillMixerTrackMenu(m.addMenu("Route to mixer track"), proj, c.mixerTrackId, [this, id](Id tid) { m_app.setChannelMixerTrack(id, tid); });
+    fillMixerTrackMenu(
+        m.addMenu("Route to mixer track"), proj, c.mixerTrackId, [this, id](Id tid) { m_app.setChannelMixerTrack(id, tid); });
     if (IProcessor* proc = m_app.processor(id); proc && proc->auxOutputCount() > 0) {   // multi-out instruments
         auto* outs = m.addMenu("Plugin outputs");
         outs->addAction("Route outputs to free mixer tracks", [this, id] { m_app.routeAuxOutputsToFreeTracks(id); });
@@ -973,8 +975,7 @@ void RackView::handleDrop(const QMimeData* mime, const QPoint& at) {
         auto* info = NativeRegistry::instance().info(val);
         if (info && info->kind == ProcessorKind::Instrument) {
             if (target) m_app.changeChannelInstrument(target, val);
-            else
-                m_app.addChannel(channelTypeForKey(val), val);
+            else m_app.addChannel(channelTypeForKey(val), val);
         } else if (info) {
             Id tr = target ? proj.channel(target)->mixerTrackId : proj.masterId();
             m_app.addEffect(tr, val);

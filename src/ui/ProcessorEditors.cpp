@@ -233,8 +233,8 @@ static QWidget* makeSamplerEditor(Sampler* s, QWidget* parent) {
                     if (!n) return;
                     auto v = userPresets();
                     auto& ps = s->params();
-                    EnvPreset e{*n, ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain),
-                        ps.get(Sampler::pRelease)};
+                    EnvPreset e{
+                        *n, ps.get(Sampler::pAttack), ps.get(Sampler::pDecay), ps.get(Sampler::pSustain), ps.get(Sampler::pRelease)};
                     bool replaced = false;
                     for (auto& x : v)
                         if (x.name == e.name) {

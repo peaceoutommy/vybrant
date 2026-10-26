@@ -682,7 +682,8 @@ bool BrowserPanel::eventFilter(QObject* o, QEvent* e) {
         QModelIndex idx = m_tree->indexAt(me->pos());
         if (me->button() == Qt::LeftButton && idx.data(BrowserModel::KindRole).toInt() == BrowserModel::AudioFile &&
             browserAddButtonRect(m_tree->visualRect(idx)).contains(me->pos())) {
-            if (e->type() == QEvent::MouseButtonPress) addSampleChannel(idx.data(BrowserModel::PathRole).toString(), me->globalPosition().toPoint());
+            if (e->type() == QEvent::MouseButtonPress)
+                addSampleChannel(idx.data(BrowserModel::PathRole).toString(), me->globalPosition().toPoint());
             return true;
         }
     }
@@ -762,9 +763,7 @@ void BrowserPanel::onDoubleClicked(const QModelIndex& idx) {
     QString path = idx.data(BrowserModel::PathRole).toString();
     switch (kind) {
     case BrowserModel::AudioFile: addSampleChannel(path, QCursor::pos()); break;
-    case BrowserModel::NativeInstrument:
-        m_app.addChannel(channelTypeForKey(path), path);
-        break;
+    case BrowserModel::NativeInstrument: m_app.addChannel(channelTypeForKey(path), path); break;
     case BrowserModel::NativeEffect: {
         Id sel = m_app.project().selectedChannelId;
         Id track = m_app.project().masterId();

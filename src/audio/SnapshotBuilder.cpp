@@ -378,7 +378,10 @@ void AudioEngine::rebuild(const Project& p) {
         rc.isMidiOut = c.type == ChannelType::MidiOut;
         rc.midiOutPort = c.midiOutPort;
         // a frozen insert plays its render: what the channel sends there stops; the instrument stops when nothing else is left
-        auto frozen = [&](Id t) { auto* mt = p.mixerTrack(t); return mt && mt->freezeTrackId; };
+        auto frozen = [&](Id t) {
+            auto* mt = p.mixerTrack(t);
+            return mt && mt->freezeTrackId;
+        };
         if (frozen(c.mixerTrackId)) rc.mixerTrackIdx = -1;
         bool live = rc.mixerTrackIdx >= 0;
         for (Id t : c.auxOutputTracks) {

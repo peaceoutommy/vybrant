@@ -44,9 +44,7 @@ public:
     void setSearch(const QString& text);
     bool searching() const { return !m_search.isEmpty(); }
     void reindex();   // rescan the library folders in the background (called when they change)
-    QStringList mimeTypes() const override {
-        return {"text/uri-list", kItemMime, "application/x-vybrant-folder"};
-    }
+    QStringList mimeTypes() const override { return {"text/uri-list", kItemMime, "application/x-vybrant-folder"}; }
     QMimeData* mimeData(const QModelIndexList& indexes) const override;
     bool dropMimeData(const QMimeData* data, Qt::DropAction action, int row, int column, const QModelIndex& parent) override;
     bool canDropMimeData(const QMimeData* data, Qt::DropAction, int, int, const QModelIndex& parent) const override {

@@ -386,8 +386,7 @@ void Lv2Plugin::init(const LilvPlugin* p) {
                 LilvNode* nm = lilv_port_get_name(p, port);
                 m_outNames << QString::fromUtf8(nm ? lilv_node_as_string(nm) : pt.symbol.c_str());
                 if (nm) lilv_node_free(nm);
-            }
-            else (lilv_port_has_property(p, port, sideChain) ? m_sideIns : m_mainIns).push_back(i);
+            } else (lilv_port_has_property(p, port, sideChain) ? m_sideIns : m_mainIns).push_back(i);
         } else if (lilv_port_is_a(p, port, atom)) {
             pt.type = PortType::Atom;
             pt.midi = lilv_port_supports_event(p, port, midiEvent);
@@ -641,7 +640,8 @@ QByteArray Lv2Plugin::stateBytes() {
     LilvState* s = lilv_state_new_from_instance(m_plugin, m_instance, &g_map, nullptr, nullptr, nullptr, nullptr, &Lv2Plugin::portValue,
         this, LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE, m_features);
     if (!s) return QByteArray();
-    char* str = lilv_state_to_string(world(), &g_map, &g_unmap, s, "urn:musicthingy:state", nullptr);   // the old name, as in states saved before the rename
+    char* str = lilv_state_to_string(
+        world(), &g_map, &g_unmap, s, "urn:musicthingy:state", nullptr);   // the old name, as in states saved before the rename
     QByteArray out(str);
     lilv_free(str);
     lilv_state_free(s);

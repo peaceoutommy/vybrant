@@ -35,8 +35,8 @@ const QColor kStar(0xf5, 0xc5, 0x42);
 QColor categoryColor(const QString& c) {
     static const QHash<QString, QColor> colors = {{"Dynamics", QColor(0xe8, 0xa2, 0x4a)}, {"EQ / Filter", QColor(0x5a, 0xb0, 0xf0)},
         {"Time", QColor(0x9b, 0x7c, 0xf0)}, {"Modulation", QColor(0x4f, 0xd1, 0xa5)}, {"Distortion", QColor(0xf0, 0x6a, 0x5a)},
-        {"Utility", QColor(0xa0, 0xa8, 0xb0)}, {"Synths", QColor(0xf0, 0xc7, 0x5a)}, {"Keys", QColor(0xe0, 0xd6, 0xc4)}, {"Samplers", QColor(0x6f, 0xc2, 0xe8)},
-        {"Drums", QColor(0xf0, 0x8a, 0x5a)}};
+        {"Utility", QColor(0xa0, 0xa8, 0xb0)}, {"Synths", QColor(0xf0, 0xc7, 0x5a)}, {"Keys", QColor(0xe0, 0xd6, 0xc4)},
+        {"Samplers", QColor(0x6f, 0xc2, 0xe8)}, {"Drums", QColor(0xf0, 0x8a, 0x5a)}};
     return colors.value(c, QColor(0x8a, 0x96, 0xa0));
 }
 
@@ -90,12 +90,14 @@ void drawSignal(QPainter& p, const QRectF& r, const QString& cat, const QString&
         p.setPen(dim);
         p.drawPath(wave(in, 160));
         p.setPen(pen);
-        path = wave([=](double t) {
-            double x = in(t), a = std::fabs(x);
-            if (gate) a = a < th ? a * 0.25 : a;   // a gate / expander pushes the quiet parts down instead
-            else if (a > th) a = th + (a - th) / ratio;
-            return std::copysign(a, x);
-        }, 160);
+        path = wave(
+            [=](double t) {
+                double x = in(t), a = std::fabs(x);
+                if (gate) a = a < th ? a * 0.25 : a;   // a gate / expander pushes the quiet parts down instead
+                else if (a > th) a = th + (a - th) / ratio;
+                return std::copysign(a, x);
+            },
+            160);
     } else if (cat == "EQ / Filter") {   // the frequency response the name suggests
         if (has({"high", "hp", "low cut"})) {
             path.moveTo(at(0, 0.98));
@@ -133,7 +135,9 @@ void drawSignal(QPainter& p, const QRectF& r, const QString& cat, const QString&
         if (has({"reverb", "verb", "room", "hall", "plate", "space", "convol"})) {   // a dense tail
             p.setPen(QPen(c, 1.2, Qt::SolidLine, Qt::RoundCap));
             const double decay = 3 + 3 * v(0);
-            path = bars(28, [=](int i) { return std::exp(-decay * i / 28.0) * (0.55 + 0.45 * std::fabs(std::sin(i * 2.3 + 7 * v(1)))); }, 0.96, false);
+            path = bars(
+                28, [=](int i) { return std::exp(-decay * i / 28.0) * (0.55 + 0.45 * std::fabs(std::sin(i * 2.3 + 7 * v(1)))); }, 0.96,
+                false);
         } else {   // repeats dying away
             const int count = 4 + int(v(0) * 3.99);
             const double fb = 0.55 + 0.25 * v(1);
@@ -288,7 +292,8 @@ public:
             p->setPen(Qt::NoPen);
             p->setBrush(theme::withAlpha(cc, sel || hot ? 48 : 28));
             p->drawRoundedRect(scope, theme::radiusFor(46), theme::radiusFor(46));
-            if (!drawThumb(*p, scope, i.data(ThumbRole).toString(), sel || hot)) drawSignal(*p, scope.adjusted(10, 8, -30, -8), cat, name, cc);
+            if (!drawThumb(*p, scope, i.data(ThumbRole).toString(), sel || hot))
+                drawSignal(*p, scope.adjusted(10, 8, -30, -8), cat, name, cc);
             if (fav || hot) drawStar(*p, starRect(o.rect), fav, hot);
             QRectF bottom(card.left() + 8, card.bottom() - 20, card.width() - 16, 14);
             QRectF badge = drawBadge(*p, bottom.right(), bottom.center().y(), format);
@@ -436,11 +441,13 @@ QString ProcessorPicker::categoryOf(const PluginInfo& p) {
         return "Synths";
     }
     if (any({"compress", "limit", "gate", "expand", "dynamic", "transient", "clipper", "deess"})) return "Dynamics";
-    if (any({"eq", "equali", "filter", "lowpass", "highpass", "bandpass", "notch", "parametric", "shelf", "crossover"})) return "EQ / Filter";
+    if (any({"eq", "equali", "filter", "lowpass", "highpass", "bandpass", "notch", "parametric", "shelf", "crossover"}))
+        return "EQ / Filter";
     if (any({"delay", "reverb", "echo", "convol", "room", "hall", "plate"})) return "Time";
     if (any({"chorus", "flang", "phaser", "tremolo", "vibrato", "modulat", "rotary", "ensemble"})) return "Modulation";
     if (any({"distort", "saturat", "overdrive", "fuzz", "crush", "waveshap", "amplifier", "tube"})) return "Distortion";
-    if (any({"analy", "meter", "utility", "gain", "mixer", "tool", "scope", "tuner", "width", "imager", "mono", "spectr"})) return "Utility";
+    if (any({"analy", "meter", "utility", "gain", "mixer", "tool", "scope", "tuner", "width", "imager", "mono", "spectr"}))
+        return "Utility";
     return "Other";
 }
 
@@ -457,13 +464,15 @@ ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
     m_recent = s.value("picker/recent").toStringList();
     m_pictures = s.value("picker/pictures", true).toBool();
     for (auto& i : NativeRegistry::instance().all())
-        if (i.kind == kind) m_entries.push_back({"native:" + i.key, i.name, "Vybrant", "native", inst ? nativeInstrumentCategory(i.key) : i.category});
+        if (i.kind == kind)
+            m_entries.push_back({"native:" + i.key, i.name, "Vybrant", "native", inst ? nativeInstrumentCategory(i.key) : i.category});
     for (auto& p : m_app.pluginDb().plugins()) {
         if (p.failed || p.hidden || (p.category == "Instrument") != inst) continue;
         m_entries.push_back({"plugin:" + p.key(), p.name, p.vendor, p.format, categoryOf(p)});
         if (p.favorite) m_favorites.insert("plugin:" + p.key());   // starred in the plugin manager
     }
-    std::sort(m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
+    std::sort(
+        m_entries.begin(), m_entries.end(), [](const Entry& a, const Entry& b) { return a.name.compare(b.name, Qt::CaseInsensitive) < 0; });
 
     auto* lay = new QVBoxLayout(this);
     auto* top = new QHBoxLayout;
@@ -485,8 +494,9 @@ ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
             b->setText(f.isEmpty() ? "All" : f.toUpper());
             b->setCheckable(true);
             b->setChecked(f.isEmpty());
-            theme::styled(b, "QToolButton { border: 1px solid @border@; border-radius: 9px; padding: 1px 9px; color: @textDim@; background: transparent; }"
-                             "QToolButton:checked { border-color: @checkedBorder@; color: @checkedFg@; background: @checkedBg@; }");
+            theme::styled(b,
+                "QToolButton { border: 1px solid @border@; border-radius: 9px; padding: 1px 9px; color: @textDim@; background: transparent; }"
+                "QToolButton:checked { border-color: @checkedBorder@; color: @checkedFg@; background: @checkedBg@; }");
             group->addButton(b);
             top->addWidget(b);
             connect(b, &QToolButton::clicked, this, [this, f] {

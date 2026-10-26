@@ -265,7 +265,8 @@ MainWindow::MainWindow(App& app, QWidget* parent)
         mk("rack", theme::Glyph::ChannelRack, "view.rack", "Channel Rack - instruments and the step sequencer of the current pattern (F6)");
         mk("mixer", theme::Glyph::Mixer, "view.mixer", "Mixer - effects, routing, sends and levels (F9)");
         mk("browser", theme::Glyph::Browser, "view.browser", "Browser - samples, instruments, effects, plugins and presets (F8)");
-        mk("samples", theme::Glyph::Samples, "view.samples", "Project panel - the samples, patterns and automation in this project (Alt+S)");
+        mk("samples", theme::Glyph::Samples, "view.samples",
+            "Project panel - the samples, patterns and automation in this project (Alt+S)");
         auto* plug = new QToolButton(this);
         theme::setGlyph(plug, theme::Glyph::Plugins, 21);
         plug->setFixedSize(34, theme::kBarH);
@@ -922,7 +923,8 @@ Qt::Edges MainWindow::edgesAt(const QPoint& p) const {
 void MainWindow::mouseMoveEvent(QMouseEvent* e) {
     Qt::Edges ed = edgesAt(e->pos());
     bool h = ed & (Qt::LeftEdge | Qt::RightEdge), v = ed & (Qt::TopEdge | Qt::BottomEdge);
-    if (h && v) setCursor(ed == (Qt::LeftEdge | Qt::TopEdge) || ed == (Qt::RightEdge | Qt::BottomEdge) ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor);
+    if (h && v)
+        setCursor(ed == (Qt::LeftEdge | Qt::TopEdge) || ed == (Qt::RightEdge | Qt::BottomEdge) ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor);
     else if (h) setCursor(Qt::SizeHorCursor);
     else if (v) setCursor(Qt::SizeVerCursor);
     else unsetCursor();
@@ -942,9 +944,7 @@ void MainWindow::paintEvent(QPaintEvent* e) {
     p.setPen(theme::border());
     p.drawRect(rect().adjusted(0, 0, -1, -1));
 }
-void MainWindow::updateTitle() {
-    setWindowTitle(QString("%1%2 - Vybrant").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : ""));
-}
+void MainWindow::updateTitle() { setWindowTitle(QString("%1%2 - Vybrant").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : "")); }
 
 void MainWindow::openEditor(Id id, const QString& titleIn) {
     QString title = titleIn;
@@ -1288,7 +1288,7 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e) {
         auto* me = static_cast<QMouseEvent*>(e);
         if (e->type() == QEvent::Resize || e->type() == QEvent::LayoutRequest) placeTitle();
         else if ((e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonDblClick) && me->button() == Qt::LeftButton &&
-                 !menuBar()->actionAt(me->pos()) && windowHandle()) {   // empty menu bar space: the title bar
+            !menuBar()->actionAt(me->pos()) && windowHandle()) {   // empty menu bar space: the title bar
             if (e->type() == QEvent::MouseButtonDblClick) isMaximized() ? showNormal() : showMaximized();
             else windowHandle()->startSystemMove();
             return true;

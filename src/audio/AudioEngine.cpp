@@ -179,7 +179,9 @@ int AudioEngine::renderLatency() const {
     for (auto& t : m_rtSnapshot->tracks)
         if (tap ? t.id == tap : t.isMaster)
             return m_rtSnapshot->maxLatency -
-                   (tap && m_renderTapIn.load() ? t.pathLatency : t.outputIdx >= 0 ? m_rtSnapshot->tracks[t.outputIdx].pathLatency : 0);
+                (tap && m_renderTapIn.load() ? t.pathLatency
+                        : t.outputIdx >= 0   ? m_rtSnapshot->tracks[t.outputIdx].pathLatency
+                                             : 0);
     return 0;
 }
 void AudioEngine::offlineEnd() {
@@ -1054,7 +1056,6 @@ void AudioEngine::renderAudioClips(Snapshot& s, Tick t0, Tick t1, int n) {
         }
     }
 }
-
 
 // ---------------------------------------------------------------- RT: metronome & preview
 void AudioEngine::renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, TimeSignature ts, Tick barStart) {

@@ -368,7 +368,8 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
         p.setPen(theme::bg());
     }
     int nameX = mi.isEmpty() ? 4 : 16;
-    p.drawText(QRect(r.left() + nameX, r.top(), r.width() - nameX - 4, 13), Qt::AlignVCenter | Qt::AlignLeft, c.name + (c.muted ? " (muted)" : ""));
+    p.drawText(QRect(r.left() + nameX, r.top(), r.width() - nameX - 4, 13), Qt::AlignVCenter | Qt::AlignLeft,
+        c.name + (c.muted ? " (muted)" : ""));
     QRect body = r.adjusted(1, 14, -1, -1);
     if (c.type == ClipType::Pattern) {
         if (auto* pat = proj.pattern(c.sourceId)) {
@@ -650,7 +651,8 @@ void PlaylistView::renderCache() {
     p.fillRect(QRect(0, 0, L.headerW, L.rulerH), theme::panel());
     p.setPen(theme::textDim());
     p.setFont(theme::smallFont());
-    p.drawText(tempoToggleRect(L).adjusted(10, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft, m_tempoOpen ? "\u25BE  Tempo" : "\u25B8  Tempo");
+    p.drawText(
+        tempoToggleRect(L).adjusted(10, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft, m_tempoOpen ? "\u25BE  Tempo" : "\u25B8  Tempo");
     p.setPen(theme::border());
     p.drawLine(0, L.rulerH - 1, L.headerW, L.rulerH - 1);
 }
@@ -704,7 +706,10 @@ void PlaylistView::paintEvent(QPaintEvent*) {
             cc.setAlphaF(a * 0.6);
             p.setPen(Qt::NoPen);
             p.setBrush(cc);
-            { double rr = theme::radiusFor(r.height()); p.drawRoundedRect(r, rr, rr); }
+            {
+                double rr = theme::radiusFor(r.height());
+                p.drawRoundedRect(r, rr, rr);
+            }
         });
         p.restore();
         m_ticker->keepAlive(m_clipAnim.active());
@@ -718,11 +723,10 @@ void PlaylistView::paintEvent(QPaintEvent*) {
             const Pattern* pat = m_app.project().pattern(m_app.project().selectedPatternId);
             if (b || pat) {
                 QColor pc = (b && b->type != ClipType::Pattern) || m_pickLane || !m_pickFile.isEmpty() ? theme::accent()
-                    : pat                                                                         ? pat->color
-                                                                                                  : theme::accent();
+                    : pat                                                                              ? pat->color
+                                                                                                       : theme::accent();
                 Tick t = snap(xToTick(m_hoverPos.x()));
-                QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(brushLength() * m_ppt)),
-                    trackH(tr) - 2);
+                QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(brushLength() * m_ppt)), trackH(tr) - 2);
                 p.save();
                 p.setClipRect(L.area);
                 p.setRenderHint(QPainter::Antialiasing);
@@ -811,7 +815,8 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
             QMenu m;
             addTimeSigActions(m, e->pos().x());
             m.addAction("Add marker here", [this, t] {
-                if (auto n = askName(this, "Marker", QString("Marker %1").arg(m_app.project().markers.size() + 1), true)) m_app.addMarker(t, *n);
+                if (auto n = askName(this, "Marker", QString("Marker %1").arg(m_app.project().markers.size() + 1), true))
+                    m_app.addMarker(t, *n);
             });
             for (auto& mk : proj.markers)
                 if (std::abs(tickToX(mk.position) - e->pos().x()) < 8) {
@@ -954,7 +959,8 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         if (e->button() == Qt::LeftButton) {
             setBrush(*c);   // FL: the clicked clip is what the draw tool places next
             if (c->type == ClipType::Pattern) m_app.selectPattern(c->sourceId);
-            else if (auto* a = c->type == ClipType::Audio ? proj.audioSource(c->sourceId) : nullptr) Q_EMIT m_app.revealInProject("audio|" + a->filePath);
+            else if (auto* a = c->type == ClipType::Audio ? proj.audioSource(c->sourceId) : nullptr)
+                Q_EMIT m_app.revealInProject("audio|" + a->filePath);
             else if (c->type == ClipType::Automation) Q_EMIT m_app.revealInProject("lane|" + QString::number(c->sourceId));
         }
         beginEdit();
@@ -1363,7 +1369,8 @@ void PlaylistView::mouseDoubleClickEvent(QMouseEvent* e) {
             return;
         }
         auto& t = proj.playlistTracks[idx];
-        if (auto n = askName(this, "Rename track", t.name)) m_app.edit<PlaylistTrack>(t.id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
+        if (auto n = askName(this, "Rename track", t.name))
+            m_app.edit<PlaylistTrack>(t.id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
         return;
     }
     if (L.tempo.contains(e->pos())) {   // a new tempo point at the BPM under the pointer (or the point already at that tick)
@@ -1658,7 +1665,8 @@ void PlaylistView::showTrackMenu(int idx, const QPoint& global) {
     Id id = t.id;
     QMenu m(this);
     m.addAction("Rename...", [this, id, t] {
-        if (auto n = askName(this, "Rename track", t.name)) m_app.edit<PlaylistTrack>(id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
+        if (auto n = askName(this, "Rename track", t.name))
+            m_app.edit<PlaylistTrack>(id, "Rename track", [n = *n](PlaylistTrack& x) { x.name = n; });
     });
     m.addAction("Color...", [this, id, t] {
         QColor c = QColorDialog::getColor(t.color, this);
@@ -1675,8 +1683,8 @@ void PlaylistView::showTrackMenu(int idx, const QPoint& global) {
         [this, id](Id mid) { m_app.edit<PlaylistTrack>(id, "Track mixer routing", [mid](PlaylistTrack& x) { x.mixerTrackId = mid; }); });
     auto* h = m.addMenu("Height");
     for (int hh : {30, 60, 100, 160})
-        h->addAction(
-            QString::number(hh), [this, id, hh] { m_app.edit<PlaylistTrack>(id, "Track height", [hh](PlaylistTrack& x) { x.height = hh; }); });
+        h->addAction(QString::number(hh),
+            [this, id, hh] { m_app.edit<PlaylistTrack>(id, "Track height", [hh](PlaylistTrack& x) { x.height = hh; }); });
     m.exec(global);
 }
 void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
@@ -1706,9 +1714,11 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
         m.addAction(c->loopSource ? "Don't repeat pattern" : "Repeat pattern (when the clip is longer than the pattern)",
             [this, id] { m_app.edit<Clip>(id, "Repeat pattern", [](Clip& x) { x.loopSource = !x.loopSource; }); });
         if (c->length > 0)
-            m.addAction("Fit to pattern length", [this, id] { m_app.edit<Clip>(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); });
-        m.addAction("Consolidate to audio\tCtrl+Alt+C", [this] { consolidateSelected(); })
-            ->setToolTip("Renders the selected pattern clips to one audio clip; the clips are muted and kept, as in FL Studio");
+            m.addAction(
+                "Fit to pattern length", [this, id] { m_app.edit<Clip>(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); });
+        m.addAction("Consolidate to audio\tCtrl+Alt+C", [this] {
+             consolidateSelected();
+         })->setToolTip("Renders the selected pattern clips to one audio clip; the clips are muted and kept, as in FL Studio");
     }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
@@ -1732,7 +1742,8 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             std::vector<std::unique_ptr<Command>> cmds;
             for (Id sid : m_selected)
                 if (const Clip* x = m_app.project().clip(sid); x && x->type == ClipType::Audio)
-                    cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_app.model(), sid, "", [v](Clip& y) { y.pitch = (float)v; }, 0));
+                    cmds.push_back(
+                        std::make_unique<EditObjectCommand<Clip>>(m_app.model(), sid, "", [v](Clip& y) { y.pitch = (float)v; }, 0));
             if (!cmds.empty()) m_app.model().macro("Transpose clips", std::move(cmds));
         });
         m.addAction("Fade in...", [this, id, c] {

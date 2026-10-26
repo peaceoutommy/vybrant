@@ -33,7 +33,9 @@ public:
     // The project panel picked a row: the draw tool places a new clip of it next (a pattern: the selected one), instead of the
     // last clip clicked. The first clip placed becomes the brush, so a resize carries on to the next ones as usual.
     void pickSource(ClipType type, Id id, const QString& file);
-    QString debugInfo() const { return QString("sel=%1 ppt=%2 tool=%3 tempo=%4").arg(m_selected.size()).arg(m_ppt).arg(m_tool).arg(m_tempoOpen); }
+    QString debugInfo() const {
+        return QString("sel=%1 ppt=%2 tool=%3 tempo=%4").arg(m_selected.size()).arg(m_ppt).arg(m_tool).arg(m_tempoOpen);
+    }
     void refresh();
     void uiTick();
     void zoomToFit();

@@ -236,7 +236,8 @@ private:
     void recordAutomationPoint(const ParamTarget& t, float normalized);
     // Faders and knobs: the change is written live while dragging and as one merged undo step on release (commit); with the
     // record mode set to Automation every move also records the target's new value. One rule for every continuous control.
-    template <class T> void liveControl(Id id, const char* desc, int mergeId, bool commit, std::function<void(T&)> set, const ParamTarget& t);
+    template <class T>
+    void liveControl(Id id, const char* desc, int mergeId, bool commit, std::function<void(T&)> set, const ParamTarget& t);
     void syncTransportToEngine();
     void syncMixerTrackNames();
     void updateSamplerStretch();

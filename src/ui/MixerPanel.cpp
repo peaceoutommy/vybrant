@@ -77,7 +77,8 @@ void EffectSlotList::paintEvent(QPaintEvent*) {
         } else {
             bool hot = slot == m_hoverSlot;
             p.setPen(QPen(hot ? theme::withAlpha(theme::accent(), 140) : theme::grid(), 1));
-            p.setBrush(hot ? QBrush(theme::withAlpha(theme::text(), 18)) : QBrush(Qt::NoBrush));   // QBrush: a bare Qt::NoBrush in ?: becomes the colour black
+            p.setBrush(hot ? QBrush(theme::withAlpha(theme::text(), 18))
+                           : QBrush(Qt::NoBrush));   // QBrush: a bare Qt::NoBrush in ?: becomes the colour black
             p.drawRoundedRect(rr, theme::radius(), theme::radius());
             if (hot) {
                 p.setPen(theme::textDim());
@@ -262,7 +263,8 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
     m_name = new QLabel(this);
     m_name->setAlignment(Qt::AlignCenter);
     m_name->setStyleSheet("font-weight:bold; padding:2px; border-radius:3px;");
-    m_name->setToolTip("Double-click to rename (empty name: follow the routed channel). Click to select (then right-click another strip to route/send).");
+    m_name->setToolTip(
+        "Double-click to rename (empty name: follow the routed channel). Click to select (then right-click another strip to route/send).");
     lay->addWidget(m_name);
     m_input = new QToolButton(this);
     m_input->setText("In: -");
@@ -396,7 +398,8 @@ void MixerStrip::refresh() {
     m_name->setText(t->freezeTrackId ? t->name + " \u2744" : t->name);   // snowflake: frozen
     // Kept as a theme template so a live theme change re-applies it; the track colour is this strip's own, not the theme's.
     theme::styled(m_name,
-        QString("font-weight:bold; font-size:8pt; padding:2px; border-radius:@radius@; background:%1; color:%2; border-bottom: 2px solid %3;")
+        QString(
+            "font-weight:bold; font-size:8pt; padding:2px; border-radius:@radius@; background:%1; color:%2; border-bottom: 2px solid %3;")
             .arg(m_selected ? "@hover@" : "@panel@", m_selected ? "@accent@" : "@text@", t->color.name()));
     m_input->setText(t->inputChannel < 0 ? "In: -"
             : t->inputStereo             ? QString("In %1+%2").arg(t->inputChannel + 1).arg(t->inputChannel + 2)

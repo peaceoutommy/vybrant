@@ -41,7 +41,8 @@ public:
     template <class T> void remove(Id id, const QString& desc);
     template <class T> void reorder(Id id, int newIndex, const QString& desc);
     void editTransport(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId = 0);
-    std::unique_ptr<Command> transportCommand(const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId = 0);   // for macros
+    std::unique_ptr<Command> transportCommand(
+        const QString& desc, std::function<void(TransportSettings&)> fn, int mergeId = 0);   // for macros
     void editMeta(const QString& desc, std::function<void(Project&)> fn);   // meta/settings/selection (no structural change)
     void macro(const QString& desc, std::vector<std::unique_ptr<Command>> cmds);
 

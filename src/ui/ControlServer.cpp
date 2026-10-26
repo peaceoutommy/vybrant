@@ -41,7 +41,8 @@ namespace mt {
 
 // Simulated input for the UI test: press at 'from', 'moves' steps towards 'to' (sent even when they are equal: some views
 // react to the move itself), release at 'to'. A click is a drag with no moves.
-static void sendDrag(QWidget* w, QPoint from, QPoint to, int moves = 1, Qt::MouseButton b = Qt::LeftButton, Qt::KeyboardModifiers mods = {}) {
+static void sendDrag(
+    QWidget* w, QPoint from, QPoint to, int moves = 1, Qt::MouseButton b = Qt::LeftButton, Qt::KeyboardModifiers mods = {}) {
     QMouseEvent pr(QEvent::MouseButtonPress, from, w->mapToGlobal(from), b, b, mods);
     QCoreApplication::sendEvent(w, &pr);
     for (int i = 1; i <= moves; ++i) {
@@ -402,7 +403,8 @@ QString ControlServer::handle(const QString& line) {
     }
     if (c == "pldrag" && a.size() >= 5) {   // left drag in the playlist: pldrag <track> <tick> <toTrack> <toTick> [xoffset of the press]
         auto* v = m_win.playlist()->view();
-        QPoint p1 = v->debugPoint(a[1].toInt(), a[2].toLongLong()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0), p2 = v->debugPoint(a[3].toInt(), a[4].toLongLong());
+        QPoint p1 = v->debugPoint(a[1].toInt(), a[2].toLongLong()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0),
+               p2 = v->debugPoint(a[3].toInt(), a[4].toLongLong());
         sendDrag(v, p1, p2);
         return "ok";
     }
@@ -436,7 +438,8 @@ QString ControlServer::handle(const QString& line) {
         return QString("channels=%1 toast=%2").arg(m_app.project().channels.size()).arg(toast);
     }
     if (c == "projpanel") return m_win.samplesPanel()->debugState();
-    if (c == "projpick" && a.size() >= 3) {   // click a row in the project panel: projpick <tab 0 samples / 1 patterns / 2 automation> <row>
+    if (c == "projpick" &&
+        a.size() >= 3) {   // click a row in the project panel: projpick <tab 0 samples / 1 patterns / 2 automation> <row>
         m_win.samplesPanel()->debugPick(a[1].toInt(), a[2].toInt());
         return m_win.samplesPanel()->debugState();
     }
@@ -449,7 +452,8 @@ QString ControlServer::handle(const QString& line) {
     }
     if (c == "samples" && a.size() >= 2) {   // project panel: samples drop <path> | samples open | samples show
         auto* sp = m_win.samplesPanel();
-        if (a[1] == "drop" && a.size() >= 3) return sp->debugDropFile(a[2]) ? QString("sources=%1").arg(m_app.project().audioSources.size()) : "err";
+        if (a[1] == "drop" && a.size() >= 3)
+            return sp->debugDropFile(a[2]) ? QString("sources=%1").arg(m_app.project().audioSources.size()) : "err";
         if (a[1] == "open") {
             sp->setTab(ProjectSamplesPanel::Samples);
             sp->debugDoubleClickFirst();
@@ -498,7 +502,8 @@ QString ControlServer::handle(const QString& line) {
     if (c == "plinfo") return m_win.playlist()->view()->debugInfo();
     if (c == "pltempo") {   // click "Tempo" in the playlist's header column (opens / closes the tempo lane): -> plinfo
         auto* v = m_win.playlist()->view();
-        QPoint at = v->debugInfo().endsWith("tempo=0") ? QPoint(40, 12) : QPoint(40, 34);   // closed: beside the ruler; open: heading the lane
+        QPoint at = v->debugInfo().endsWith("tempo=0") ? QPoint(40, 12)
+                                                       : QPoint(40, 34);   // closed: beside the ruler; open: heading the lane
         sendDrag(v, at, at, 0);
         return v->debugInfo();
     }
@@ -524,7 +529,8 @@ QString ControlServer::handle(const QString& line) {
         const Clip* after = m_app.project().clip(id);
         return after ? QString("gain=%1").arg(after->gain, 0, 'f', 2) : "err clip gone";
     }
-    if (c == "plclipmenu" && a.size() >= 2) {   // the first audio clip's menu button: plclipmenu <action prefix> [int typed into its prompt]
+    if (c == "plclipmenu" &&
+        a.size() >= 2) {   // the first audio clip's menu button: plclipmenu <action prefix> [int typed into its prompt]
         auto& cl = m_app.project().clips;
         auto it = std::find_if(cl.begin(), cl.end(), [](const Clip& x) { return x.type == ClipType::Audio; });
         if (it == cl.end()) return "err no audio clip";
@@ -579,7 +585,11 @@ QString ControlServer::handle(const QString& line) {
         for (auto& cl : pr.clips) {
             int ti = 0;
             while (ti < (int)pr.playlistTracks.size() && pr.playlistTracks[ti].id != cl.trackId) ++ti;
-            out << QString("%1:%2+%3%4").arg(ti).arg(cl.start).arg(pr.clipLength(cl)).arg(QString(cl.loopSource ? "L" : "") + (cl.type == ClipType::Audio ? "A" : ""));
+            out << QString("%1:%2+%3%4")
+                       .arg(ti)
+                       .arg(cl.start)
+                       .arg(pr.clipLength(cl))
+                       .arg(QString(cl.loopSource ? "L" : "") + (cl.type == ClipType::Audio ? "A" : ""));
         }
         return out.join(' ');
     }
@@ -593,7 +603,8 @@ QString ControlServer::handle(const QString& line) {
             }
         return "err no audio clip";
     }
-    if (c == "picker" && a.size() >= 4) {   // open the effect / instrument picker: picker effect|instrument cards|list|pictures|-|star <png> [search words]
+    if (c == "picker" &&
+        a.size() >= 4) {   // open the effect / instrument picker: picker effect|instrument cards|list|pictures|-|star <png> [search words]
         ProcessorPicker dlg(m_app, a[1] == "instrument" ? ProcessorKind::Instrument : ProcessorKind::Effect, &m_win);
         if (a[2] == "cards" || a[2] == "list") dlg.findChild<QToolButton*>(a[2] == "list" ? "pickerList" : "pickerCards")->click();
         if (a[2] == "pictures") dlg.findChild<QToolButton*>("pickerPictures")->click();   // toggles the plugins' own pictures

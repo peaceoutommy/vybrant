@@ -724,7 +724,8 @@ void App::setChannelColor(Id id, const QColor& col) {
     m_model.edit<Channel>(id, "Channel color", [col](Channel& c) { c.color = col; });
 }
 void App::moveChannel(Id id, int newIndex) { m_model.reorder<Channel>(id, newIndex, "Move channel"); }
-template <class T> void App::liveControl(Id id, const char* desc, int mergeId, bool commit, std::function<void(T&)> set, const ParamTarget& t) {
+template <class T>
+void App::liveControl(Id id, const char* desc, int mergeId, bool commit, std::function<void(T&)> set, const ParamTarget& t) {
     if (commit) m_model.edit<T>(id, desc, set, mergeId);
     else {
         auto& v = m_model.vec<T>();
@@ -1211,10 +1212,12 @@ void App::setSendLevel(Id from, Id to, float level, bool commit) {
     auto& lv = m_engine->registry().track(from).sendLevels[to];
     if (!lv) lv = std::make_unique<std::atomic<float>>(level);
     else lv->store(level);
-    liveControl<MixerTrack>(from, "Send level", 2005, commit, [to, level](MixerTrack& t) {
-        for (auto& s : t.sends)
-            if (s.targetTrackId == to) s.level = level;
-    }, {ParamTarget::MixerSend, from, to, 0});
+    liveControl<MixerTrack>(from, "Send level", 2005, commit,
+        [to, level](MixerTrack& t) {
+            for (auto& s : t.sends)
+                if (s.targetTrackId == to) s.level = level;
+        },
+        {ParamTarget::MixerSend, from, to, 0});
 }
 Id App::addEffect(Id trackId, const QString& key, int slot) {
     EffectSlot e;
@@ -1266,10 +1269,13 @@ void App::setEffectBypass(Id trackId, Id slotId, bool b) {
     });
 }
 void App::setEffectMix(Id trackId, Id slotId, float mix) {
-    m_model.edit<MixerTrack>(trackId, "Effect mix", [slotId, mix](MixerTrack& t) {
-        for (auto& e : t.effects)
-            if (e.id == slotId) e.mix = mix;
-    }, 2006);
+    m_model.edit<MixerTrack>(
+        trackId, "Effect mix",
+        [slotId, mix](MixerTrack& t) {
+            for (auto& e : t.effects)
+                if (e.id == slotId) e.mix = mix;
+        },
+        2006);
 }
 bool App::routeTrack(Id from, Id to) {
     if (from == to || project().routingWouldCycle(from, to)) {
@@ -1723,7 +1729,8 @@ void App::endRecordPass() {
         for (size_t i = 0; i < m_recSegments.size(); ++i) {
             int64_t from = m_recSegments[i].frame - base + latency;
             // the next segment's first frames still belong to this take only when recording ran on (a loop wrap, not a punch-in)
-            int64_t to = i + 1 < m_recSegments.size() ? m_recSegments[i + 1].frame - base + (m_recSegments[i + 1].contiguous ? latency : 0) : f.frames;
+            int64_t to = i + 1 < m_recSegments.size() ? m_recSegments[i + 1].frame - base + (m_recSegments[i + 1].contiguous ? latency : 0)
+                                                      : f.frames;
             to = std::min(f.frames, to);
             if (to - from < sr / 10) continue;   // a sliver after the last wrap: not a take
             Clip c;
@@ -1961,8 +1968,7 @@ bool App::exportMidiFile(const QString& path, Id patternId) {
                 add(*pat, c.start - c.sourceOffset + k * len, std::max<Tick>(c.sourceOffset - k * len, 0),
                     std::min<Tick>(end - k * len, len));
         }
-    } else if (const Pattern* pat = single ? single : p.pattern(p.selectedPatternId))
-        add(*pat, 0, 0, p.patternLength(*pat));
+    } else if (const Pattern* pat = single ? single : p.pattern(p.selectedPatternId)) add(*pat, 0, 0, p.patternLength(*pat));
     for (auto& ch : p.channels)
         if (auto it = parts.find(ch.id); it != parts.end() && (!it->second.notes.empty() || !it->second.controls.empty())) {
             it->second.name = ch.name;

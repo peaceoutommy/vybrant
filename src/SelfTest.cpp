@@ -337,7 +337,7 @@ int runSelfTest(App& app) {
         Id nc = app.consolidateClips({sel}, nullptr, &err);
         const Clip* c = pr.clip(nc);
         CHECK(c && c->type == ClipType::Audio && c->start == at && c->trackId != tr1 && c->length == len && pr.clip(sel) &&
-                  pr.clip(sel)->muted && pr.clip(other) && !pr.clip(other)->muted && pr.pattern(pat),
+                pr.clip(sel)->muted && pr.clip(other) && !pr.clip(other)->muted && pr.pattern(pat),
             "consolidate: one audio clip at the clip's start and of its length on a free track; the original is muted and kept (as in FL Studio)");
         app.deleteClips({other});
         o.path = tmp.path() + "/cpost.wav";
@@ -347,11 +347,15 @@ int runSelfTest(App& app) {
         int64_t clipFrames = (int64_t)((pr.transport.tempoMap().secondsAt(at + len) - pr.transport.tempoMap().secondsAt(at)) * 44100);
         if (a && b && a->frames > 1000) {   // over the clip: past its end the tail is cut, as in FL Studio
             diff = 0.f;
-            for (int64_t i = 0; i < std::min({a->frames, b->frames, clipFrames}); ++i) diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
+            for (int64_t i = 0; i < std::min({a->frames, b->frames, clipFrames}); ++i)
+                diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
         }
         const AudioSource* cs = c ? pr.audioSource(c->sourceId) : nullptr;
         CHECK(f && diff < 1e-3f && a->peakValue > 0.1f && cs && std::llabs(cs->frames - clipFrames) <= 2,
-            QString("consolidate (tail: cut): the clip sounds the same over its length (max diff %1) and its file ends there").arg(diff).toUtf8().constData());
+            QString("consolidate (tail: cut): the clip sounds the same over its length (max diff %1) and its file ends there")
+                .arg(diff)
+                .toUtf8()
+                .constData());
         auto cut = cs ? AudioFile::load(cs->filePath, 0) : nullptr;
         model.undoStack().undo();   // the delete
         model.undoStack().undo();
@@ -371,7 +375,8 @@ int runSelfTest(App& app) {
                 folded = std::max(folded, std::fabs(wrap->L()[i] - cut->L()[i]));
             bool wrapped = wc && wc->length == len && wrap && cut && wrap->frames == cut->frames && folded > 1e-4f;
             model.undoStack().undo();
-            CHECK(leave && wrapped && pr.clip(sel) && !pr.clip(sel)->muted, "consolidate tails: Leave rings on past the selection, Wrap folds it onto the start");
+            CHECK(leave && wrapped && pr.clip(sel) && !pr.clip(sel)->muted,
+                "consolidate tails: Leave rings on past the selection, Wrap folds it onto the start");
         }
         if (nc) {   // the playlist's Ctrl+Alt+C does it to its selection
             PlaylistView v(app);
@@ -381,7 +386,8 @@ int runSelfTest(App& app) {
             });
             QKeyEvent k(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier | Qt::AltModifier);
             QCoreApplication::sendEvent(&v, &k);
-            CHECK(pr.clip(sel) && pr.clip(sel)->muted && pr.clip(other) && pr.clips.back().type == ClipType::Audio && pr.clips.back().start == at,
+            CHECK(pr.clip(sel) && pr.clip(sel)->muted && pr.clip(other) && pr.clips.back().type == ClipType::Audio &&
+                    pr.clips.back().start == at,
                 "Ctrl+Alt+C in the playlist consolidates the selected pattern clips");
             model.undoStack().undo();
         }
@@ -482,7 +488,8 @@ int runSelfTest(App& app) {
         Id track = app.firstPlaylistTrack();
         Id cid = app.addAudioClip(track, src.filePath, 0);
         const Clip* c = pr.clip(cid);
-        CHECK(c && c->gain == 0.5f && c->pitch == 3 && c->stretchMode == StretchVocals, "a new clip starts from its sample's placement settings");
+        CHECK(c && c->gain == 0.5f && c->pitch == 3 && c->stretchMode == StretchVocals,
+            "a new clip starts from its sample's placement settings");
         Project p6;
         CHECK(ProjectSerializer::fromJson(ProjectSerializer::toJson(pr), p6, &err) && p6.audioSource(src.id) &&
                 p6.audioSource(src.id)->hasPlaceDefaults && p6.audioSource(src.id)->placeDefaults.pitch == 3,
@@ -509,9 +516,15 @@ int runSelfTest(App& app) {
         app.setMixerVolume(t1, 0.5f, false);
         app.setMixerPan(t1, -0.5f, false);
         app.setSendLevel(t1, t2, 0.3f, false);
-        bool vol = recorded(ParamTarget::MixerVolume, t1), pan = recorded(ParamTarget::MixerPan, t1), snd = recorded(ParamTarget::MixerSend, t1);
-        CHECK(vol && pan && snd, QString("automation recording catches mixer volume, pan and send moves (%1 %2 %3)")
-                                     .arg(vol).arg(pan).arg(snd).toUtf8().constData());
+        bool vol = recorded(ParamTarget::MixerVolume, t1), pan = recorded(ParamTarget::MixerPan, t1),
+             snd = recorded(ParamTarget::MixerSend, t1);
+        CHECK(vol && pan && snd,
+            QString("automation recording catches mixer volume, pan and send moves (%1 %2 %3)")
+                .arg(vol)
+                .arg(pan)
+                .arg(snd)
+                .toUtf8()
+                .constData());
         eng.setRecording(false);
         eng.offlineProcess(l.data(), r.data(), 512);
         eng.offlineEnd();
@@ -1151,7 +1164,8 @@ int runSelfTest(App& app) {
         eng.setSongLoop(true);
         eng.offlineEnd();
         CHECK(std::fabs(looped - PPQ) < 2 && straight > 8 * PPQ,
-            QString("song mode loops at the end of the last clip's bar (%1 ticks after running 3 beats from beat 6); an export does not (%2)")
+            QString(
+                "song mode loops at the end of the last clip's bar (%1 ticks after running 3 beats from beat 6); an export does not (%2)")
                 .arg(looped)
                 .arg(straight)
                 .toUtf8()
@@ -1305,7 +1319,10 @@ int runSelfTest(App& app) {
         CHECK(name(t1) == "Piano", "mixer track takes the name of the channel routed to it");
         app.setChannelMixerTrack(pc, t2);
         CHECK(name(t2) == "Piano" && name(t1) == t1Default, "moving the channel moves the name; the old track gets its default back");
-        app.edit<MixerTrack>(t1, "Rename", [](MixerTrack& x) { x.name = "Strings bus"; x.customName = true; });
+        app.edit<MixerTrack>(t1, "Rename", [](MixerTrack& x) {
+            x.name = "Strings bus";
+            x.customName = true;
+        });
         app.setChannelMixerTrack(pc, t1);
         CHECK(name(t1) == "Strings bus" && name(t2) != "Piano", "a renamed track keeps its name when a channel is routed to it");
         app.renameChannel(pc, "Grand");
@@ -1380,8 +1397,8 @@ int runSelfTest(App& app) {
             scan.start(QCoreApplication::applicationFilePath(), {"--scan-plugin", so});
             scan.waitForFinished(30000);
             QJsonObject o = QJsonDocument::fromJson(scan.readAllStandardOutput().split('\n').first()).object();
-            CHECK(o["format"].toString() == "clap" && o["uid"].toString() == "org.vybrant.test-gain" &&
-                    o["category"].toString() == "Effect",
+            CHECK(
+                o["format"].toString() == "clap" && o["uid"].toString() == "org.vybrant.test-gain" && o["category"].toString() == "Effect",
                 "out-of-process scan reports the CLAP plugin");
             PluginInfo info;
             info.format = "clap";
@@ -1471,7 +1488,11 @@ int runSelfTest(App& app) {
             bool fz = app.freezeMixerTrack(auxT, nullptr, &fe);
             float la2 = level(auxT), lm2 = level(mainT);
             CHECK(fz && std::fabs(la2 - 0.5f) < 1e-3f && std::fabs(lm2 - 0.25f) < 1e-4f,
-                QString("freezing an extra output's insert plays its render once, the main output stays live (%1, %2)").arg(la2).arg(lm2).toUtf8().constData());
+                QString("freezing an extra output's insert plays its render once, the main output stays live (%1, %2)")
+                    .arg(la2)
+                    .arg(lm2)
+                    .toUtf8()
+                    .constData());
             app.unfreezeMixerTrack(auxT);
             model.setFilePath(oldPath);
             app.deleteChannel(ch);
@@ -1542,8 +1563,8 @@ int runSelfTest(App& app) {
         QString forged = key;
         forged[10] = forged[10] == 'A' ? 'B' : 'A';
         CHECK(i.valid && i.id == "user_selftest" && i.name == "Self Test" && i.email == "selftest@example.com" &&
-                  license::verify("  " + key.left(60) + "\n" + key.mid(60) + " ", pub).valid && !license::verify(forged, pub).valid &&
-                  !license::verify(key + "x", pub).valid && !license::verify("garbage", pub).valid,
+                license::verify("  " + key.left(60) + "\n" + key.mid(60) + " ", pub).valid && !license::verify(forged, pub).valid &&
+                !license::verify(key + "x", pub).valid && !license::verify("garbage", pub).valid,
             "a server-made license verifies, pasted with line breaks too; a changed one, another key's or garbage does not");
     }
     {   // the processor picker sorts plugins by what they do, from VST3 / CLAP / LV2 categories and the name
@@ -1554,11 +1575,14 @@ int runSelfTest(App& app) {
             p.name = name;
             return ProcessorPicker::categoryOf(p);
         };
-        CHECK(cat("Effect", "Fx|Dynamics", "Squash") == "Dynamics" && cat("Effect", "audio-effect|equalizer|stereo", "X") == "EQ / Filter" &&
-                  cat("Effect", "Reverb", "LSP Room Builder") == "Time" && cat("Effect", "audio-effect", "Step Sequencer") == "Other" &&
-                  cat("Effect", "Fx", "Tape Saturator") == "Distortion" && cat("Instrument", "instrument|synthesizer", "Surge XT") == "Synths" &&
-                  cat("Instrument", "Instrument|Drum", "Kit") == "Drums" && cat("Instrument", "Instrument Plugin", "LSP Multi-Sampler") == "Samplers" &&
-                  cat("Instrument", "Instrument", "SRX PIANO 1") == "Keys",
+        CHECK(cat("Effect", "Fx|Dynamics", "Squash") == "Dynamics" &&
+                cat("Effect", "audio-effect|equalizer|stereo", "X") == "EQ / Filter" &&
+                cat("Effect", "Reverb", "LSP Room Builder") == "Time" && cat("Effect", "audio-effect", "Step Sequencer") == "Other" &&
+                cat("Effect", "Fx", "Tape Saturator") == "Distortion" &&
+                cat("Instrument", "instrument|synthesizer", "Surge XT") == "Synths" &&
+                cat("Instrument", "Instrument|Drum", "Kit") == "Drums" &&
+                cat("Instrument", "Instrument Plugin", "LSP Multi-Sampler") == "Samplers" &&
+                cat("Instrument", "Instrument", "SRX PIANO 1") == "Keys",
             "the processor picker puts plugins in the right category");
     }
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
@@ -1873,22 +1897,25 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
                     for (int k = 0; k < 4; ++k) {
                         play(*copy, &tmp);
                         int m = 0;
-                        for (int i = 0; i < ps.count() && i < copy->params().count(); ++i) m += std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f;
+                        for (int i = 0; i < ps.count() && i < copy->params().count(); ++i)
+                            m += std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f;
                         std::printf("       after %d more s: %d differ\n", k + 1, m);
                         if (k == 3) {
                             copy->restoreState(copy->saveState());
                             play(*copy, &tmp);
                             m = 0;
-                            for (int i = 0; i < ps.count() && i < copy->params().count(); ++i) m += std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f;
+                            for (int i = 0; i < ps.count() && i < copy->params().count(); ++i)
+                                m += std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f;
                             std::printf("       after the copy re-reads its own state: %d differ\n", m);
                         }
                     }
                 mismatched = 0;
                 for (int i = 0; i < ps.count() && i < copy->params().count(); ++i)
-                    if (std::fabs(ps.getAt(i) - copy->params().getAt(i)) > 1e-3f * std::max(1.f, std::fabs(ps.desc(i).max - ps.desc(i).min))) {
+                    if (std::fabs(ps.getAt(i) - copy->params().getAt(i)) >
+                        1e-3f * std::max(1.f, std::fabs(ps.desc(i).max - ps.desc(i).min))) {
                         if (++mismatched <= 4 && qEnvironmentVariableIsSet("MT_PLUGIN_TEST_DEBUG"))
-                            std::printf("       %s: %g -> %g (range %g..%g, def %g)\n", ps.desc(i).name.c_str(), ps.getAt(i), copy->params().getAt(i),
-                                ps.desc(i).min, ps.desc(i).max, ps.desc(i).def);
+                            std::printf("       %s: %g -> %g (range %g..%g, def %g)\n", ps.desc(i).name.c_str(), ps.getAt(i),
+                                copy->params().getAt(i), ps.desc(i).min, ps.desc(i).max, ps.desc(i).def);
                     }
             }
             QString editor = "-";
@@ -1912,14 +1939,26 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
                     }
                 }
                 double dpr = top.devicePixelRatioF();
-                editor = !ed ? "no editor" : var >= 50 ? QString("ok %1x%2").arg(std::lround(top.width() * dpr)).arg(std::lround(top.height() * dpr)) : "EMPTY";
+                editor = !ed    ? "no editor"
+                    : var >= 50 ? QString("ok %1x%2").arg(std::lround(top.width() * dpr)).arg(std::lround(top.height() * dpr))
+                                : "EMPTY";
             }
             bool ok = finite && mismatched == 0 && editor != "EMPTY" && editor != "no editor";
             bool silent = inst && peak <= 1e-4f;   // a sampler with nothing loaded is silent by design: a warning, not a failure
             bad += !ok;
             std::printf("  %s %s: load %lld ms, peak %.3f%s, latency %d, extra outputs %d, params %d, state %s, editor %s\n",
-                !ok ? "FAIL" : silent ? "warn" : "ok  ", qPrintable(row), (long long)loadMs, peak, !finite ? " NaN/inf!" : silent ? " (silent)" : "", proc->latencySamples(), proc->auxOutputCount(), ps.count(),
-                mismatched < 0 ? "copy failed" : mismatched == 0 ? "round-trips" : qPrintable(QString("%1 differ").arg(mismatched)), qPrintable(editor));
+                !ok ? "FAIL"
+                    : silent ? "warn"
+                             : "ok  ",
+                qPrintable(row), (long long)loadMs, peak,
+                !finite      ? " NaN/inf!"
+                    : silent ? " (silent)"
+                             : "",
+                proc->latencySamples(), proc->auxOutputCount(), ps.count(),
+                mismatched < 0        ? "copy failed"
+                    : mismatched == 0 ? "round-trips"
+                                      : qPrintable(QString("%1 differ").arg(mismatched)),
+                qPrintable(editor));
         }
     if (dpy) XCloseDisplay(dpy);
     std::printf(bad ? "\n%d FAILED\n" : "\nAll plugin checks passed\n", bad);

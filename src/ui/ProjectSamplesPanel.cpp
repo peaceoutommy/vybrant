@@ -102,8 +102,10 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
         if (!it) return;
         Id id = it->data(ProjectItemList::IdRole).toULongLong();
         if (m_tab == Patterns) m_app.selectPattern(id);
-        Q_EMIT picked(m_tab == Samples ? ClipType::Audio : m_tab == Patterns ? ClipType::Pattern : ClipType::Automation, id,
-            it->data(ProjectItemList::PathRole).toString());
+        Q_EMIT picked(m_tab == Samples ? ClipType::Audio
+                : m_tab == Patterns    ? ClipType::Pattern
+                                       : ClipType::Automation,
+            id, it->data(ProjectItemList::PathRole).toString());
     };
     connect(m_list, &QListWidget::itemClicked, this, activate);
     connect(m_list, &QListWidget::currentItemChanged, this, [this, activate](QListWidgetItem* it, QListWidgetItem*) {
@@ -156,7 +158,9 @@ void ProjectSamplesPanel::reveal(const QString& payload) {
 }
 QString ProjectSamplesPanel::debugState() const {
     auto* it = m_list->currentItem();
-    return QString("tab=%1 current=%2").arg(m_tab).arg(it && it->isSelected() ? it->data(ProjectItemList::PayloadRole).toString() : QString());
+    return QString("tab=%1 current=%2")
+        .arg(m_tab)
+        .arg(it && it->isSelected() ? it->data(ProjectItemList::PayloadRole).toString() : QString());
 }
 void ProjectSamplesPanel::refresh(uint32_t flags) {
     if (flags & (ChangeAudio | ChangePlaylist | ChangeChannels | ChangeStructure | ChangePatterns | ChangeAutomation | ChangeAll))
@@ -312,7 +316,7 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
         m.addAction("Open details", [this, path] { openDetails(path); });
         auto onPlaylist = clipsOf(path);
         m.addAction(onPlaylist.empty() ? "Show on playlist (not placed)" : QString("Show on playlist (%1)").arg(onPlaylist.size()),
-            [this, onPlaylist] { Q_EMIT showOnPlaylist(onPlaylist); })
+             [this, onPlaylist] { Q_EMIT showOnPlaylist(onPlaylist); })
             ->setEnabled(!onPlaylist.empty());
         m.addAction("Preview", [this, path] { m_app.previewFile(path); });
         Id src = 0, ch = 0;   // a sample of the playlist, else of a sampler channel
@@ -366,7 +370,8 @@ void ProjectSamplesPanel::removeSamples(const QStringList& paths) {
                 for (Id c : clipsOf(p)) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_app.model(), c, ""));
                 cmds.push_back(std::make_unique<RemoveObjectCommand<AudioSource>>(m_app.model(), a.id, ""));
             }
-    if (!cmds.empty()) m_app.model().macro(paths.size() > 1 ? "Remove samples from project" : "Remove sample from project", std::move(cmds));
+    if (!cmds.empty())
+        m_app.model().macro(paths.size() > 1 ? "Remove samples from project" : "Remove sample from project", std::move(cmds));
 }
 void ProjectSamplesPanel::removeUnusedSamples() {
     std::vector<std::unique_ptr<Command>> cmds;

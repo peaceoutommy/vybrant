@@ -287,7 +287,8 @@ void PianoRollView::renderCache() {
         bool black = (pitch % 12 == 1 || pitch % 12 == 3 || pitch % 12 == 6 || pitch % 12 == 8 || pitch % 12 == 10);
         QColor c = black ? theme::panel() : theme::panelLight();
         if (m_scale > 0)
-            c = inScale(pitch) ? theme::panelLight() : theme::panel();   // scale: the same two colours, but light = in the scale, dark = outside it
+            c = inScale(pitch) ? theme::panelLight()
+                               : theme::panel();   // scale: the same two colours, but light = in the scale, dark = outside it
         p.fillRect(QRect(L.grid.left(), y, L.grid.width(), m_rowH), c);
         if (pitch % 12 == 0) {
             p.setPen(theme::gridStrong());
@@ -404,12 +405,14 @@ void PianoRollView::renderCache() {
                 int x = tickToX(n.start);
                 if (x >= L.vel.left() - bw && x <= L.vel.right()) bars.push_back({&n, laneValue(n)});
             }
-            std::stable_sort(bars.begin(), bars.end(), [&](const auto& a, const auto& b) { return !m_selected.count(a.first->id) && m_selected.count(b.first->id); });
+            std::stable_sort(bars.begin(), bars.end(),
+                [&](const auto& a, const auto& b) { return !m_selected.count(a.first->id) && m_selected.count(b.first->id); });
             const float h = L.vel.height() - 10, base0 = bip ? midY : L.vel.bottom() - 1;
             auto yOf = [&](float v) { return bip ? midY - (v - 0.5f) * h : L.vel.bottom() - 5 - v * h; };
             p.setRenderHint(QPainter::Antialiasing);
             for (auto& [n, v] : bars) {
-                QColor stem = theme::mix(theme::surface(), m_selected.count(n->id) ? QColor(Qt::white) : base, 0.6);   // solid: shared stems don't stack
+                QColor stem = theme::mix(
+                    theme::surface(), m_selected.count(n->id) ? QColor(Qt::white) : base, 0.6);   // solid: shared stems don't stack
                 double x = tickToX(n->start) + 2.5;
                 p.setPen(QPen(stem, 1.5, Qt::SolidLine, Qt::FlatCap));
                 p.drawLine(QPointF(x, base0), QPointF(x, yOf(v)));
@@ -483,7 +486,10 @@ void PianoRollView::paintEvent(QPaintEvent*) {
             pen.setAlphaF(alpha);
             p.setPen(QPen(pen, sel ? 1.2 : 1, virt ? Qt::DashLine : Qt::SolidLine));
             p.setBrush(cc);
-            { double rr = theme::radiusFor(r.height()); p.drawRoundedRect(r, rr, rr); }
+            {
+                double rr = theme::radiusFor(r.height());
+                p.drawRoundedRect(r, rr, rr);
+            }
             if (r.width() > 28 && m_rowH >= 10 && alpha >= 0.99) {
                 p.setPen(theme::bg());
                 p.setFont(theme::smallFont());
@@ -497,7 +503,10 @@ void PianoRollView::paintEvent(QPaintEvent*) {
             cc.setAlphaF(a * 0.8);
             p.setPen(Qt::NoPen);
             p.setBrush(cc);
-            { double rr = theme::radiusFor(r.height()); p.drawRoundedRect(r, rr, rr); }
+            {
+                double rr = theme::radiusFor(r.height());
+                p.drawRoundedRect(r, rr, rr);
+            }
         });
         p.restore();
         m_ticker->keepAlive(m_noteAnim.active());
@@ -683,16 +692,16 @@ void PianoRollView::commitEdit(const QString& desc, int mergeId) {
                 [after, ch, ts](Pattern& p) {
                     p.ensureChannel(ch) = after;
                     int spb = std::max(1, (int)(ts.ticksPerBar() / p.stepTicks()));
-                int last = -1;
-                for (auto& c : p.channels)
-                    for (size_t i = 0; i < c.steps.size(); ++i)
-                        if (c.steps[i].enabled) last = std::max(last, (int)i);
-                int need = std::max((last / spb + 1) * spb, spb);
-                if (need > p.stepCount) {
-                    p.stepCount = need;
+                    int last = -1;
                     for (auto& c : p.channels)
-                        if ((int)c.steps.size() < need) c.steps.resize(need);
-                }
+                        for (size_t i = 0; i < c.steps.size(); ++i)
+                            if (c.steps[i].enabled) last = std::max(last, (int)i);
+                    int need = std::max((last / spb + 1) * spb, spb);
+                    if (need > p.stepCount) {
+                        p.stepCount = need;
+                        for (auto& c : p.channels)
+                            if ((int)c.steps.size() < need) c.steps.resize(need);
+                    }
                 },
                 mergeId);
             return;

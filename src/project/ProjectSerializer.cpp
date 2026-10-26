@@ -98,7 +98,8 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
             {"length", (double)c.length}, {"source", (double)c.sourceId}, {"muted", c.muted}, {"gain", c.gain},
             {"fadeIn", (double)c.fadeIn}, {"fadeOut", (double)c.fadeOut}, {"fadeInShape", c.fadeInShape}, {"fadeOutShape", c.fadeOutShape},
             {"stretch", c.timeStretch}, {"pitch", c.pitch}, {"offset", (double)c.sourceOffset}, {"reverse", c.reverse},
-            {"loop", c.loopSource}, {"name", c.name}, {"stretchMode", c.stretchMode}, {"fitTempo", c.fitTempo}, {"sourceBpm", c.sourceBpm}});
+            {"loop", c.loopSource}, {"name", c.name}, {"stretchMode", c.stretchMode}, {"fitTempo", c.fitTempo},
+            {"sourceBpm", c.sourceBpm}});
     root["playlist"] = QJsonObject{{"tracks", tracks}, {"clips", clips}};
     QJsonArray mixer;
     for (auto& t : p.mixerTracks) {
@@ -144,9 +145,10 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
         if (a.hasPlaceDefaults) {
             const Clip& d = a.placeDefaults;
             QJsonObject o = audio.last().toObject();
-            o["clipDefaults"] = QJsonObject{{"gain", d.gain}, {"fadeIn", (double)d.fadeIn}, {"fadeOut", (double)d.fadeOut}, {"pitch", d.pitch},
-                {"stretch", d.timeStretch}, {"offset", (double)d.sourceOffset}, {"reverse", d.reverse}, {"loop", d.loopSource},
-                {"muted", d.muted}, {"stretchMode", d.stretchMode}, {"fitTempo", d.fitTempo}, {"sourceBpm", d.sourceBpm}};
+            o["clipDefaults"] = QJsonObject{{"gain", d.gain}, {"fadeIn", (double)d.fadeIn}, {"fadeOut", (double)d.fadeOut},
+                {"pitch", d.pitch}, {"stretch", d.timeStretch}, {"offset", (double)d.sourceOffset}, {"reverse", d.reverse},
+                {"loop", d.loopSource}, {"muted", d.muted}, {"stretchMode", d.stretchMode}, {"fitTempo", d.fitTempo},
+                {"sourceBpm", d.sourceBpm}};
             audio[audio.size() - 1] = o;
         }
     }
