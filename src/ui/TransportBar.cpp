@@ -286,14 +286,11 @@ void ModeSwitch::paintEvent(QPaintEvent*) {
     p.drawRoundedRect(r, 3, 3);
     auto half = [&](QRectF hr, const QString& t, bool on) {
         if (on) {
-            QColor a = theme::accent();
-            QColor bgc = theme::bg();
             p.setPen(Qt::NoPen);
-            p.setBrush(QColor(
-                (bgc.red() + a.red() * 0.30) / 1.30, (bgc.green() + a.green() * 0.30) / 1.30, (bgc.blue() + a.blue() * 0.30) / 1.30));
+            p.setBrush(theme::activeFill());
             p.drawRoundedRect(hr.adjusted(1, 1, -1, -1), 2, 2);
         }
-        p.setPen(on ? theme::accent() : theme::textDim());
+        p.setPen(on ? theme::text() : theme::textDim());
         QFont f = theme::smallFont();
         f.setBold(on);
         p.setFont(f);

@@ -486,7 +486,7 @@ ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
             b->setCheckable(true);
             b->setChecked(f.isEmpty());
             theme::styled(b, "QToolButton { border: 1px solid @border@; border-radius: 9px; padding: 1px 9px; color: @textDim@; background: transparent; }"
-                             "QToolButton:checked { border-color: @accent@; color: @text@; background: @hover@; }");
+                             "QToolButton:checked { border-color: @checkedBorder@; color: @checkedFg@; background: @checkedBg@; }");
             group->addButton(b);
             top->addWidget(b);
             connect(b, &QToolButton::clicked, this, [this, f] {

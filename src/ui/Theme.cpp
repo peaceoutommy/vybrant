@@ -246,10 +246,7 @@ void applyTheme(const Palette& p) {
 // (checked chrome, list selection, scrollbars) are mixed from the base colours rather than being roles to pick.
 static QMap<QString, QString> themeTokens() {
     const Palette& t = current();
-    auto mix = [](const QColor& a, const QColor& b, double f) {
-        return QColor(
-            (int)(a.red() * (1 - f) + b.red() * f), (int)(a.green() * (1 - f) + b.green() * f), (int)(a.blue() * (1 - f) + b.blue() * f));
-    };
+    const QColor bar = mix(t.bg, t.panel, 0.55);
     return QMap<QString, QString>{
         {"bg", t.bg.name()},
         {"panel", t.panel.name()},
@@ -262,11 +259,11 @@ static QMap<QString, QString> themeTokens() {
         {"textDim", t.textDim.name()},
         {"accent", t.accent.name()},
         {"accent2", t.accent2.name()},
-        {"bar", mix(t.bg, t.panel, 0.55).name()},
+        {"bar", bar.name()},
         {"menu", mix(t.panel, t.panelLight, 0.4).name()},
-        {"checkedBg", mix(t.bg, t.accent, t.dark ? 0.18 : 0.30).name()},
-        {"checkedFg", t.dark ? t.accent.name() : mix(t.text, t.accent, 0.6).name()},
-        {"checkedBorder", mix(t.bg, t.accent, t.dark ? 0.35 : 0.55).name()},
+        {"checkedBg", activeFill().name()},
+        {"checkedFg", t.text.name()},
+        {"checkedBorder", mix(bar, t.text, 0.3).name()},
         {"listSel", mix(t.bg, t.accent, t.dark ? 0.42 : 0.55).name()},   // selection follows the primary accent, not accent2
         {"listSelFg", t.dark ? t.text.name() : t.bg.name()},
         {"scroll", mix(t.border, t.textDim, 0.25).name()},
@@ -277,7 +274,7 @@ static QMap<QString, QString> themeTokens() {
         {"focus", mix(t.border, t.textDim, 0.5).name()},
         {"radius", QString("%1px").arg(radius())},
         {"pill", QString("%1px").arg(radius() * 2)},   // buttons and tabs read as pills, like the website's
-        {"glow", mix(mix(t.bg, t.panel, 0.55), QColor(0xaa, 0xb2, 0xc4), t.dark ? 0.3 : 0.0).name()},   // smoky light at the top bar
+        {"glow", mix(bar, QColor(0xaa, 0xb2, 0xc4), t.dark ? 0.3 : 0.0).name()},   // smoky light at the top bar
         {"mono", "'Geist Mono', monospace"},
     };
 }
@@ -310,7 +307,7 @@ QMainWindow, QDialog, QWidget { background: @bg@; color: @text@; font-size: 9pt;
 QMenuBar { background: @bar@; border-bottom: 1px solid @border@; padding: 2px 4px; } QMenuBar::item { padding: 4px 10px; border-radius: @pill@; color: @textDim@; } QMenuBar::item:selected { background: @hover@; color: @text@; }
 QMenu { background: @menu@; border: 1px solid @border@; border-radius: @pill@; padding: 6px; } QMenu::item { padding: 6px 24px 6px 12px; border-radius: @radius@; } QMenu::item:selected { background: @hover@; } QMenu::separator { height: 1px; background: @border@; margin: 5px 8px; }
 QToolBar { background: qradialgradient(cx:0.5, cy:-0.4, radius:1.1, fx:0.5, fy:-0.4, stop:0 @glow@, stop:1 @bar@); border: none; border-bottom: 1px solid @border@; spacing: 4px; padding: 4px 8px; }
-#transport, #transport QWidget { background: transparent; }
+#transport, #transport QWidget { background: transparent; } #transport QToolButton:checked { background: @checkedBg@; } /* the id rule outranks QToolButton:checked */
 QToolButton { background: transparent; border: 1px solid transparent; border-radius: @pill@; padding: 3px 8px; color: @text@; }
 QToolButton:hover { background: @hover@; border-color: @border@; } QToolButton:pressed { background: @border@; }
 QToolButton:checked { background: @checkedBg@; color: @checkedFg@; border-color: @checkedBorder@; } QToolButton:disabled { color: @disabled@; }

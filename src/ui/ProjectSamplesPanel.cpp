@@ -72,7 +72,7 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
         b->setCursor(Qt::PointingHandCursor);
         b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         theme::styled(b,
-            "QToolButton { color:@textDim@; background: transparent; border: none; border-radius: @radius@; padding: 0 2px; font-size: 8pt; } QToolButton:hover { color:@text@; } QToolButton:checked { color:@text@; background:@raised@; font-weight: bold; }");
+            "QToolButton { color:@textDim@; background: transparent; border: none; border-radius: @radius@; padding: 0 2px; font-size: 8pt; } QToolButton:hover { color:@text@; } QToolButton:checked { color:@text@; background:@checkedBg@; font-weight: bold; }");
         tl->addWidget(b);
         m_tabs[i] = b;
         connect(b, &QToolButton::clicked, this, [this, i] { setTab(i); });
