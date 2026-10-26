@@ -30,6 +30,8 @@
 #include <QDragEnterEvent>
 #include <QUrl>
 #include <QMimeData>
+#include <QAbstractItemView>
+#include <QComboBox>
 #include <QMenu>
 #include <QInputDialog>
 #include <QMouseEvent>
@@ -551,6 +553,25 @@ QString ControlServer::handle(const QString& line) {
         sendDrag(v, at, at, 0);
         const Clip* after = m_app.project().clip(id);
         return QString("menu=%1 pitch=%2").arg(titles).arg(after ? after->pitch : -99);
+    }
+    if (c == "clipmode" && a.size() >= 2) {   // the open audio clip editor's Mode dropdown: click item <i> -> "mode=<n> open=<0|1>"
+        AudioClipEditor* ed = nullptr;
+        for (auto* e : m_win.findChildren<AudioClipEditor*>())
+            if (e->isVisible()) ed = e;
+        if (!ed) return "err no editor";
+        QComboBox* cb = nullptr;
+        for (auto* x : ed->findChildren<QComboBox*>())
+            if (x->count() && x->itemText(0) == "Resample") cb = x;
+        if (!cb) return "err no mode dropdown";
+        cb->showPopup();
+        QCoreApplication::processEvents();
+        QAbstractItemView* view = cb->view();
+        QPoint at = view->visualRect(view->model()->index(a[1].toInt(), 0)).center();
+        sendDrag(view->viewport(), at, at, 0);
+        QCoreApplication::processEvents();
+        auto& cl = m_app.project().clips;
+        auto it = std::find_if(cl.begin(), cl.end(), [](const Clip& x) { return x.type == ClipType::Audio; });
+        return QString("mode=%1 open=%2").arg(it != cl.end() ? it->stretchMode : -1).arg(ed->isVisible());
     }
     if (c == "clips") {   // clips as track:start+length, then L = loops, A = audio; in project order
         QStringList out;

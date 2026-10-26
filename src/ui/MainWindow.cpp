@@ -1265,8 +1265,9 @@ void MainWindow::hideEditorsOnWorkspaceClick(QObject* o, QEvent* e) {
     if (e->type() != QEvent::MouseButtonPress) return;
     auto* w = qobject_cast<QWidget*>(o);
     QWidget* win = w ? w->window() : nullptr;
-    if (!win || qobject_cast<PluginWindow*>(win) || qobject_cast<AudioClipEditor*>(win) || qobject_cast<QDialog*>(win) ||
-        qobject_cast<QMenu*>(win))
+    // a popup (a dropdown's list, a menu) is no workspace click, even when it belongs to an editor through its parents
+    if (!win || win->windowType() == Qt::Popup || qobject_cast<PluginWindow*>(win) || qobject_cast<AudioClipEditor*>(win) ||
+        qobject_cast<QDialog*>(win))
         return;
     bool ours = win == this;
     for (QWidget* p = win->parentWidget(); p && !ours; p = p->parentWidget()) ours = p == this;

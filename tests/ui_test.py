@@ -389,6 +389,9 @@ def main():
     ins.send(f"audioclip {pad}")
     r = ins.send("plclipmenu Transpose 5")
     check("Transpose...;" in r and r.endswith("pitch=5"), "the audio clip's menu button opens its menu, and Transpose sets the semitones", r)
+    ins.send(f"clipeditor {os.path.join(tmp, 'clipeditor.png')}")
+    r = ins.send("clipmode 1")   # Stretch, picked with the mouse in the dropdown's list
+    check(r == "mode=1 open=1", "a dropdown in the audio clip editor applies its choice (the click no longer closes the editor)", r)
     ins.quit()
 
     # ---- the project strip follows what was picked: a pattern clip, the pattern dropdown's "+ New pattern"
