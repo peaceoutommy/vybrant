@@ -31,6 +31,7 @@
 #include <QFileInfo>
 #include <QPixmap>
 #include <QScreen>
+#include <QWindow>
 #include "License.h"
 #include <QActionGroup>
 #include <QCursor>
@@ -150,6 +151,68 @@ private:
     Bounds m_bb{200, 520}, m_sb{180, 300};
 };
 
+// Window buttons in the menu bar row (the window draws no system title bar): minimize, maximize / restore and close, as
+// coloured dots like the desktop's own; the hovered one shows what it does
+class WindowButtons : public QWidget {
+public:
+    WindowButtons(QWidget* window, QWidget* parent)
+        : QWidget(parent)
+        , m_window(window) {
+        setMouseTracking(true);
+        setFixedSize(3 * kStep + 10, 22);
+        setStyleSheet("background: transparent;");   // the menu bar shows through, not the window colour
+    }
+
+private:
+    static constexpr int kStep = 22;
+    static constexpr double kR = 6;
+    QWidget* m_window;
+    int m_hot = -1;
+    QPointF centre(int i) const { return QPointF(5 + kStep * i + kStep / 2.0, height() / 2.0); }
+    int at(const QPoint& p) const {
+        for (int i = 0; i < 3; ++i)
+            if (QLineF(centre(i), p).length() <= kR + 3) return i;
+        return -1;
+    }
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        static const QColor colors[] = {QColor(0xf5, 0xc5, 0x18), QColor(0xb0, 0x30, 0xff), QColor(0xff, 0x45, 0x45)};
+        for (int i = 0; i < 3; ++i) {
+            QPointF c = centre(i);
+            p.setPen(Qt::NoPen);
+            p.setBrush(colors[i]);
+            p.drawEllipse(c, kR, kR);
+            if (i != m_hot) continue;
+            p.setPen(QPen(QColor(0, 0, 0, 170), 1.4, Qt::SolidLine, Qt::RoundCap));
+            p.setBrush(Qt::NoBrush);
+            if (i == 0) p.drawLine(c + QPointF(-3, 0), c + QPointF(3, 0));
+            else if (i == 1) p.drawRect(QRectF(c - QPointF(2.5, 2.5), QSizeF(5, 5)));
+            else {
+                p.drawLine(c + QPointF(-2.5, -2.5), c + QPointF(2.5, 2.5));
+                p.drawLine(c + QPointF(-2.5, 2.5), c + QPointF(2.5, -2.5));
+            }
+        }
+    }
+    void mouseMoveEvent(QMouseEvent* e) override {
+        if (int h = at(e->pos()); h != m_hot) {
+            m_hot = h;
+            update();
+        }
+    }
+    void leaveEvent(QEvent*) override {
+        m_hot = -1;
+        update();
+    }
+    void mouseReleaseEvent(QMouseEvent* e) override {
+        switch (at(e->pos())) {
+        case 0: m_window->showMinimized(); break;
+        case 1: m_window->isMaximized() ? m_window->showNormal() : m_window->showMaximized(); break;
+        case 2: m_window->close(); break;
+        }
+    }
+};
+
 MainWindow::MainWindow(App& app, QWidget* parent)
     : QMainWindow(parent)
     , m_app(app) {
@@ -182,6 +245,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     m_toolBar = tb;
     buildDocks();
     buildMenus();
+    setupWindowChrome();
     {   // FL-style window toggles on the right of the toolbar
         auto mk = [&](const QString& key, theme::Glyph g, const QString& actionId, const QString& tip) {
             auto* b = new QToolButton(this);
@@ -820,6 +884,63 @@ void MainWindow::uiTick() {
         else ++it;
     }
 }
+void MainWindow::setupWindowChrome() {
+    setWindowFlag(Qt::FramelessWindowHint);
+    setMouseTracking(true);   // the edge band is this window's own (its contents margins): cursor shapes and resizing
+    setContentsMargins(4, 4, 4, 4);
+    auto* mb = menuBar();
+    m_titleLabel = theme::dimLabel(windowTitle(), mb);
+    m_titleLabel->setAlignment(Qt::AlignCenter);
+    m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_windowButtons = new WindowButtons(this, mb);   // placed by placeTitle (QMenuBar never lays out a corner widget here)
+}
+void MainWindow::placeTitle() {
+    auto* mb = menuBar();
+    if (!m_titleLabel) return;
+    int left = 0;
+    for (QAction* a : mb->actions()) left = std::max(left, mb->actionGeometry(a).right() + 12);
+    m_windowButtons->move(mb->width() - m_windowButtons->width() - 6, (mb->height() - m_windowButtons->height()) / 2);
+    int right = m_windowButtons->x() - 12;
+    QFontMetrics fm(m_titleLabel->font());
+    int w = std::min(fm.horizontalAdvance(windowTitle()) + 8, std::max(0, right - left));
+    int x = std::clamp(mb->width() / 2 - w / 2, left, std::max(left, right - w));
+    m_titleLabel->setText(fm.elidedText(windowTitle(), Qt::ElideRight, w));
+    m_titleLabel->setGeometry(x, 0, w, mb->height());
+    m_titleLabel->setVisible(w > 40);
+}
+Qt::Edges MainWindow::edgesAt(const QPoint& p) const {
+    Qt::Edges e;
+    if (isMaximized() || isFullScreen()) return e;
+    const int m = 6;
+    if (p.x() < m) e |= Qt::LeftEdge;
+    if (p.x() >= width() - m) e |= Qt::RightEdge;
+    if (p.y() < m) e |= Qt::TopEdge;
+    if (p.y() >= height() - m) e |= Qt::BottomEdge;
+    return e;
+}
+void MainWindow::mouseMoveEvent(QMouseEvent* e) {
+    Qt::Edges ed = edgesAt(e->pos());
+    bool h = ed & (Qt::LeftEdge | Qt::RightEdge), v = ed & (Qt::TopEdge | Qt::BottomEdge);
+    if (h && v) setCursor(ed == (Qt::LeftEdge | Qt::TopEdge) || ed == (Qt::RightEdge | Qt::BottomEdge) ? Qt::SizeFDiagCursor : Qt::SizeBDiagCursor);
+    else if (h) setCursor(Qt::SizeHorCursor);
+    else if (v) setCursor(Qt::SizeVerCursor);
+    else unsetCursor();
+    QMainWindow::mouseMoveEvent(e);
+}
+void MainWindow::mousePressEvent(QMouseEvent* e) {
+    if (Qt::Edges ed = edgesAt(e->pos()); ed && e->button() == Qt::LeftButton && windowHandle()) {
+        windowHandle()->startSystemResize(ed);
+        return;
+    }
+    QMainWindow::mousePressEvent(e);
+}
+void MainWindow::paintEvent(QPaintEvent* e) {
+    QMainWindow::paintEvent(e);
+    if (isMaximized() || isFullScreen()) return;
+    QPainter p(this);   // a hairline frame: without the system's, the window would melt into a dark desktop
+    p.setPen(theme::border());
+    p.drawRect(rect().adjusted(0, 0, -1, -1));
+}
 void MainWindow::updateTitle() {
     setWindowTitle(QString("%1%2 - Vybrant").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : ""));
 }
@@ -1156,6 +1277,21 @@ void MainWindow::hideEditorsOnWorkspaceClick(QObject* o, QEvent* e) {
 }
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
     if (typingKeyEvent(o, e)) return true;
+    if (o == this && (e->type() == QEvent::WindowTitleChange || e->type() == QEvent::Resize)) placeTitle();
+    if (o == this && e->type() == QEvent::WindowStateChange) {   // maximized: no edge band to resize from
+        int m = isMaximized() || isFullScreen() ? 0 : 4;
+        setContentsMargins(m, m, m, m);
+    }
+    if (o == menuBar()) {
+        auto* me = static_cast<QMouseEvent*>(e);
+        if (e->type() == QEvent::Resize || e->type() == QEvent::LayoutRequest) placeTitle();
+        else if ((e->type() == QEvent::MouseButtonPress || e->type() == QEvent::MouseButtonDblClick) && me->button() == Qt::LeftButton &&
+                 !menuBar()->actionAt(me->pos()) && windowHandle()) {   // empty menu bar space: the title bar
+            if (e->type() == QEvent::MouseButtonDblClick) isMaximized() ? showNormal() : showMaximized();
+            else windowHandle()->startSystemMove();
+            return true;
+        }
+    }
     hideEditorsOnWorkspaceClick(o, e);
     // Dock the floating rack by its *own* edges. On X11 floating docks have native window-manager decorations, so the
     // drag itself is done by the WM: Qt only sees non-client-area press/move/release events and the resulting

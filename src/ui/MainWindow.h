@@ -51,6 +51,11 @@ protected:
     void keyPressEvent(QKeyEvent*) override;
     void keyReleaseEvent(QKeyEvent*) override;
     bool eventFilter(QObject* o, QEvent* e) override;
+    // No system title bar: the title and the window buttons sit in the menu bar row, the menu bar's empty space moves the
+    // window (double-click maximizes) and a thin band around the edge resizes it
+    void mouseMoveEvent(QMouseEvent*) override;
+    void mousePressEvent(QMouseEvent*) override;
+    void paintEvent(QPaintEvent*) override;
 
 private:
     void buildMenus();
@@ -120,6 +125,11 @@ private:
     std::set<int> m_heldKeys;
     int m_octave = 4;
     QByteArray m_defaultState;
+    QLabel* m_titleLabel = nullptr;
+    QWidget* m_windowButtons = nullptr;
+    void setupWindowChrome();
+    void placeTitle();   // centred in the menu bar, clear of the menus and the window buttons
+    Qt::Edges edgesAt(const QPoint& p) const;
 };
 
 }   // namespace mt
