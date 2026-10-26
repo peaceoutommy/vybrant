@@ -80,7 +80,7 @@ public:
     void debugDoubleClickFirst();   // tests: double-click the first row of the current tab
     bool debugDropFile(const QString& path);   // tests: a browser drop of a file onto the list
     void debugShowFirst();   // tests: 'Show on playlist' on the first row
-    void debugRemoveFirst() {   // tests: 'Remove from project' on the first sample row
+    void debugRemoveFirst() {   // tests: 'Delete' on the first sample row
         if (m_list->count()) removeSamples({m_list->item(0)->data(ProjectItemList::PathRole).toString()});
     }
     void debugRemoveUnused() { removeUnusedSamples(); }

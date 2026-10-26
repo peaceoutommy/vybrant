@@ -336,7 +336,7 @@ void ProjectSamplesPanel::onContext(const QPoint& pos) {
             for (auto& p : paths) m_app.addChannel(ChannelType::Sampler, "native.sampler", QString(), p);
         });
         m.addSeparator();
-        m.addAction("Remove from project" + many, [this, paths] { removeSamples(paths); });
+        m.addAction("Delete" + many, [this, paths] { removeSamples(paths); });
     }
     m.addAction("Remove all unused samples", [this] { removeUnusedSamples(); });
     m.exec(m_list->viewport()->mapToGlobal(pos));
