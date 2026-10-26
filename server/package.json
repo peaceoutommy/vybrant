@@ -7,7 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "keygen": "node scripts/keygen.mjs",
-    "test": "nest build && node --test test/"
+    "test": "nest build && node --test"
   },
   "dependencies": {
     "@clerk/backend": "^3.26.2",
