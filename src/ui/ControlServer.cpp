@@ -1,3 +1,4 @@
+#include <QElapsedTimer>
 #include <QKeySequence>
 #include <QKeyEvent>
 #include <QNativeGestureEvent>
@@ -444,9 +445,12 @@ QString ControlServer::handle(const QString& line) {
         return m_win.samplesPanel()->debugState();
     }
     if (c == "patcombo") {   // pick the transport bar's "+ New pattern" entry: "selected=<name> patterns=<n>"
+        const size_t before = m_app.project().patterns.size();
         for (auto* cb : m_win.findChildren<QComboBox*>())
             if (cb->toolTip().startsWith("Selected pattern")) cb->setCurrentIndex(cb->count() - 1);
-        QCoreApplication::processEvents();
+        QElapsedTimer t;   // the pattern is added from a zero timer, which Qt 6.4 may not fire in one pass
+        t.start();
+        while (m_app.project().patterns.size() == before && t.elapsed() < 1000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         const Pattern* p = m_app.project().pattern(m_app.project().selectedPatternId);
         return QString("selected=%1 patterns=%2").arg(p ? p->name : QString()).arg(m_app.project().patterns.size());
     }
