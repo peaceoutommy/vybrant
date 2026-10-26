@@ -27,7 +27,9 @@ if(VYBRANT_HOST_QT_BIN)
 endif()
 if(WIN32)
     target_link_libraries(vybrant PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network PkgConfig::DEPS winmm)
-    set_target_properties(vybrant PROPERTIES WIN32_EXECUTABLE ON OUTPUT_NAME Vybrant)   # a GUI app: no console window
+    set_target_properties(vybrant PROPERTIES WIN32_EXECUTABLE ON OUTPUT_NAME Vybrant)
+    # 8 MB stacks, as on Linux (Windows' default is 1-2 MB): Rubber Band 3 overflowed the main thread's while stretching
+    target_link_options(vybrant PRIVATE -Wl,--stack,8388608)   # a GUI app: no console window
 else()
     target_link_libraries(vybrant PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network PkgConfig::DEPS ${X11_LIBRARIES} ${CMAKE_DL_LIBS} pthread)
     target_link_options(vybrant PRIVATE -rdynamic)
