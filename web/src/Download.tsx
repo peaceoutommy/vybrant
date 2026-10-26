@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { Footer, Nav } from './Nav';
 
 // The release workflow (.github/workflows/release.yml) publishes the AppImage here on every v* tag
-const REPO = 'peaceoutommy/Auralis';
+const REPO = 'peaceoutommy/vybrant';
 const RELEASES = `https://github.com/${REPO}/releases`;
 
 interface Release {
