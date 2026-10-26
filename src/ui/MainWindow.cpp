@@ -201,7 +201,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
         mk("rack", theme::Glyph::ChannelRack, "view.rack", "Channel Rack - instruments and the step sequencer of the current pattern (F6)");
         mk("mixer", theme::Glyph::Mixer, "view.mixer", "Mixer - effects, routing, sends and levels (F9)");
         mk("browser", theme::Glyph::Browser, "view.browser", "Browser - samples, instruments, effects, plugins and presets (F8)");
-        mk("samples", theme::Glyph::Samples, "view.samples", "Project samples - every sample this project uses (Alt+S)");
+        mk("samples", theme::Glyph::Samples, "view.samples", "Project panel - the samples, patterns and automation in this project (Alt+S)");
         auto* plug = new QToolButton(this);
         theme::setGlyph(plug, theme::Glyph::Plugins, 21);
         plug->setFixedSize(34, theme::kBarH);
