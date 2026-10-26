@@ -176,7 +176,10 @@ public:
     void unfreezeMixerTrack(Id id);
     // Consolidate (FL): render these pattern clips alone, as they reach the master, to one audio clip routed to the master that
     // replaces them (one undo step). Returns the new clip, or 0 (nothing changed) on failure or cancel.
-    Id consolidateClips(const std::vector<Id>& clipIds, std::function<bool(double)> progress, QString* error);
+    // FL Studio's render Tail for what rings on past the selection: Cut ends the clip and its file at the selection's end, Leave
+    // keeps it (the clip runs on past the selection), Wrap folds it back onto the start (seamless loops)
+    enum class Tail { Cut = 0, Leave, Wrap };
+    Id consolidateClips(const std::vector<Id>& clipIds, std::function<bool(double)> progress, QString* error, Tail tail = Tail::Cut);
 
     // ---- processors (instruments / effects / plugins)
     IProcessor* processor(Id ownerId) { return m_engine->registry().processor(ownerId); }

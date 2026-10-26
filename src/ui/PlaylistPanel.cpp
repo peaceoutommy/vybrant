@@ -16,6 +16,7 @@
 #include <QMimeData>
 #include <QMenu>
 #include <QInputDialog>
+#include <QSettings>
 #include <QColorDialog>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -1558,6 +1559,15 @@ void PlaylistView::consolidateSelected() {
     for (auto& c : m_app.project().clips)
         if (m_selected.count(c.id) && c.type == ClipType::Pattern) ids.push_back(c.id);
     if (ids.empty()) return;
+    // FL Studio's render Tail, asked like its render dialog; the last choice is the next default
+    const QStringList tails = {"Cut remainder", "Leave remainder", "Wrap remainder"};
+    bool ok = false;
+    QString pick = QInputDialog::getItem(this, "Consolidate",
+        "Tail - what rings on past the selection:\nCut ends at the selection, Leave lets it ring on (a longer clip),\nWrap folds it "
+        "onto the start (for seamless loops)",
+        tails, QSettings().value("consolidate/tail", 0).toInt(), false, &ok);
+    if (!ok) return;
+    QSettings().setValue("consolidate/tail", (int)tails.indexOf(pick));
     QProgressDialog dlg("Consolidating...", "Cancel", 0, 1000, this);
     dlg.setWindowModality(Qt::WindowModal);
     QString err;
@@ -1567,7 +1577,7 @@ void PlaylistView::consolidateSelected() {
             dlg.setValue((int)(v * 1000));
             return !dlg.wasCanceled();
         },
-        &err);
+        &err, (App::Tail)tails.indexOf(pick));
     if (id) m_selected = {id};
     else if (!dlg.wasCanceled()) QMessageBox::warning(this, "Consolidate failed", err);
     invalidate();

@@ -350,14 +350,35 @@ int runSelfTest(App& app) {
             for (int64_t i = 0; i < std::min({a->frames, b->frames, clipFrames}); ++i) diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
         }
         const AudioSource* cs = c ? pr.audioSource(c->sourceId) : nullptr;
-        CHECK(f && diff < 1e-3f && a->peakValue > 0.1f && cs && cs->frames > clipFrames,
-            QString("consolidate: the clip sounds the same over its length (max diff %1), and its file keeps the tail").arg(diff).toUtf8().constData());
+        CHECK(f && diff < 1e-3f && a->peakValue > 0.1f && cs && std::llabs(cs->frames - clipFrames) <= 2,
+            QString("consolidate (tail: cut): the clip sounds the same over its length (max diff %1) and its file ends there").arg(diff).toUtf8().constData());
+        auto cut = cs ? AudioFile::load(cs->filePath, 0) : nullptr;
         model.undoStack().undo();   // the delete
         model.undoStack().undo();
         CHECK(pr.clip(sel) && pr.clip(other) && !pr.clip(nc), "consolidate is one undo step");
+        {   // Leave lets the tail ring on (a longer clip and file); Wrap folds it onto the start (same length, a different start)
+            Id l = app.consolidateClips({sel}, nullptr, &err, App::Tail::Leave);
+            const Clip* lc = pr.clip(l);
+            const AudioSource* ls = lc ? pr.audioSource(lc->sourceId) : nullptr;
+            bool leave = lc && lc->length > len && ls && ls->frames > clipFrames;
+            model.undoStack().undo();
+            Id w = app.consolidateClips({sel}, nullptr, &err, App::Tail::Wrap);
+            const Clip* wc = pr.clip(w);
+            const AudioSource* ws = wc ? pr.audioSource(wc->sourceId) : nullptr;
+            auto wrap = ws ? AudioFile::load(ws->filePath, 0) : nullptr;
+            float folded = 0.f;
+            for (int64_t i = 0; wrap && cut && i < std::min(wrap->frames, cut->frames); ++i)
+                folded = std::max(folded, std::fabs(wrap->L()[i] - cut->L()[i]));
+            bool wrapped = wc && wc->length == len && wrap && cut && wrap->frames == cut->frames && folded > 1e-4f;
+            model.undoStack().undo();
+            CHECK(leave && wrapped && pr.clip(sel), "consolidate tails: Leave rings on past the selection, Wrap folds it onto the start");
+        }
         if (nc) {   // the playlist's Ctrl+Alt+C does it to its selection
             PlaylistView v(app);
             v.revealClips({sel});
+            QTimer::singleShot(0, [] {   // the Tail prompt: keep its default
+                if (auto* d = qobject_cast<QInputDialog*>(QApplication::activeModalWidget())) d->accept();
+            });
             QKeyEvent k(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier | Qt::AltModifier);
             QCoreApplication::sendEvent(&v, &k);
             CHECK(!pr.clip(sel) && pr.clip(other) && pr.clips.back().type == ClipType::Audio && pr.clips.back().start == at,

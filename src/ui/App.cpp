@@ -2096,7 +2096,7 @@ void App::unfreezeMixerTrack(Id id) {
     cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [](MixerTrack& x) { x.freezeTrackId = 0; }, 0));
     m_model.macro("Unfreeze " + mt->name, std::move(cmds));
 }
-Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(double)> progress, QString* error) {
+Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(double)> progress, QString* error, Tail tail) {
     auto& p = project();
     std::set<Id> sel;
     Tick from = std::numeric_limits<Tick>::max(), to = 0;
@@ -2154,6 +2154,23 @@ Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(doub
         if (error) *error = "The render is empty";
         return 0;
     }
+    TempoMap tm = p.transport.tempoMap();
+    int64_t selFrames = (int64_t)std::ceil((tm.secondsAt(to) - tm.secondsAt(from)) * sr - 1e-6);   // playback reaches into the last sample
+    if (tail != Tail::Leave && selFrames > 0 && frames > selFrames) {   // drop (Cut) or fold back (Wrap) what rings on past the end
+        auto f = AudioFile::load(o.path, 0, error);
+        if (!f) return 0;
+        // one frame more than the selection: playback interpolates the last sample with the next (the cut-off one, or the loop's start)
+        std::vector<float> out((size_t)(selFrames + 1) * f->channels, 0.f);
+        for (int64_t i = 0; i < f->frames && (tail == Tail::Wrap || i <= selFrames); ++i) {
+            int64_t j = (tail == Tail::Wrap ? i % selFrames : i) * f->channels;
+            out[j] += f->L()[i];
+            if (f->channels > 1) out[j + 1] += f->R()[i];
+        }
+        if (tail == Tail::Wrap)
+            for (int k = 0; k < f->channels; ++k) out[(size_t)selFrames * f->channels + k] = out[k];
+        if (!AudioFile::write(o.path, out.data(), f->channels, selFrames + 1, sr, 32, "wav", error)) return 0;
+        frames = selFrames + 1;
+    }
     std::vector<std::unique_ptr<Command>> cmds;
     for (Id id : sel) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, id, ""));
     AudioSource a;
@@ -2176,7 +2193,7 @@ Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(doub
     c.trackId = track;
     c.sourceId = a.id;
     c.start = from;
-    c.length = to - from;   // the selection's length, as in FL Studio; the tail stays in the file, for when the clip is stretched
+    c.length = tail == Tail::Leave ? std::max<Tick>(tm.ticksFor(from, frames / sr), 1) : to - from;
     c.loopSource = false;
     c.name = a.name;
     cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
