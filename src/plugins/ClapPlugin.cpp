@@ -5,7 +5,7 @@
 #include <QJsonObject>
 #include <QSocketNotifier>
 #include <QThread>
-#include <dlfcn.h>
+#include "core/DynLib.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -36,14 +36,14 @@ std::shared_ptr<ClapModule> ClapModule::load(const QString& path, QString* error
     // clap_entry init/deinit pair once per loaded binary, so all instances of one file share the module (UI thread only)
     static std::map<QString, std::weak_ptr<ClapModule>> loaded;
     if (auto m = loaded[path].lock()) return m;
-    void* h = dlopen(path.toLocal8Bit().constData(), RTLD_NOW | RTLD_LOCAL);
+    void* h = dynlib::open(path);
     if (!h) {
-        if (error) *error = QString::fromUtf8(dlerror());
+        if (error) *error = dynlib::lastError();
         return nullptr;
     }
     auto m = std::shared_ptr<ClapModule>(new ClapModule());
     m->m_handle = h;
-    auto* entry = (const clap_plugin_entry*)dlsym(h, "clap_entry");
+    auto* entry = (const clap_plugin_entry*)dynlib::symbol(h, "clap_entry");
     if (!entry || !clap_version_is_compatible(entry->clap_version)) {
         if (error) *error = entry ? "Incompatible CLAP version" : "clap_entry not exported (not a CLAP plugin)";
         return nullptr;
@@ -63,7 +63,7 @@ std::shared_ptr<ClapModule> ClapModule::load(const QString& path, QString* error
 }
 ClapModule::~ClapModule() {
     if (m_entry) m_entry->deinit();
-    if (m_handle) dlclose(m_handle);
+    if (m_handle) dynlib::close(m_handle);
 }
 std::vector<const clap_plugin_descriptor*> ClapModule::descriptors() const {
     std::vector<const clap_plugin_descriptor*> v;

@@ -1,7 +1,7 @@
 #include "plugins/Vst2Plugin.h"
 #include "plugins/PluginEmbedWidget.h"
 #include "core/Log.h"
-#include <dlfcn.h>
+#include "core/DynLib.h"
 #include <QJsonObject>
 #include <QJsonArray>
 #include <cstring>
@@ -94,16 +94,16 @@ std::unique_ptr<Vst2Plugin> Vst2Plugin::create(const QString& path, QString* err
 
 bool Vst2Plugin::init(const QString& path, QString* error) {
     m_path = path;
-    void* h = dlopen(path.toLocal8Bit().constData(), RTLD_NOW | RTLD_LOCAL);
+    void* h = dynlib::open(path);
     if (!h) {
-        if (error) *error = QString::fromUtf8(dlerror());
+        if (error) *error = dynlib::lastError();
         return false;
     }
-    auto entry = (MainProc)dlsym(h, "VSTPluginMain");
-    if (!entry) entry = (MainProc)dlsym(h, "main_plugin");
-    if (!entry) entry = (MainProc)dlsym(h, "main");
+    auto entry = (MainProc)dynlib::symbol(h, "VSTPluginMain");
+    if (!entry) entry = (MainProc)dynlib::symbol(h, "main_plugin");
+    if (!entry) entry = (MainProc)dynlib::symbol(h, "main");
     if (!entry) {
-        dlclose(h);
+        dynlib::close(h);
         if (error) *error = "VSTPluginMain not exported (not a VST2 plugin)";
         return false;
     }
@@ -167,7 +167,7 @@ Vst2Plugin::~Vst2Plugin() {
         dispatch(effClose);
         m_effect = nullptr;
     }
-    if (m_handle) dlclose(m_handle);
+    if (m_handle) dynlib::close(m_handle);
 }
 
 void Vst2Plugin::setActive(bool a) {

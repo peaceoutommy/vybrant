@@ -2,7 +2,7 @@
 #include "plugins/PluginHost.h"
 #include "plugins/PluginEmbedWidget.h"
 #include "core/Log.h"
-#include <dlfcn.h>
+#include "core/DynLib.h"
 #include <QFileInfo>
 #include <QDir>
 #include <QJsonObject>
@@ -63,18 +63,18 @@ std::shared_ptr<Vst3Module> Vst3Module::load(const QString& path, QString* error
         if (error) *error = "No binary found in bundle";
         return nullptr;
     }
-    void* h = dlopen(bin.toLocal8Bit().constData(), RTLD_NOW | RTLD_LOCAL);
+    void* h = dynlib::open(bin);
     if (!h) {
-        if (error) *error = QString::fromUtf8(dlerror());
+        if (error) *error = dynlib::lastError();
         return nullptr;
     }
     auto m = std::shared_ptr<Vst3Module>(new Vst3Module());
     m->m_handle = h;
     m->m_path = path;
-    auto entry = (ModuleEntryProc)dlsym(h, "ModuleEntry");
+    auto entry = (ModuleEntryProc)dynlib::symbol(h, "ModuleEntry");
     if (entry) entry(h);
-    m->m_exit = (ModuleExitProc)dlsym(h, "ModuleExit");
-    auto gf = (GetFactoryProc)dlsym(h, "GetPluginFactory");
+    m->m_exit = (ModuleExitProc)dynlib::symbol(h, "ModuleExit");
+    auto gf = (GetFactoryProc)dynlib::symbol(h, "GetPluginFactory");
     if (!gf) {
         if (error) *error = "GetPluginFactory not exported (not a VST3 module)";
         return nullptr;
@@ -89,7 +89,7 @@ std::shared_ptr<Vst3Module> Vst3Module::load(const QString& path, QString* error
 Vst3Module::~Vst3Module() {
     if (m_factory) m_factory->release();
     if (m_exit) m_exit();
-    if (m_handle) dlclose(m_handle);
+    if (m_handle) dynlib::close(m_handle);
 }
 std::vector<Vst3ClassInfo> Vst3Module::classes() const {
     std::vector<Vst3ClassInfo> v;

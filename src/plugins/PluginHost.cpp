@@ -15,7 +15,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QTextStream>
-#include <dlfcn.h>
+#include "core/DynLib.h"
 #include <QTimer>
 #include <QFileInfo>
 #include <QSignalBlocker>
@@ -376,9 +376,9 @@ int PluginScanner::scanChildMain(const QString& path) {
         return 0;
     }
     // Try VST2; a .so exporting GetPluginFactory is also accepted as VST3
-    void* h = dlopen(path.toLocal8Bit().constData(), RTLD_NOW | RTLD_LOCAL);
-    bool hasVst3 = h && dlsym(h, "GetPluginFactory");
-    if (h) dlclose(h);
+    void* h = dynlib::open(path);
+    bool hasVst3 = h && dynlib::symbol(h, "GetPluginFactory");
+    if (h) dynlib::close(h);
     if (hasVst3) {
         QString err;
         auto mod = Vst3Module::load(path, &err);
