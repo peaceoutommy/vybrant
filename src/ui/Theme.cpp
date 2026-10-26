@@ -658,6 +658,21 @@ QIcon glyphIcon(Glyph g, const QColor& color, int size) {
         p.setBrush(color);
         break;
     }
+    case Glyph::Magnet: {   // a horseshoe magnet, poles up: the body, a gap, then the pole tips
+        QPainterPath u;
+        u.moveTo(s * 0.27, s * 0.33);
+        u.lineTo(s * 0.27, s * 0.52);
+        u.arcTo(QRectF(s * 0.27, s * 0.29, s * 0.46, s * 0.46), 180, 180);
+        u.lineTo(s * 0.73, s * 0.33);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(QPen(color, s * 0.17, Qt::SolidLine, Qt::FlatCap, Qt::MiterJoin));
+        p.drawPath(u);
+        p.setPen(Qt::NoPen);
+        p.setBrush(color);
+        p.drawRect(QRectF(s * 0.185, s * 0.12, s * 0.17, s * 0.15));
+        p.drawRect(QRectF(s * 0.645, s * 0.12, s * 0.17, s * 0.15));
+        break;
+    }
     case Glyph::Repeat: {
         p.setPen(QPen(color, 1.5));
         p.setBrush(Qt::NoBrush);

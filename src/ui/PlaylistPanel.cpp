@@ -1911,6 +1911,7 @@ PlaylistPanel::PlaylistPanel(App& app, QWidget* parent)
     m_snap->setFixedWidth(96);
     m_snap->setToolTip("Snap: the grid clips are placed and resized to (hold Alt to bypass)");
     m_snap->setFocusPolicy(Qt::NoFocus);
+    top->addWidget(TransportBar::makeSnapMagnet(m_snap, this));
     top->addWidget(m_snap);
     sep();
     auto* addTrack = new QToolButton(this);

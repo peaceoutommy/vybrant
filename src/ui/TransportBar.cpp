@@ -23,6 +23,15 @@ QComboBox* TransportBar::makeSnapCombo(QWidget* parent) {
     c->setToolTip("Snap to grid");
     return c;
 }
+QToolButton* TransportBar::makeSnapMagnet(QComboBox* snap, QWidget* parent) {
+    auto* b = new QToolButton(parent);
+    theme::setGlyph(b, theme::Glyph::Magnet, 14);
+    b->setToolTip(snap->toolTip());
+    b->setAutoRaise(true);
+    b->setFocusPolicy(Qt::NoFocus);
+    QObject::connect(b, &QToolButton::clicked, snap, &QComboBox::showPopup);
+    return b;
+}
 int TransportBar::snapDivisionFromIndex(int idx) {
     if (idx < 0 || idx >= (int)(sizeof(kSnapItems) / sizeof(kSnapItems[0]))) return 4;
     if (idx == 9) return 0;

@@ -1759,6 +1759,7 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     m_snap->setFixedWidth(96);
     m_snap->setToolTip("Snap: the grid notes are placed and resized to (hold Alt to bypass)");
     m_snap->setFocusPolicy(Qt::NoFocus);
+    top->addWidget(TransportBar::makeSnapMagnet(m_snap, this));
     top->addWidget(m_snap);
     sep();
     m_root = mkCombo(62, "Scale root: notes outside the scale are dimmed in the grid");

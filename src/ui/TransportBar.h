@@ -45,6 +45,7 @@ public:
     void refresh(uint32_t flags);
     void uiTick();
     static QComboBox* makeSnapCombo(QWidget* parent);
+    static QToolButton* makeSnapMagnet(QComboBox* snap, QWidget* parent);   // the magnet in front of a snap selector; opens it
     static int snapDivisionFromIndex(int idx);
     void addWindowButton(QToolButton* b) { m_winLayout->addWidget(b); }
     QToolButton* typingButton() const { return m_typing; }   // typing keyboard -> piano keyboard toggle (owned by MainWindow's action)

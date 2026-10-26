@@ -153,7 +153,8 @@ enum class Glyph {
     Slice,
     MuteSpeaker,
     Ghost,
-    Repeat
+    Repeat,
+    Magnet   // snap to grid
 };   // editor tool icons (playlist / piano roll)
 QIcon glyphIcon(Glyph g, const QColor& color, int size = 14);
 QCursor toolCursor(Glyph g, int hotX = 11, int hotY = 11);   // the active editor tool, drawn as the mouse cursor
