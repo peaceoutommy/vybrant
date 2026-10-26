@@ -14,6 +14,7 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <cstring>
+#include "License.h"
 #include <cstdio>
 namespace mt {
 int runSelfTest(App& app);
@@ -86,6 +87,8 @@ int main(int argc, char** argv) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "--backuptest") == 0) return mt::runBackupTest(daw);
     if (argc >= 3 && std::strcmp(argv[1], "--preview-bench") == 0) return mt::runPreviewBench(daw, argv[2]);
+    // A license before the main window; an offscreen run (the UI tests: nothing on a screen) has nothing to license
+    if (QGuiApplication::platformName() != "offscreen" && !mt::license::ensure()) return 0;
     mt::MainWindow win(daw);
     win.show();
     mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/tactum.sock)

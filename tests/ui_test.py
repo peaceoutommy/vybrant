@@ -380,6 +380,12 @@ def main():
     check(abs(dx) <= 2 and abs(dy) <= 40, "an editor window opens in the middle of the screen", f"{dx} {dy}")
     ins.quit()
 
+    # ---- the license dialog tells a bad key apart (a good one needs the real signing key, see --selftest for the format)
+    ins = Instance(cfg14, sock)
+    r = ins.send(f"licensedialog {png} eyJ2IjoxfQ.bm90IGEgc2lnbmF0dXJl")
+    check("not a valid" in r and os.path.getsize(png) > 0, "the license dialog rejects a key that is not signed by Tactum", r)
+    ins.quit()
+
     # ---- the app was called MusicThingy: its settings and data move to the new name on the first start
     cfg12 = os.path.join(tmp, "cfg12")
     os.makedirs(os.path.join(cfg12, "MusicThingy"))

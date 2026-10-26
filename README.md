@@ -25,6 +25,7 @@ Dependencies (all available from common distro repositories):
 | Spectrum analyzer | FFTW3 (single precision) |
 | Plugin GUIs | libX11 |
 | LV2 hosting | lilv (+ LV2 headers) |
+| License check | OpenSSL `libcrypto` (Ed25519) |
 
 ```bash
 qmake6 Tactum.pro && make -j$(nproc)      # primary build
@@ -157,6 +158,28 @@ the generic parameter editor. Mono plugins process the sum of the stereo pair an
 `plugins`, `automation`, `audioReferences`, `markers`, `midiMappings`). Object references are stable ids, sample
 paths are stored relative to the project when possible, plugin state is base64. `ProjectSerializer::migrate()`
 is the hook for future format versions.
+
+## Licenses for users
+
+Tactum asks for a license key at startup (Help > License... changes it later). Keys come from the website: people sign in
+(Clerk: Google or email) and generate one license per account. A key is a small JSON payload (account id, name, email) plus
+an Ed25519 signature; Tactum verifies it offline against the public key in `src/License.cpp`.
+
+- `server/`: NestJS API. `GET/POST /api/license` behind the Clerk session token; the license is kept in the user's Clerk
+  private metadata (no database). `npm run keygen` makes a signing key pair, `npm test` checks the signing.
+- `web/`: React + Motion landing page and the account page that generates and shows the license.
+
+Setup: create a Clerk application with Google enabled, then
+
+```bash
+cd server && cp .env.example .env    # CLERK_SECRET_KEY, WEB_ORIGIN, LICENSE_PRIVATE_KEY (npm run keygen)
+npm install && npm run dev            # :3000
+cd ../web && cp .env.example .env.local   # VITE_CLERK_PUBLISHABLE_KEY
+npm install && npm run dev            # :5173, proxies /api to :3000
+```
+
+A new key pair invalidates every license made with the old one once Tactum ships the new public key. As free software,
+the check can be removed from the source; it guards the official builds.
 
 ## License
 

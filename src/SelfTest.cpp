@@ -13,6 +13,7 @@
 #include "ui/dialogs/Dialogs.h"
 #include "ui/Theme.h"
 #include "ui/ProcessorPicker.h"
+#include "License.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1371,6 +1372,18 @@ int runSelfTest(App& app) {
                 app.deleteChannel(bch);
             }
         }
+    }
+    {   // a license made by the server (server/src/license.ts, signed with a test key) checks out here, and only unchanged
+        const QByteArray pub = QByteArray::fromHex("c7d5ddbdb4d3285224433778bb38133fccef47eecfb7f2c018e0b61bf4c60018");
+        const QString key = "eyJ2IjoxLCJzdWIiOiJ1c2VyX3NlbGZ0ZXN0IiwibmFtZSI6IlNlbGYgVGVzdCIsImVtYWlsIjoic2VsZnRlc3RAZXhhbXBsZS5jb20ifQ."
+                            "T4FwK67mTrwshPYRytoiujOfzzOFPOPJ8TOajzpIC1KLrMgKtE7KQ8GC_kFSWRzM2VbJhXjZlsohEguJpv98Ag";
+        const license::Info i = license::verify(key, pub);
+        QString forged = key;
+        forged[10] = forged[10] == 'A' ? 'B' : 'A';
+        CHECK(i.valid && i.id == "user_selftest" && i.name == "Self Test" && i.email == "selftest@example.com" &&
+                  license::verify("  " + key.left(60) + "\n" + key.mid(60) + " ", pub).valid && !license::verify(forged, pub).valid &&
+                  !license::verify(key + "x", pub).valid && !license::verify("garbage", pub).valid,
+            "a server-made license verifies, pasted with line breaks too; a changed one, another key's or garbage does not");
     }
     {   // the processor picker sorts plugins by what they do, from VST3 / CLAP / LV2 categories and the name
         auto cat = [](const char* category, const char* sub, const char* name) {

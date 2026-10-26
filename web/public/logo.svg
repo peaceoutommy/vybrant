@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <!-- Tactum: a big T and a small t (an accented beat and a ghost note) on smoky glass -->
+  <defs>
+    <radialGradient id="depth" cx="0.5" cy="0.58" r="0.72"><stop offset="0" stop-color="#5a5a66"/><stop offset="0.5" stop-color="#1f1f26"/><stop offset="1" stop-color="#050506"/></radialGradient>
+    <radialGradient id="mist1" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="translate(84 176) rotate(-24) scale(120 58)"><stop offset="0" stop-color="#c8c8d8" stop-opacity="0.55"/><stop offset="1" stop-color="#c8c8d8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="mist2" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="translate(186 118) rotate(32) scale(96 46)"><stop offset="0" stop-color="#9aa0b8" stop-opacity="0.45"/><stop offset="1" stop-color="#9aa0b8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="mist3" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="translate(140 214) rotate(8) scale(90 34)"><stop offset="0" stop-color="#c8c8d8" stop-opacity="0.55"/><stop offset="1" stop-color="#c8c8d8" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glass" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="translate(92 58) rotate(-18) scale(86 44)"><stop offset="0" stop-color="#ffffff" stop-opacity="0.32"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="vignette" cx="0.5" cy="0.5" r="0.72"><stop offset="0.7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.55"/></radialGradient>
+    <linearGradient id="T" gradientUnits="userSpaceOnUse" x1="0" y1="57" x2="0" y2="211"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfcfd8"/></linearGradient>
+    <linearGradient id="t" gradientUnits="userSpaceOnUse" x1="0" y1="88" x2="0" y2="202"><stop offset="0" stop-color="#d2d2dc"/><stop offset="1" stop-color="#8a8a9a"/></linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#depth)"/>
+  <rect width="256" height="256" rx="56" fill="url(#mist1)"/>
+  <rect width="256" height="256" rx="56" fill="url(#mist2)"/>
+  <rect width="256" height="256" rx="56" fill="url(#mist3)"/>
+  <rect width="256" height="256" rx="56" fill="url(#vignette)"/>
+  <rect width="256" height="256" rx="56" fill="url(#glass)"/>
+  <rect x="1.5" y="1.5" width="253" height="253" rx="54.5" fill="none" stroke="#fff" stroke-opacity="0.12" stroke-width="3"/>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(8 8)" opacity="0.18"><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#000" stroke-width="32"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#000" stroke-width="22"/></g><g transform="translate(12 12)" opacity="0.12"><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#000" stroke-width="32"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#000" stroke-width="22"/></g><g transform="translate(16 16)" opacity="0.08"><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#000" stroke-width="32"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#000" stroke-width="22"/></g>
+    <path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#2b2b33" stroke-width="30" transform="translate(1 1)"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#2b2b33" stroke-width="20" transform="translate(1 1)"/><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#2b2b33" stroke-width="30" transform="translate(2 2)"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#2b2b33" stroke-width="20" transform="translate(2 2)"/><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#2b2b33" stroke-width="30" transform="translate(3 3)"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#2b2b33" stroke-width="20" transform="translate(3 3)"/><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#2b2b33" stroke-width="30" transform="translate(4 4)"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#2b2b33" stroke-width="20" transform="translate(4 4)"/><path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#2b2b33" stroke-width="30" transform="translate(5 5)"/><path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#2b2b33" stroke-width="20" transform="translate(5 5)"/>
+    <path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="url(#T)" stroke-width="30"/>
+    <path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="url(#t)" stroke-width="20"/>
+    <path d="M42 90 C70 70 116 62 164 70 M104 72 C109 118 109 162 96 198" stroke="#fff" stroke-opacity="0.35" stroke-width="7" transform="translate(-4 -6)"/>
+    <path d="M188 98 C186 136 183 166 191 182 C198 194 209 194 217 186 M168 130 C181 121 195 133 211 124" stroke="#fff" stroke-opacity="0.3" stroke-width="4" transform="translate(-3 -4)"/>
+  </g>
+</svg>

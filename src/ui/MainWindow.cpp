@@ -31,6 +31,7 @@
 #include <QFileInfo>
 #include <QPixmap>
 #include <QScreen>
+#include "License.h"
 #include <QActionGroup>
 #include <QCursor>
 #include <QVariantAnimation>
@@ -758,6 +759,13 @@ void MainWindow::buildMenus() {
         this));
     auto* help = mb->addMenu("&Help");
     help->addAction(reg.add("help.help", "Quick help", "Help", QKeySequence("F1"), [this] { showHelp(); }, this));
+    help->addAction(reg.add(
+        "help.license", "License...", "Help", QKeySequence(),
+        [this] {
+            std::unique_ptr<QDialog> d(license::makeDialog(this, false));
+            d->exec();
+        },
+        this));
     help->addAction(reg.add(
         "help.about", "About Tactum", "Help", QKeySequence(),
         [this] {

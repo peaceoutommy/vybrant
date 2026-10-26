@@ -1,0 +1,26 @@
+{
+  "name": "tactum-license-server",
+  "private": true,
+  "description": "Accounts (Clerk) and license signing for Tactum",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "keygen": "node scripts/keygen.mjs",
+    "test": "nest build && node --test test/"
+  },
+  "dependencies": {
+    "@clerk/backend": "^3.26.2",
+    "@nestjs/common": "^12.2.0",
+    "@nestjs/core": "^12.2.0",
+    "@nestjs/platform-express": "^12.2.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^12.0.10",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.5",
+    "typescript": "~6.0.2"
+  }
+}

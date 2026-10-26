@@ -8,6 +8,8 @@
 #include "ui/MainWindow.h"
 #include "ui/MixerPanel.h"
 #include "ui/ProcessorPicker.h"
+#include "License.h"
+#include <QPlainTextEdit>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QToolButton>
@@ -549,6 +551,14 @@ QString ControlServer::handle(const QString& line) {
             .arg(dlg.cards() ? "cards" : "list")
             .arg(names.size())
             .arg(items->currentItem() ? items->currentItem()->text() : "-", sections.join(','), names.value(0));
+    }
+    if (c == "licensedialog" && a.size() >= 2) {   // the license dialog with a key typed in: licensedialog <png> [key] -> its status line
+        std::unique_ptr<QDialog> d(license::makeDialog(&m_win, true));
+        d->findChild<QPlainTextEdit*>("licenseKey")->setPlainText(a.mid(2).join(' '));
+        d->show();
+        QCoreApplication::processEvents();
+        if (!d->grab().save(a[1])) return "err save";
+        return d->findChild<QLabel*>("licenseStatus")->text();
     }
     if (c == "quit") {
         QTimer::singleShot(0, qApp, [] { qApp->quit(); });
