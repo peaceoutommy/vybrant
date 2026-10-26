@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/fonts">
+    <file alias="Geist-Light.ttf">fonts/Geist-Light.ttf</file>
+    <file alias="Geist-Regular.ttf">fonts/Geist-Regular.ttf</file>
+    <file alias="Geist-Medium.ttf">fonts/Geist-Medium.ttf</file>
+    <file alias="Geist-SemiBold.ttf">fonts/Geist-SemiBold.ttf</file>
+    <file alias="GeistMono-Regular.ttf">fonts/GeistMono-Regular.ttf</file>
+    <file alias="GeistMono-Medium.ttf">fonts/GeistMono-Medium.ttf</file>
+  </qresource>
+</RCC>

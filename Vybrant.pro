@@ -17,6 +17,7 @@ DESTDIR = bin
 
 SOURCES += $$files(src/*.cpp, true)
 HEADERS += $$files(src/*.h, true)
+RESOURCES += resources/fonts.qrc
 
 # `make install` puts the binary and a launcher into the user's home (no root needed)
 target.path = $$(HOME)/.local/bin

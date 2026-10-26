@@ -183,4 +183,4 @@ the check can be removed from the source; it guards the official builds.
 
 ## License
 
-GPL-3.0-or-later, see [LICENSE](LICENSE). (It links Rubber Band and FFTW, which are GPL.)
+GPL-3.0-or-later, see [LICENSE](LICENSE). The bundled Geist fonts (`resources/fonts`) are under the SIL Open Font License, see `resources/fonts/OFL.txt`. (It links Rubber Band and FFTW, which are GPL.)

@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include <QFile>
+#include <QFontDatabase>
 #include <cstring>
 #include "License.h"
 #include <cstdio>
@@ -68,6 +69,10 @@ int main(int argc, char** argv) {
     QCoreApplication::setApplicationName("Vybrant");
     migrateOldName();
     QApplication::setStyle("Fusion");
+    // Geist, the website's typeface (SIL OFL, resources/fonts): bundled so every system draws the same UI
+    for (const char* f : {"Geist-Light", "Geist-Regular", "Geist-Medium", "Geist-SemiBold", "GeistMono-Regular", "GeistMono-Medium"})
+        QFontDatabase::addApplicationFont(QString(":/fonts/%1.ttf").arg(f));
+    QApplication::setFont(QFont("Geist", 9));
     mt::theme::setPalette(mt::theme::loadSavedTheme());
     app.setStyleSheet(mt::theme::stylesheet());
     if (argc >= 4 && std::strcmp(argv[1], "--plugin-bridge") == 0)

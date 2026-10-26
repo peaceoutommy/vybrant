@@ -98,11 +98,11 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     sep();
     m_position = new QLabel("001:1:000", this);
     theme::styled(m_position,
-        "QLabel { background:@surface@; color:@accent@; border:1px solid @border@; border-radius:@radius@; padding:1px 9px; font-family: monospace; font-size: 12pt; }");
+        "QLabel { background:@surface@; color:@accent@; border:1px solid @border@; border-radius:@radius@; padding:1px 9px; font-family: 'Geist Mono', monospace; font-size: 12pt; }");
     m_position->setFixedHeight(28);
     m_position->setToolTip("Song position in bars : beats : ticks - click to jump to a bar");
     lay->addWidget(m_position);
-    m_timeSec = theme::dimLabel("0:00.0", this, "font-family: monospace; font-size:8pt;");
+    m_timeSec = theme::dimLabel("0:00.0", this, "font-family: 'Geist Mono', monospace; font-size:8pt;");
     m_timeSec->setToolTip("Song position in minutes : seconds");
     lay->addWidget(m_timeSec);
     sep();
@@ -149,7 +149,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     theme::styled(m_midiLed, "color:@focus@; font-weight:bold; font-size:7.5pt;");
     m_midiLed->setToolTip("Lights up when MIDI input arrives");
     row2->addWidget(m_midiLed);
-    m_stats = theme::dimLabel(QString(), this, "font-family: monospace; font-size:7.5pt;");
+    m_stats = theme::dimLabel(QString(), this, "font-family: 'Geist Mono', monospace; font-size:7.5pt;");
     m_stats->setToolTip("Audio engine: callback CPU load, dropouts (xruns), sample rate / buffer size, output latency, delay compensation");
     row2->addWidget(m_stats);
     qApp->installEventFilter(this);
@@ -247,10 +247,10 @@ void TransportBar::uiTick() {
     double lat = e.deviceRunning() ? m_app.devices().reportedOutputLatency() * 1000 : 0;
     if (!e.deviceRunning()) {
         m_stats->setText("\u26a0 NO AUDIO DEVICE - Options > Audio settings");
-        m_stats->setStyleSheet("color:#e2665c; font-family: monospace; font-size:7.5pt; font-weight:bold;");
+        m_stats->setStyleSheet("color:#e2665c; font-family: 'Geist Mono', monospace; font-size:7.5pt; font-weight:bold;");
         return;
     } else if (m_stats->styleSheet().contains("e2665c"))
-        theme::styled(m_stats, "color:@textDim@; font-family: monospace; font-size:7.5pt;");
+        theme::styled(m_stats, "color:@textDim@; font-family: 'Geist Mono', monospace; font-size:7.5pt;");
     m_stats->setText(QString("%1% \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6")
             .arg((int)(e.cpuLoad() * 100), 2)
             .arg(e.xruns())

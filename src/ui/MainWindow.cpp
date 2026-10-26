@@ -167,6 +167,7 @@ MainWindow::MainWindow(App& app, QWidget* parent)
     m_pages->addWidget(m_workspace);
     setCentralWidget(m_pages);
     m_transport = new TransportBar(app, this);
+    m_transport->setObjectName("transport");   // see-through: the bar's glow shows behind it
     auto* tb = new QToolBar("Transport", this);
     tb->setObjectName("transportBar");
     tb->setMovable(false);
