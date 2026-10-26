@@ -59,7 +59,7 @@ jobs:
             zip mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-portaudio mingw-w64-ucrt-x86_64-libsndfile
             mingw-w64-ucrt-x86_64-libsamplerate mingw-w64-ucrt-x86_64-rubberband mingw-w64-ucrt-x86_64-lame
-            mingw-w64-ucrt-x86_64-fftw mingw-w64-ucrt-x86_64-openssl
+            mingw-w64-ucrt-x86_64-fftw mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-gdb
 
       - name: Build
         run: |
@@ -69,7 +69,15 @@ jobs:
       - name: Self test
         env:
           QT_QPA_PLATFORM: offscreen
+          QT_FORCE_STDERR_LOGGING: 1   # a GUI app's Qt messages go to the debugger otherwise
         run: ./build/Vybrant.exe --selftest
+
+      - name: Self test backtrace (after a crash)
+        if: failure()
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_FORCE_STDERR_LOGGING: 1
+        run: gdb -q -batch -ex run -ex bt --args ./build/Vybrant.exe --selftest
 
   web:
     runs-on: ubuntu-24.04

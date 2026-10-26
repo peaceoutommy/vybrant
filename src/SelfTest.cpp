@@ -60,6 +60,7 @@ static const QString kGuiLib = "-lX11";
     } while (0)
 
 int runSelfTest(App& app) {
+    std::setvbuf(stdout, nullptr, _IONBF, 0);   // a crash keeps the lines before it (stdout to a pipe is buffered)
     std::printf("Vybrant self test\n");
     // ---- project round trip
     Project p = makeDefaultProject(true);
