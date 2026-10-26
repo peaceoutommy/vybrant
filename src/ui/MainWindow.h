@@ -61,6 +61,7 @@ private:
     bool maybeSave();
     void resetLayout();
     void applyDefaultLayout();
+    void setLeftPanels(bool browser, bool samples);
     void showHelp();
     void showMixerPage(bool on);
     void dockRackAtCandidate();

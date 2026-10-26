@@ -129,6 +129,21 @@ def main():
     check(r.startswith("ok 1100x800"), "the main window shrinks to 1100 px wide with a 128-step pattern", r)
     ins.quit()
 
+    # ---- the browser and the project strip show and hide on their own: hiding the browser leaves the strip, alone at its own width
+    cfg15 = os.path.join(tmp, "cfg15")
+    os.makedirs(cfg15)
+    ins = Instance(cfg15, sock)
+    ins.send("action view.browser")
+    time.sleep(0.5)
+    r = ins.send("layout") + " | " + ins.send("leftsizes")
+    check(r.endswith("stripVisible=1 browserVisible=0 | dock=180 browser=260 strip=180 panel=180"),
+          "hiding the browser keeps the project strip, which then fills the dock on its own", r)
+    ins.quit()
+    ins = Instance(cfg15, sock)
+    r = ins.send("layout")
+    check(r.endswith("stripVisible=1 browserVisible=0"), "the hidden browser stays hidden after a restart", r)
+    ins.quit()
+
     # ---- piano roll selection, velocity lane modifiers, trackpad zoom
     cfg3 = os.path.join(tmp, "cfg3")
     os.makedirs(cfg3)
