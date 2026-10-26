@@ -396,23 +396,36 @@ void PianoRollView::renderCache() {
                 p.drawLine(x0, y, x1, y);
                 p.fillRect(QRect(x0 - 1, y - 1, 3, 3), base.lighter(140));
             }
-        } else if (d)
+        } else if (d) {
+            // One stem per note with a round handle at its value, like FL Studio: notes that start together share a stem
+            // and stay apart as separate handles. Stems first, then the handles (selected ones last, on top)
+            std::vector<std::pair<const Note*, float>> bars;
             for (auto& n : notesView()) {
                 int x = tickToX(n.start);
-                if (x < L.vel.left() - bw || x > L.vel.right()) continue;
-                float v = laneValue(n);
-                bool sel = m_selected.count(n.id);
-                p.setPen(sel ? Qt::white : base);
-                p.setBrush(sel ? base.lighter(150) : base);
-                if (bip) {
-                    int h = (int)((v - 0.5f) * (L.vel.height() - 8));
-                    p.drawRect(QRect(x, h >= 0 ? midY - h : midY, bw, std::abs(h)));
-                    p.drawRect(QRect(x, midY - 1, bw, 2));
-                } else {
-                    int h = (int)(v * (L.vel.height() - 6));
-                    p.drawRect(QRect(x, L.vel.bottom() - h, bw, h));
-                }
+                if (x >= L.vel.left() - bw && x <= L.vel.right()) bars.push_back({&n, laneValue(n)});
             }
+            std::stable_sort(bars.begin(), bars.end(), [&](const auto& a, const auto& b) { return !m_selected.count(a.first->id) && m_selected.count(b.first->id); });
+            const float h = L.vel.height() - 10, base0 = bip ? midY : L.vel.bottom() - 1;
+            auto yOf = [&](float v) { return bip ? midY - (v - 0.5f) * h : L.vel.bottom() - 5 - v * h; };
+            p.setRenderHint(QPainter::Antialiasing);
+            for (auto& [n, v] : bars) {
+                QColor stem = theme::mix(theme::surface(), m_selected.count(n->id) ? QColor(Qt::white) : base, 0.6);   // solid: shared stems don't stack
+                double x = tickToX(n->start) + 2.5;
+                p.setPen(QPen(stem, 1.5, Qt::SolidLine, Qt::FlatCap));
+                p.drawLine(QPointF(x, base0), QPointF(x, yOf(v)));
+            }
+            for (auto& [n, v] : bars) {
+                bool sel = m_selected.count(n->id);
+                double x = tickToX(n->start) + 2.5;
+                QColor head = sel ? QColor(Qt::white) : base.lighter(115);
+                p.setPen(QPen(head, 1.5, Qt::SolidLine, Qt::RoundCap));   // a short tick to the side marks each stacked value
+                p.drawLine(QPointF(x + 3.5, yOf(v)), QPointF(x + 9, yOf(v)));
+                p.setPen(QPen(theme::surface(), 1.5));   // a ring of the lane colour keeps stacked handles apart
+                p.setBrush(head);
+                p.drawEllipse(QPointF(x, yOf(v)), 3.5, 3.5);
+            }
+            p.setRenderHint(QPainter::Antialiasing, false);
+        }
         {
             QFont f = theme::smallFont();
             p.setFont(f);

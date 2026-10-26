@@ -222,17 +222,18 @@ QString ControlServer::handle(const QString& line) {
         Id cid = ch[idx].id;
         int pitch = a[2].toInt(), count = a[3].toInt();
         Tick len = a[4].toLongLong();
+        float vel = a.size() > 5 ? a[5].toFloat() : 0.9f;   // notes <channel> <pitch> <count> <length> [velocity]
         Id pid = m_app.project().selectedPatternId;
-        m_app.edit<Pattern>(pid, "test notes", [cid, pitch, count, len](Pattern& pat) {
+        m_app.edit<Pattern>(pid, "test notes", [cid, pitch, count, len, vel](Pattern& pat) {
             pat.ensureChannel(cid);
             auto* d = pat.channelData(cid);
             for (int i = 0; i < count; ++i) {
                 Note n;
-                n.id = 80000 + i;
+                n.id = 80000 + pitch * 1000 + i;   // unique per pitch: chords stack several calls
                 n.pitch = pitch;
                 n.start = (Tick)i * len;
                 n.duration = len;
-                n.velocity = 0.9f;
+                n.velocity = vel;
                 d->notes.push_back(n);
             }
         });
