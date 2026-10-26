@@ -283,7 +283,7 @@ static QMap<QString, QString> themeTokens() {
 }
 static double g_radius = -1;
 double radius() {
-    if (g_radius < 0) g_radius = std::clamp(QSettings().value("theme/radius", 6.0).toDouble(), 0.0, 12.0);
+    if (g_radius < 0) g_radius = std::clamp(QSettings().value("theme/radius", 2.0).toDouble(), 0.0, 12.0);
     return g_radius;
 }
 void setRadius(double r) { g_radius = std::clamp(r, 0.0, 12.0); }
