@@ -568,9 +568,9 @@ void PlaylistView::renderCache() {
     }
     p.setClipping(false);
     paintRuler(p, L.ruler, barStep, last);
-    {   // loop area: accent when on, dim when off
+    if (proj.transport.loopEnabled) {   // the selected loop area; once deselected it leaves no trace (the range is still kept)
         int x1 = tickToX(proj.transport.loopStart), x2 = tickToX(proj.transport.loopEnd);
-        p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), proj.transport.loopEnabled ? theme::accent() : theme::textDim());
+        p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), theme::accent());
     }
     if (proj.transport.punchEnabled) {
         int x1 = tickToX(proj.transport.punchIn), x2 = tickToX(proj.transport.punchOut);
