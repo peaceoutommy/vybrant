@@ -336,20 +336,22 @@ int runSelfTest(App& app) {
         Id other = app.duplicateClip(src, at, tr2);   // plays along, on the same instrument: must stay out of the render
         Id nc = app.consolidateClips({sel}, nullptr, &err);
         const Clip* c = pr.clip(nc);
-        CHECK(c && c->type == ClipType::Audio && c->start == at && c->trackId == tr1 && c->length >= len - 1 && c->length < len + PPQ * 8 &&
+        CHECK(c && c->type == ClipType::Audio && c->start == at && c->trackId == tr1 && c->length == len &&
                   !pr.clip(sel) && pr.clip(other) && pr.pattern(pat),
-            "consolidate: one audio clip at the clip's start and about its length replaces it, the pattern stays");
+            "consolidate: one audio clip at the clip's start and of its length (as in FL Studio) replaces it, the pattern stays");
         app.deleteClips({other});
         o.path = tmp.path() + "/cpost.wav";
         app.exportAudio(o, nullptr, &err);
         auto a = AudioFile::load(tmp.path() + "/cpre.wav", 0), b = AudioFile::load(tmp.path() + "/cpost.wav", 0);
         float diff = 1.f;
-        if (a && b && a->frames > 1000) {
+        int64_t clipFrames = (int64_t)((pr.transport.tempoMap().secondsAt(at + len) - pr.transport.tempoMap().secondsAt(at)) * 44100);
+        if (a && b && a->frames > 1000) {   // over the clip: past its end the tail is cut, as in FL Studio
             diff = 0.f;
-            for (int64_t i = 0; i < std::min(a->frames, b->frames); ++i) diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
+            for (int64_t i = 0; i < std::min({a->frames, b->frames, clipFrames}); ++i) diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
         }
-        CHECK(f && diff < 1e-3f && a->peakValue > 0.1f,
-            QString("consolidate: the song sounds the same (max diff %1)").arg(diff).toUtf8().constData());
+        const AudioSource* cs = c ? pr.audioSource(c->sourceId) : nullptr;
+        CHECK(f && diff < 1e-3f && a->peakValue > 0.1f && cs && cs->frames > clipFrames,
+            QString("consolidate: the clip sounds the same over its length (max diff %1), and its file keeps the tail").arg(diff).toUtf8().constData());
         model.undoStack().undo();   // the delete
         model.undoStack().undo();
         CHECK(pr.clip(sel) && pr.clip(other) && !pr.clip(nc), "consolidate is one undo step");

@@ -2159,7 +2159,7 @@ Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(doub
     AudioSource a;
     a.id = p.newId();
     a.filePath = o.path;
-    a.name = QFileInfo(o.path).completeBaseName();
+    a.name = name + " (consolidated)";   // the file name carries a timestamp so renders never collide; the sample needn't
     a.sampleRate = sr;
     a.channels = ch;
     a.frames = frames;
@@ -2176,9 +2176,9 @@ Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(doub
     c.trackId = track;
     c.sourceId = a.id;
     c.start = from;
-    c.length = std::max<Tick>(p.transport.tempoMap().ticksFor(from, frames / sr), 1);
+    c.length = to - from;   // the selection's length, as in FL Studio; the tail stays in the file, for when the clip is stretched
     c.loopSource = false;
-    c.name = name;
+    c.name = a.name;
     cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
     m_cache.getSync(o.path);   // loaded before the clip exists, so it plays at once instead of after an async load
     m_model.macro("Consolidate", std::move(cmds));
