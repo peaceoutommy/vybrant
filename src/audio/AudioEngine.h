@@ -124,6 +124,7 @@ public:
         m_loopEnabled.store(on);
     }
     void setSongMode(bool s) { m_songMode.store(s); }
+    void setSongLoop(bool on) { m_songLoop.store(on); }   // off while exporting: a range past the song's end must not wrap to its start
     void setLoopRecord(bool on) { m_loopRecord.store(on); }   // FL: off, recording plays through the song loop instead of repeating it
     void setMetronome(bool m) { m_metronome.store(m); }
     void setCountIn(bool c, int bars) {
@@ -239,7 +240,7 @@ private:
     std::atomic<double> m_bpm{140};
     std::atomic<int> m_tsNum{4}, m_tsDen{4};
     std::atomic<bool> m_loopEnabled{false}, m_loopRecord{false}, m_songMode{false}, m_metronome{false}, m_countIn{false},
-        m_monitorInputs{true};
+        m_monitorInputs{true}, m_songLoop{true};
     std::atomic<Tick> m_loopStart{0}, m_loopEnd{PPQ * 16};
     std::atomic<int> m_countInBars{1};
     std::atomic<bool> m_punch{false}, m_renderTapPre{false};

@@ -1001,6 +1001,51 @@ int runSelfTest(App& app) {
         pr.transport = saved;
         eng.rebuild(pr);
     }
+    // ---- song mode with no loop area repeats the song from its start at the last clip's whole bar; an export runs straight on
+    {
+        auto& pr = app.project();
+        auto& eng = app.engine();
+        TransportSettings saved = pr.transport;
+        auto savedClips = pr.clips;
+        pr.transport.bpm = 120;
+        pr.transport.songMode = true;
+        pr.transport.loopEnabled = pr.transport.metronome = pr.transport.countIn = false;
+        pr.transport.tempoPoints.clear();
+        pr.transport.timeSigChanges.clear();
+        Clip a;
+        a.id = pr.newId();
+        a.type = ClipType::Audio;
+        a.length = 6 * PPQ;   // one and a half bars: the song loops at the end of bar 2
+        pr.clips = {a};
+        eng.rebuild(pr);
+        eng.offlineBegin(44100, 512);
+        std::vector<float> l(512), r(512);
+        auto run = [&](int64_t frames) {   // 120 BPM: one beat is 22050 frames
+            for (int n; frames > 0; frames -= n) eng.offlineProcess(l.data(), r.data(), n = (int)std::min<int64_t>(512, frames));
+        };
+        eng.seek(6 * PPQ);
+        eng.play();
+        run(3 * 22050);
+        double looped = eng.positionTicks();
+        eng.stop();
+        eng.setSongLoop(false);
+        eng.seek(6 * PPQ);
+        eng.play();
+        run(3 * 22050);
+        double straight = eng.positionTicks();
+        eng.stop();
+        eng.setSongLoop(true);
+        eng.offlineEnd();
+        CHECK(std::fabs(looped - PPQ) < 2 && straight > 8 * PPQ,
+            QString("song mode loops at the end of the last clip's bar (%1 ticks after running 3 beats from beat 6); an export does not (%2)")
+                .arg(looped)
+                .arg(straight)
+                .toUtf8()
+                .constData());
+        pr.clips = savedClips;
+        pr.transport = saved;
+        eng.rebuild(pr);
+    }
     // ---- the playlist tempo lane: double-click adds a point, dragging it up raises its BPM, right-click > Delete removes it
     {
         auto& pr = app.project();

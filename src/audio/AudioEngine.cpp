@@ -429,6 +429,11 @@ void AudioEngine::processFrames(const float* in, int inCh, float* outL, float* o
                 loop = m_loopEnabled.load() && (m_loopRecord.load() || !m_recordingFlag.load());
                 loopS = m_loopStart.load();
                 loopE = m_loopEnd.load();
+                if (!m_loopEnabled.load() && !m_recordingFlag.load() && m_songLoop.load() && snap && snap->songEnd > 0) {
+                    loop = true;   // no loop area: the whole song repeats, as in FL Studio (a recording runs on past the end)
+                    loopS = 0;
+                    loopE = snap->songEnd;
+                }
             } else {
                 loop = true;
                 loopS = 0;

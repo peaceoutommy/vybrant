@@ -524,8 +524,8 @@ void AudioEngine::rebuild(const Project& p) {
         s.clips.push_back(std::move(rc));
     }
     s.clipStates.resize(s.clips.size());
-    s.songEnd = p.songLength();
     s.tempo = p.transport.tempoMap();
+    s.songEnd = p.songLength() > 0 ? s.tempo.barStart(s.tempo.barAt(p.songLength() - 1) + 1) : 0;
     m_tempoUi = s.tempo;
     // ---- MIDI mappings
     for (auto& m : p.midiMappings) {

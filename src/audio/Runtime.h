@@ -223,7 +223,7 @@ struct Snapshot {
     std::vector<int> songLanes;   // lane indices active in song mode via clips (resolved per block)
     int selectedPatternIdx = -1;
     int liveChannelIdx = -1;
-    Tick songEnd = 0;
+    Tick songEnd = 0;   // the last clip's end rounded up to a whole bar: with no loop area, song mode loops here (0 = no clips)
     TempoMap tempo;
     int maxBlock = 512;
     int maxLatency = 0;

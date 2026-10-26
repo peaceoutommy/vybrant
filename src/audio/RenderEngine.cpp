@@ -24,6 +24,7 @@ bool RenderEngine::render(
     const bool wasRunning = engine.deviceRunning();
     engine.offlineBegin(opt.sampleRate, opt.blockSize);
     engine.setSongMode(opt.songMode);
+    engine.setSongLoop(false);
     engine.setLoop(false, 0, 0);
     engine.setMetronome(false);
     engine.setCountIn(false, 1);
@@ -73,6 +74,7 @@ bool RenderEngine::render(
     }
     engine.stop();
     engine.setRenderTap(0);
+    engine.setSongLoop(true);
     engine.offlineEnd();
     if (!wasRunning) engine.stopDevice();
     if (cancelled) {
