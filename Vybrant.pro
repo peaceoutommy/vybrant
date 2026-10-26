@@ -24,6 +24,6 @@ target.path = $$(HOME)/.local/bin
 # the launcher gets the full path: not every desktop's launcher has ~/.local/bin on its PATH
 desktop.path = $$(HOME)/.local/share/applications
 desktop.extra = sed \"s|^Exec=vybrant|Exec=$$(HOME)/.local/bin/vybrant|\" $$PWD/resources/vybrant.desktop > $(INSTALL_ROOT)$$desktop.path/vybrant.desktop
-icon.files = resources/vybrant.svg
-icon.path = $$(HOME)/.local/share/icons/hicolor/scalable/apps
+icon.files = resources/vybrant.png
+icon.path = $$(HOME)/.local/share/icons/hicolor/512x512/apps
 INSTALLS += target desktop icon

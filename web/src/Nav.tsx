@@ -14,7 +14,7 @@ export function Nav() {
     <header className="nav">
       <div className="container nav-row">
         <a href="/" className="brand" aria-label="Vybrant home">
-          <img src="/logo.svg" alt="" width={26} height={26} />
+          <img src="/logo.png" alt="" width={26} height={26} />
           <span>VYBRANT</span>
         </a>
         <nav className="nav-links" aria-label="Sections">

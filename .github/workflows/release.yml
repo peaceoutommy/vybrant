@@ -49,7 +49,7 @@ jobs:
           PATH="$PWD:$PATH" ./linuxdeploy-x86_64.AppImage --appdir AppDir \
             --executable bin/vybrant \
             --desktop-file resources/vybrant.desktop \
-            --icon-file resources/vybrant.svg \
+            --icon-file resources/vybrant.png \
             --plugin qt --output appimage
           ls -l *.AppImage
 
