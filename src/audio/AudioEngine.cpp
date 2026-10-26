@@ -178,7 +178,8 @@ int AudioEngine::renderLatency() const {
     Id tap = m_renderTap.load();
     for (auto& t : m_rtSnapshot->tracks)
         if (tap ? t.id == tap : t.isMaster)
-            return m_rtSnapshot->maxLatency - (t.outputIdx >= 0 ? m_rtSnapshot->tracks[t.outputIdx].pathLatency : 0);
+            return m_rtSnapshot->maxLatency -
+                   (tap && m_renderTapIn.load() ? t.pathLatency : t.outputIdx >= 0 ? m_rtSnapshot->tracks[t.outputIdx].pathLatency : 0);
     return 0;
 }
 void AudioEngine::offlineEnd() {
@@ -691,6 +692,13 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
         L[i] += t.genL[i];
         R[i] += t.genR[i];
     }
+    Id tap = m_renderTap.load();
+    bool tapPre = m_renderTapPre.load(), tapIn = m_renderTapIn.load();
+    if (tap == t.id && tapIn)   // consolidate: what reaches the master, before its effects
+        for (int i = 0; i < n; ++i) {
+            outL[i] += L[i];
+            outR[i] += R[i];
+        }
     if (!t.audible) {
         std::fill(L, L + n, 0.f);
         std::fill(R, R + n, 0.f);
@@ -710,8 +718,6 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
                 }
         }
     }
-    Id tap = m_renderTap.load();
-    bool tapPre = m_renderTapPre.load();
     if (tap == t.id && tapPre)
         for (int i = 0; i < n; ++i) {
             outL[i] += L[i];
@@ -780,7 +786,7 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
                     dr[i] += R[i] * lv;
                 }
         }
-    if (tap ? t.id == tap && !tapPre : t.isMaster) {
+    if (tap ? t.id == tap && !tapPre && !tapIn : t.isMaster) {
         for (int i = 0; i < n; ++i) {
             outL[i] += L[i];
             outR[i] += R[i];

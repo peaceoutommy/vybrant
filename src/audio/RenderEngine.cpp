@@ -29,7 +29,7 @@ bool RenderEngine::render(
     engine.setMetronome(false);
     engine.setCountIn(false, 1);
     engine.setRecording(false);
-    engine.setRenderTap(opt.tapTrack, opt.tapPreFader);
+    engine.setRenderTap(opt.tapTrack, opt.tapPreFader, opt.tapInput);
     engine.seek(start);
     engine.play();
     double sr = opt.sampleRate;
@@ -50,7 +50,8 @@ bool RenderEngine::render(
         int n = (int)std::min<int64_t>(opt.blockSize, totalFrames + tailFrames - done);
         std::fill(L.begin(), L.end(), 0.f);
         std::fill(R.begin(), R.end(), 0.f);
-        if (done >= totalFrames - latency && engine.isPlaying()) engine.stop();   // tail: let effects ring out (the latency is still to come)
+        // tail: let effects ring out (the latency is still to come)
+        if (!opt.playTail && done >= totalFrames - latency && engine.isPlaying()) engine.stop();
         engine.offlineProcess(L.data(), R.data(), n);
         float pk = 0;
         for (int i = 0; i < n; ++i) {

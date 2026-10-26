@@ -174,6 +174,9 @@ public:
     bool freezeMixerTrack(Id id, std::function<bool(double)> progress, QString* error);
     void setPluginBridged(Id pluginInstanceId, bool on);   // run it in its own process (crash protection) or in ours
     void unfreezeMixerTrack(Id id);
+    // Consolidate (FL): render these pattern clips alone, as they reach the master, to one audio clip routed to the master that
+    // replaces them (one undo step). Returns the new clip, or 0 (nothing changed) on failure or cancel.
+    Id consolidateClips(const std::vector<Id>& clipIds, std::function<bool(double)> progress, QString* error);
 
     // ---- processors (instruments / effects / plugins)
     IProcessor* processor(Id ownerId) { return m_engine->registry().processor(ownerId); }

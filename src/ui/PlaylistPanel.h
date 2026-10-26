@@ -37,6 +37,7 @@ public:
     void muteSelected(bool m) override;
     void invertSelection() override;
     void crossfadeSelected();
+    void consolidateSelected();   // Ctrl+Alt+C: the selected pattern clips become one audio clip
     void copySelected() override;
     void paste() override;
     void selectBySource();

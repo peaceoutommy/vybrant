@@ -17,6 +17,7 @@ struct RenderOptions {
     bool normalize = false;
     bool dither = true;
     double tailSeconds = 2.0;
+    bool playTail = false;   // the transport runs on through the tail instead of stopping (consolidate: notes end as in the song)
     Tick start = 0;
     Tick end = 0;
     bool songMode = true;
@@ -24,6 +25,7 @@ struct RenderOptions {
     float normalizeTargetDb = -0.3f;
     Id tapTrack = 0;   // render only this mixer track's output (post effects and fader) instead of the master mix
     bool tapPreFader = false;   // the tap before the track's fader and pan (freeze)
+    bool tapInput = false;   // the tap at the track's input, before its effects (consolidate: what reaches the master)
     bool stems = false;   // App::exportAudio: one file per used mixer track (master included), named after 'path'
 };
 

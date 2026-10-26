@@ -139,10 +139,11 @@ public:
         m_punch.store(on);
     }
     void setSelectedPattern(Id id) { m_selectedPattern.store(id); }
-    // Offline stems / freeze: output this track (before or after its fader) instead of the master
-    void setRenderTap(Id mixerTrackId, bool preFader = false) {
+    // Offline stems / freeze / consolidate: output this track (at its input, or before or after its fader) instead of the master
+    void setRenderTap(Id mixerTrackId, bool preFader = false, bool input = false) {
         m_renderTap.store(mixerTrackId);
         m_renderTapPre.store(preFader);
+        m_renderTapIn.store(input);
     }
     int renderLatency() const;   // offline: frames the graph delays the timeline by at the render output (the tap or the master)
     TransportView transport() const;
@@ -243,7 +244,7 @@ private:
         m_monitorInputs{true}, m_songLoop{true};
     std::atomic<Tick> m_loopStart{0}, m_loopEnd{PPQ * 16};
     std::atomic<int> m_countInBars{1};
-    std::atomic<bool> m_punch{false}, m_renderTapPre{false};
+    std::atomic<bool> m_punch{false}, m_renderTapPre{false}, m_renderTapIn{false};
     std::atomic<bool> m_midiClock{false};
     double m_clockAccum = 0;
     bool m_clockRunning = false;

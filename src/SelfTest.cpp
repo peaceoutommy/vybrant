@@ -304,6 +304,70 @@ int runSelfTest(App& app) {
         app.removeEffect(ins, slot);
         model.edit<Channel>(kick, "", [](Channel& c) { c.solo = false; });
     }
+    // ---- consolidate: a pattern clip becomes one audio clip that sounds the same - the master's effects (a latency one and a
+    // phase flip, which would cancel if applied twice) run once, and an unselected clip playing alongside stays out of the render
+    {
+        auto& pr = app.project();
+        Id kick = pr.channels[0].id, master = pr.masterId(), tr1 = pr.playlistTracks[0].id, tr2 = pr.playlistTracks[1].id, src = 0;
+        model.edit<Channel>(kick, "", [](Channel& c) { c.solo = true; });
+        Id lim = app.addEffect(master, "native.limiter"), flip = app.addEffect(master, "native.phaseinvert");
+        app.engine().rebuild(pr);   // creates the effects' processors
+        IProcessor* f = app.processor(flip);
+        if (f) {
+            f->params().set(PhaseInvert::pLeft, 1);
+            f->params().set(PhaseInvert::pRight, 1);
+        }
+        QString oldPath = model.filePath();
+        model.setFilePath(tmp.path() + "/c.mtp");
+        for (auto& c : pr.clips)
+            if (c.type == ClipType::Pattern) src = c.id;
+        Tick at = (pr.songLength() / PPQ + 4) * PPQ;
+        Id sel = app.duplicateClip(src, at, tr1);
+        Id pat = pr.clip(sel)->sourceId;
+        Tick len = pr.clipLength(*pr.clip(sel));
+        RenderOptions o;
+        o.tailSeconds = 0.5;
+        o.bitDepth = 32;
+        o.dither = false;
+        o.start = at;
+        o.end = at + len * 2;   // the transport runs past the clip, as in the song: a render's tail stops audio clips
+        o.path = tmp.path() + "/cpre.wav";
+        app.exportAudio(o, nullptr, &err);
+        Id other = app.duplicateClip(src, at, tr2);   // plays along, on the same instrument: must stay out of the render
+        Id nc = app.consolidateClips({sel}, nullptr, &err);
+        const Clip* c = pr.clip(nc);
+        CHECK(c && c->type == ClipType::Audio && c->start == at && c->trackId == tr1 && c->length >= len - 1 && c->length < len + PPQ * 8 &&
+                  !pr.clip(sel) && pr.clip(other) && pr.pattern(pat),
+            "consolidate: one audio clip at the clip's start and about its length replaces it, the pattern stays");
+        app.deleteClips({other});
+        o.path = tmp.path() + "/cpost.wav";
+        app.exportAudio(o, nullptr, &err);
+        auto a = AudioFile::load(tmp.path() + "/cpre.wav", 0), b = AudioFile::load(tmp.path() + "/cpost.wav", 0);
+        float diff = 1.f;
+        if (a && b && a->frames > 1000) {
+            diff = 0.f;
+            for (int64_t i = 0; i < std::min(a->frames, b->frames); ++i) diff = std::max(diff, std::fabs(a->L()[i] - b->L()[i]));
+        }
+        CHECK(f && diff < 1e-3f && a->peakValue > 0.1f,
+            QString("consolidate: the song sounds the same (max diff %1)").arg(diff).toUtf8().constData());
+        model.undoStack().undo();   // the delete
+        model.undoStack().undo();
+        CHECK(pr.clip(sel) && pr.clip(other) && !pr.clip(nc), "consolidate is one undo step");
+        if (nc) {   // the playlist's Ctrl+Alt+C does it to its selection
+            PlaylistView v(app);
+            v.revealClips({sel});
+            QKeyEvent k(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier | Qt::AltModifier);
+            QCoreApplication::sendEvent(&v, &k);
+            CHECK(!pr.clip(sel) && pr.clip(other) && pr.clips.back().type == ClipType::Audio && pr.clips.back().start == at,
+                "Ctrl+Alt+C in the playlist consolidates the selected pattern clips");
+            model.undoStack().undo();
+        }
+        app.deleteClips({sel, other});
+        model.setFilePath(oldPath);
+        app.removeEffect(master, flip);
+        app.removeEffect(master, lim);
+        model.edit<Channel>(kick, "", [](Channel& c) { c.solo = false; });
+    }
     // ---- sample modes: tempo from names, clip speed, stretch flavours, sampler tempo fit
     {
         CHECK(AudioFile::bpmFromName("/x/PIOTR FIGIEL ENSEMBLE - To an unfaithful girl 89 bpm.wav") == 89 &&

@@ -2096,6 +2096,94 @@ void App::unfreezeMixerTrack(Id id) {
     cmds.push_back(std::make_unique<EditObjectCommand<MixerTrack>>(m_model, id, "", [](MixerTrack& x) { x.freezeTrackId = 0; }, 0));
     m_model.macro("Unfreeze " + mt->name, std::move(cmds));
 }
+Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(double)> progress, QString* error) {
+    auto& p = project();
+    std::set<Id> sel;
+    Tick from = std::numeric_limits<Tick>::max(), to = 0;
+    const Clip* first = nullptr;
+    for (Id id : clipIds)
+        if (const Clip* c = p.clip(id); c && c->type == ClipType::Pattern) {
+            sel.insert(id);
+            from = std::min(from, c->start);
+            to = std::max(to, c->start + p.clipLength(*c));
+            if (!first || c->start < first->start) first = c;
+        }
+    if (sel.empty()) return 0;
+    // the render is what reaches the master, so the clip must play straight into it (not through an insert a second time)
+    auto freeAt = [&](const PlaylistTrack& t) {
+        const MixerTrack* m = p.mixerTrack(t.mixerTrackId);
+        return (!m || m->isMaster) && std::none_of(p.clips.begin(), p.clips.end(), [&](const Clip& c) {
+            return c.trackId == t.id && !sel.count(c.id) && c.start < to && c.start + p.clipLength(c) > from;
+        });
+    };
+    Id track = 0;
+    if (const PlaylistTrack* t = p.track(first->trackId); t && freeAt(*t)) track = t->id;
+    for (auto& t : p.playlistTracks)
+        if (!track && freeAt(t)) track = t.id;
+    const Pattern* pat = p.pattern(first->sourceId);
+    QString name = pat ? pat->name : first->name;
+    QString dir = m_model.filePath().isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::MusicLocation) + "/Vybrant Recordings"
+                                               : QFileInfo(m_model.filePath()).absolutePath() + "/Consolidated";
+    QDir().mkpath(dir);
+    RenderOptions o;
+    o.path = QString("%1/%2 consolidated %3.wav")
+                 .arg(dir, QString(name).replace(QRegularExpression("[^A-Za-z0-9 _.-]"), "_"),
+                     QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss_zzz"));
+    o.bitDepth = 32;
+    o.dither = false;
+    o.sampleRate = m_engine->sampleRate();
+    o.start = from;
+    o.end = to;
+    o.tapTrack = p.masterId();
+    o.tapInput = true;
+    o.playTail = true;
+    m_engine->stop();
+    m_engine->syncStateToProject(p);
+    Project only = p;   // the selected clips alone; automation clips keep running
+    for (auto& c : only.clips)
+        if (!sel.count(c.id) && c.type != ClipType::Automation) c.muted = true;
+    m_engine->rebuild(only);
+    bool ok = RenderEngine::render(*m_engine, only, o, std::move(progress), error);
+    m_engine->rebuild(p);
+    syncTransportToEngine();
+    if (!ok) return 0;
+    double sr = 0;
+    int ch = 0;
+    int64_t frames = 0;
+    if (!AudioFile::probe(o.path, &sr, &ch, &frames) || frames <= 0) {
+        if (error) *error = "The render is empty";
+        return 0;
+    }
+    std::vector<std::unique_ptr<Command>> cmds;
+    for (Id id : sel) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, id, ""));
+    AudioSource a;
+    a.id = p.newId();
+    a.filePath = o.path;
+    a.name = QFileInfo(o.path).completeBaseName();
+    a.sampleRate = sr;
+    a.channels = ch;
+    a.frames = frames;
+    cmds.push_back(std::make_unique<InsertObjectCommand<AudioSource>>(m_model, a, "", -1));
+    if (!track) {   // every track routed to the master is busy there
+        PlaylistTrack pt;
+        pt.id = track = p.newId();
+        pt.name = QString("Track %1").arg(p.playlistTracks.size() + 1);
+        cmds.push_back(std::make_unique<InsertObjectCommand<PlaylistTrack>>(m_model, pt, "", -1));
+    }
+    Clip c;
+    c.id = p.newId();
+    c.type = ClipType::Audio;
+    c.trackId = track;
+    c.sourceId = a.id;
+    c.start = from;
+    c.length = std::max<Tick>(p.transport.tempoMap().ticksFor(from, frames / sr), 1);
+    c.loopSource = false;
+    c.name = name;
+    cmds.push_back(std::make_unique<InsertObjectCommand<Clip>>(m_model, c, "", -1));
+    m_cache.getSync(o.path);   // loaded before the clip exists, so it plays at once instead of after an async load
+    m_model.macro("Consolidate", std::move(cmds));
+    return c.id;
+}
 
 void addPatternActions(QMenu* menu, App& app, QWidget* parent, const std::vector<Id>& ids) {
     if (ids.empty()) return;

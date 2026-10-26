@@ -23,6 +23,8 @@
 #include <QUrl>
 #include <climits>
 #include <QDateTime>
+#include <QProgressDialog>
+#include <QMessageBox>
 
 namespace mt {
 
@@ -1399,6 +1401,10 @@ void PlaylistView::keyPressEvent(QKeyEvent* e) {
         sliceAtPlayhead();
         return;
     case Qt::Key_C:
+        if (ctrl && alt) {
+            consolidateSelected();
+            return;
+        }
         if (ctrl) break;
         if (shift) {
             selectBySource();
@@ -1508,6 +1514,25 @@ void PlaylistView::sliceAtPlayhead() {
             ids.push_back(c.id);
     if (ids.empty()) return;
     for (Id id : ids) m_app.splitClip(id, at);
+}
+void PlaylistView::consolidateSelected() {
+    std::vector<Id> ids;
+    for (auto& c : m_app.project().clips)
+        if (m_selected.count(c.id) && c.type == ClipType::Pattern) ids.push_back(c.id);
+    if (ids.empty()) return;
+    QProgressDialog dlg("Consolidating...", "Cancel", 0, 1000, this);
+    dlg.setWindowModality(Qt::WindowModal);
+    QString err;
+    Id id = m_app.consolidateClips(
+        ids,
+        [&](double v) {
+            dlg.setValue((int)(v * 1000));
+            return !dlg.wasCanceled();
+        },
+        &err);
+    if (id) m_selected = {id};
+    else if (!dlg.wasCanceled()) QMessageBox::warning(this, "Consolidate failed", err);
+    invalidate();
 }
 void PlaylistView::invertSelection() {
     std::set<Id> inv;
@@ -1634,6 +1659,8 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
             [this, id] { m_app.edit<Clip>(id, "Repeat pattern", [](Clip& x) { x.loopSource = !x.loopSource; }); });
         if (c->length > 0)
             m.addAction("Fit to pattern length", [this, id] { m_app.edit<Clip>(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); });
+        m.addAction("Consolidate to audio\tCtrl+Alt+C", [this] { consolidateSelected(); })
+            ->setToolTip("Renders the selected pattern clips to one audio clip that replaces them (the patterns stay)");
     }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
