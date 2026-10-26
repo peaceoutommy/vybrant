@@ -220,7 +220,7 @@ bool ClapPlugin::init(const QString& path, const QString& pluginId, QString* err
     m_gui = (const clap_plugin_gui*)ext(CLAP_EXT_GUI);
     m_timerExt = (const clap_plugin_timer_support*)ext(CLAP_EXT_TIMER_SUPPORT);
     m_fdExt = (const clap_plugin_posix_fd_support*)ext(CLAP_EXT_POSIX_FD_SUPPORT);
-    m_hasEditor = m_gui && m_gui->is_api_supported(m_plugin, CLAP_WINDOW_API_X11, false);
+    m_hasEditor = m_gui && m_gui->is_api_supported(m_plugin, CLAP_WINDOW_API_EMBED, false);
     if (auto* ap = (const clap_plugin_audio_ports*)ext(CLAP_EXT_AUDIO_PORTS))
         for (bool input : {true, false}) {
             auto& chans = input ? m_inChans : m_outChans;
@@ -552,17 +552,21 @@ QWidget* ClapPlugin::createEditor(QWidget* parent) {
     m_embed = w;
     // onParamEdited is set by the window showing this editor and dies with it; m_mainTimer scopes the connection to us
     QObject::connect(w, &QObject::destroyed, &m_mainTimer, [this] { onParamEdited = nullptr; });
-    w->onAttach = [this, w](unsigned long xid, int& width, int& height) {
-        if (m_guiCreated || !m_gui->create(m_plugin, CLAP_WINDOW_API_X11, false)) return false;
+    w->onAttach = [this, w](WId wid, int& width, int& height) {
+        if (m_guiCreated || !m_gui->create(m_plugin, CLAP_WINDOW_API_EMBED, false)) return false;
         m_guiCreated = true;
-        m_gui->set_scale(m_plugin, w->devicePixelRatioF());   // X11 sizes are physical pixels, like the embed widget's
+        m_gui->set_scale(m_plugin, w->devicePixelRatioF());   // native sizes are physical pixels, like the embed widget's
         uint32_t gw = 0, gh = 0;
         if (m_gui->get_size(m_plugin, &gw, &gh) && gw && gh) {
             width = (int)gw;
             height = (int)gh;
         }
-        clap_window win{CLAP_WINDOW_API_X11, {}};
-        win.x11 = xid;
+        clap_window win{CLAP_WINDOW_API_EMBED, {}};
+#ifdef _WIN32
+        win.win32 = (void*)wid;
+#else
+        win.x11 = wid;
+#endif
         if (!m_gui->set_parent(m_plugin, &win)) {
             m_gui->destroy(m_plugin);
             m_guiCreated = false;

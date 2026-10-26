@@ -1,4 +1,24 @@
 #include "plugins/PluginBridge.h"
+#ifdef _WIN32
+namespace mt {
+// ponytail: plugins can't run in their own process on Windows yet (this bridge uses POSIX shared memory, process-shared
+// semaphores and X11 embedding); PluginHost loads them in the app there and the 'Own process' toggle is hidden
+std::unique_ptr<BridgedPlugin> BridgedPlugin::create(const PluginInstanceData&, QString* error) {
+    if (error) *error = "Plugins can't run in their own process on Windows yet";
+    return nullptr;
+}
+BridgedPlugin::~BridgedPlugin() = default;
+void BridgedPlugin::prepare(double, int) {}
+void BridgedPlugin::reset() {}
+void BridgedPlugin::process(float*, float*, int, const MidiEventList&, const ProcessContext&) {}
+QJsonObject BridgedPlugin::saveState() const { return {}; }
+void BridgedPlugin::restoreState(const QJsonObject&) {}
+QWidget* BridgedPlugin::createEditor(QWidget*) { return nullptr; }
+QString BridgedPlugin::formatValue(uint32_t) const { return {}; }
+const float* BridgedPlugin::auxOutput(int, int) const { return nullptr; }
+int pluginBridgeMain(const QString&, const QString&) { return 1; }
+}   // namespace mt
+#else
 #include "plugins/PluginHost.h"
 #include "plugins/Vst2Plugin.h"
 #include "plugins/Vst3Plugin.h"
@@ -484,3 +504,4 @@ int pluginBridgeMain(const QString& socketName, const QString& shmName) {
 }
 
 }   // namespace mt
+#endif

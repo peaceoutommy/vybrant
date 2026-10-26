@@ -5,8 +5,13 @@
 #include <cstdio>
 #include <cmath>
 #include <QGuiApplication>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
 #include <X11/Xlib.h>   // last: its macros (None, Bool...) clash with Qt headers
 #undef KeyPress   // and with QEvent::KeyPress below
+#endif
 
 namespace mt {
 
@@ -69,8 +74,7 @@ void PluginEmbedWidget::doAttach() {
     if (m_attached || !onAttach) return;
     double dpr = devicePixelRatioF();
     int w = (int)std::lround(width() * dpr), h = (int)std::lround(height() * dpr);
-    unsigned long xid = (unsigned long)winId();
-    if (onAttach(xid, w, h)) {
+    if (onAttach(winId(), w, h)) {
         m_attached = true;
         if (w > 0 && h > 0) requestResize(w, h);
         m_idle.start(30);
@@ -87,6 +91,9 @@ void PluginEmbedWidget::doDetach() {
 // the pointer when it lies inside the focus window. So while typing mode is on, focus goes to a 1x1 native sibling instead.
 void PluginEmbedWidget::reclaimKeyboard() {
     if (!keepHostKeyboard) return;
+#ifdef _WIN32   // the editor's own child windows took the keyboard: give it back to the top-level window
+    if (HWND f = GetFocus(); f && IsChild((HWND)winId(), f)) SetFocus((HWND)window()->winId());
+#else
     auto* x11 = qApp->nativeInterface<QNativeInterface::QX11Application>();
     if (!x11) return;
     Display* d = x11->display();
@@ -104,8 +111,9 @@ void PluginEmbedWidget::reclaimKeyboard() {
     }
     XSetInputFocus(d, (Window)m_keySink->winId(), RevertToParent, CurrentTime);
     XFlush(d);
+#endif
 }
-// Plugin sizes are physical pixels of the native X11 window; the Qt widget is laid out in logical units (device pixel ratio)
+// Plugin sizes are physical pixels of the native window; the Qt widget is laid out in logical units (device pixel ratio)
 void PluginEmbedWidget::requestResize(int w, int h) {
     double dpr = devicePixelRatioF();
     int lw = (int)std::lround(w / dpr), lh = (int)std::lround(h / dpr);

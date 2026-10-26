@@ -1,4 +1,22 @@
 #include "audio/JackTransport.h"
+#ifdef _WIN32
+namespace mt {
+// ponytail: no JACK on Windows (the sync checkbox is hidden there); link JACK for Windows here if anyone asks
+JackTransport::JackTransport(Host host, QObject* parent)
+    : QObject(parent)
+    , m_host(std::move(host)) {}
+JackTransport::~JackTransport() = default;
+bool JackTransport::open(QString* error) {
+    if (error) *error = "JACK isn't available on Windows";
+    return false;
+}
+void JackTransport::play() {}
+void JackTransport::stop() {}
+void JackTransport::locate(Tick) {}
+void JackTransport::poll() {}
+double JackTransport::frameRate() const { return 0; }
+}   // namespace mt
+#else
 #include <jack/jack.h>
 #include <jack/transport.h>
 #include <cmath>
@@ -54,3 +72,4 @@ void JackTransport::poll() {
 }
 
 }   // namespace mt
+#endif

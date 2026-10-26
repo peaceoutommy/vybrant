@@ -19,7 +19,9 @@
 #include <QSettings>
 #include "ui/AudioEditor.h"
 #include "ui/PlaylistPanel.h"
+#ifndef _WIN32
 #include "plugins/Lv2Plugin.h"
+#endif
 #include <QProcess>
 #include <QStandardPaths>
 #include <QDir>
@@ -43,6 +45,11 @@
 namespace mt {
 
 static int g_fail = 0;
+#ifdef _WIN32   // what the test CLAP plugin's editor window needs
+static const QString kGuiLib = "-luser32";
+#else
+static const QString kGuiLib = "-lX11";
+#endif
 #define CHECK(cond, msg)                                                                                                                   \
     do {                                                                                                                                   \
         if (cond) std::printf("  ok   %s\n", msg);                                                                                         \
@@ -166,6 +173,7 @@ int runSelfTest(App& app) {
         CHECK(app.engine().registry().track(app.project().mixerTracks[2].id).generatorDelay.delay == 0,
             "PDC updates when the effect is removed");
     }
+#ifndef _WIN32
     // ---- LV2 hosting: the gain plugin in tests/lv2, built with the system C compiler into a temporary bundle
     {
         QString src = QCoreApplication::applicationDirPath() + "/../tests/lv2/test-gain";
@@ -215,6 +223,7 @@ int runSelfTest(App& app) {
             app.engine().rebuild(app.project());
         }
     }
+#endif
     // ---- offline render of the default beat
     {
         RenderOptions o;
@@ -1389,7 +1398,7 @@ int runSelfTest(App& app) {
         QString so = dir.path() + "/clap/MT Test Gain.clap";
         QDir().mkpath(dir.path() + "/clap");
         if (cxx.isEmpty() || !QFileInfo::exists(src)) std::printf("  skip CLAP hosting checks (no c++ compiler or tests/clap_gain.cpp)\n");
-        else if (QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", src, "-o", so, "-lX11"}) != 0)
+        else if (QProcess::execute(cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", src, "-o", so, kGuiLib}) != 0)
             CHECK(false, "compile the CLAP test plugin");
         else {
             CHECK(PluginScanner::candidateFiles({dir.path()}).contains(so), "plugin scan finds .clap files");
@@ -1496,6 +1505,7 @@ int runSelfTest(App& app) {
             app.unfreezeMixerTrack(auxT);
             model.setFilePath(oldPath);
             app.deleteChannel(ch);
+#ifndef _WIN32   // no own-process plugins on Windows yet
             // out of process: the same plugins through the bridge; a crash silences only the plugin
             PluginInstanceData bd = d;
             bd.bridged = true;
@@ -1553,8 +1563,38 @@ int runSelfTest(App& app) {
                         .constData());
                 app.deleteChannel(bch);
             }
+#endif
         }
     }
+#ifdef _WIN32
+    {   // WinMM: a CC sent out comes back in unchanged through a loopback device (under Wine: ALSA's "Midi Through")
+        MidiEngine& midi = app.midi();
+        QString in, out;
+        for (auto& p : midi.ports())
+            if (p.name.contains("Midi Through")) (p.input ? in : out) = p.id();
+        if (in.isEmpty() || out.isEmpty()) std::printf("  skip WinMM loopback check (no MIDI loopback device)\n");
+        else {
+            const QStringList oldIn = midi.enabledInputs(), oldOut = midi.enabledOutputs();
+            int got[3] = {-1, -1, -1};
+            auto conn = QObject::connect(
+                &midi, &MidiEngine::ccReceived, [&](int cc, int ch, int v) { got[0] = cc, got[1] = ch, got[2] = v; });
+            midi.setEnabledInputs({in});
+            midi.setEnabledOutputs({out});
+            midi.setLearning(true);
+            MidiEvent e;
+            e.type = MidiEvent::CC, e.channel = 3, e.data1 = 74, e.data2 = 99;
+            app.engine().midiOutQueue().push({e, 0, 0});   // the transport is stopped: nothing else feeds the queue now
+            QElapsedTimer t;
+            t.start();
+            while (got[0] < 0 && t.elapsed() < 2000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            CHECK(got[0] == 74 && got[1] == 3 && got[2] == 99, "a CC goes out and comes back in through WinMM (loopback device)");
+            midi.setLearning(false);
+            QObject::disconnect(conn);
+            midi.setEnabledInputs(oldIn);
+            midi.setEnabledOutputs(oldOut);
+        }
+    }
+#endif
     {   // a license made by the server (server/src/license.ts, signed with a test key) checks out here, and only unchanged
         const QByteArray pub = QByteArray::fromHex("c7d5ddbdb4d3285224433778bb38133fccef47eecfb7f2c018e0b61bf4c60018");
         const QString key = "eyJ2IjoxLCJzdWIiOiJ1c2VyX3NlbGZ0ZXN0IiwibmFtZSI6IlNlbGYgVGVzdCIsImVtYWlsIjoic2VsZnRlc3RAZXhhbXBsZS5jb20ifQ."
@@ -1744,11 +1784,16 @@ int runDockTest(QMainWindow* win) {
 // process. The window bypasses the window manager and sits off-screen, so nothing shows.
 #include <QVBoxLayout>
 #include <QJsonDocument>
-#include "plugins/Lv2Plugin.h"
 #include "dsp/DspUtils.h"
+#ifdef _WIN32   // no X11: the plugin test's editor pixel check is skipped there
+#include <windows.h>
+#else
+#include "plugins/Lv2Plugin.h"
 #include <X11/Xlib.h>   // last: its macros clash with Qt
 #include <X11/Xutil.h>
+#endif
 namespace mt {
+#ifndef _WIN32
 static bool findWindow(Display* d, Window w, const char* name, XWindowAttributes* at) {
     char* n = nullptr;
     bool hit = XFetchName(d, w, &n) && n && !std::strcmp(n, name);
@@ -1788,6 +1833,7 @@ static double editorVariance(Display* d, Window w, int* depth) {   // how much t
     if (kids) XFree(kids);
     return n ? sq / n - (sum / n) * (sum / n) : 0;
 }
+#endif
 int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
     std::printf("Vybrant plugin test: \"%s\"\n", qPrintable(filter));
     std::vector<PluginInfo> found;
@@ -1807,11 +1853,18 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
             found.push_back(p);
         }
     }
+#ifndef _WIN32
     for (auto& p : Lv2Plugin::scan()) found.push_back(p);
+#endif
     std::erase_if(found, [&](const PluginInfo& p) { return p.failed || !p.name.contains(filter, Qt::CaseInsensitive); });
     std::printf("  %zu plugin(s)\n", found.size());
+#ifdef _WIN32
+    const bool probe = editors && QGuiApplication::platformName() == "windows";
+#else
     bool x11 = editors && QGuiApplication::platformName() == "xcb";
     Display* dpy = x11 ? XOpenDisplay(nullptr) : nullptr;
+    const bool probe = dpy;
+#endif
     PluginHost host(app.pluginDb());
     const int sr = 48000, B = 512;
     int bad = 0;
@@ -1919,7 +1972,7 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
                     }
             }
             QString editor = "-";
-            if (dpy && proc->hasCustomEditor()) {
+            if (probe && proc->hasCustomEditor()) {
                 QWidget top(nullptr, Qt::Window | Qt::FramelessWindowHint | Qt::X11BypassWindowManagerHint);
                 top.move(-6000, -6000);
                 auto* lay = new QVBoxLayout(&top);
@@ -1934,8 +1987,12 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
                     et.start();
                     while (et.elapsed() < 6000 && var < 50) {   // plugins draw a moment after they attach
                         QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+#ifdef _WIN32   // attached: the editor made its window inside ours (its pixels aren't read here)
+                        var = GetWindow((HWND)ed->winId(), GW_CHILD) ? 50 : 0;
+#else
                         XSync(dpy, 0);
                         if (et.elapsed() > 800) var = editorVariance(dpy, (Window)top.winId(), &depth);
+#endif
                     }
                 }
                 double dpr = top.devicePixelRatioF();
@@ -1960,14 +2017,21 @@ int runPluginTest(App& app, const QString& filter, bool editors, bool bridge) {
                                       : qPrintable(QString("%1 differ").arg(mismatched)),
                 qPrintable(editor));
         }
+#ifndef _WIN32
     if (dpy) XCloseDisplay(dpy);
+#endif
     std::printf(bad ? "\n%d FAILED\n" : "\nAll plugin checks passed\n", bad);
     return bad ? 1 : 0;
 }
 int runEmbedTest(App& app) {
     std::printf("Vybrant editor embedding test\n");
-    if (QGuiApplication::platformName() != "xcb") {
-        std::printf("  skip (needs X11, platform is %s)\n", qPrintable(QGuiApplication::platformName()));
+#ifdef _WIN32
+    const char* native = "windows";
+#else
+    const char* native = "xcb";
+#endif
+    if (QGuiApplication::platformName() != native) {
+        std::printf("  skip (needs the %s platform, it is %s)\n", native, qPrintable(QGuiApplication::platformName()));
         return 0;
     }
     QString root = QCoreApplication::applicationDirPath() + "/..", cxx = QStandardPaths::findExecutable("c++");
@@ -1975,7 +2039,7 @@ int runEmbedTest(App& app) {
     QString so = dir.path() + "/MT Test Gain.clap";
     if (cxx.isEmpty() ||
         QProcess::execute(
-            cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", root + "/tests/clap_gain.cpp", "-o", so, "-lX11"}) != 0) {
+            cxx, {"-std=c++17", "-shared", "-fPIC", "-I" + root + "/src", root + "/tests/clap_gain.cpp", "-o", so, kGuiLib}) != 0) {
         std::printf("  FAIL compile the CLAP test plugin\n");
         return 1;
     }
@@ -1985,8 +2049,13 @@ int runEmbedTest(App& app) {
     info.name = "MT Test Gain";
     info.path = so;
     PluginHost host(app.pluginDb());
+#ifndef _WIN32
     Display* dpy = XOpenDisplay(nullptr);
+#endif
     for (bool bridged : {false, true}) {
+#ifdef _WIN32
+        if (bridged) continue;   // no own-process plugins on Windows yet
+#endif
         PluginInstanceData d = PluginHost::makeInstanceData(info, app.project().newId());
         d.bridged = bridged;
         auto proc = host.createInstance(d);
@@ -1998,22 +2067,29 @@ int runEmbedTest(App& app) {
         QWidget* ed = proc ? proc->createEditor(&top) : nullptr;
         if (ed) lay->addWidget(ed);
         top.show();
-        XWindowAttributes at{};
-        bool found = false;
+        int w = 0, h = 0;   // the editor window's size once it shows
         QElapsedTimer t;
         t.start();
-        while (!found && t.elapsed() < 3000) {
+        while (!w && t.elapsed() < 3000) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+#ifdef _WIN32
+            HWND win = ed ? FindWindowExW((HWND)ed->winId(), nullptr, nullptr, L"mt-test-gain-editor") : nullptr;
+            RECT r{};
+            if (win && IsWindowVisible(win) && GetClientRect(win, &r)) w = r.right, h = r.bottom;
+#else
+            XWindowAttributes at{};
             XSync(dpy, 0);
-            found = findWindow(dpy, (Window)top.winId(), "mt-test-gain-editor", &at) && at.map_state == IsViewable;
+            if (findWindow(dpy, (Window)top.winId(), "mt-test-gain-editor", &at) && at.map_state == IsViewable) w = at.width, h = at.height;
+#endif
         }
         double dpr = top.devicePixelRatioF();   // plugin sizes are physical pixels
-        CHECK(ed && found && at.width == 320 && at.height == 200 && std::lround(top.width() * dpr) >= 320 &&
-                std::lround(top.height() * dpr) >= 200,
+        CHECK(ed && w == 320 && h == 200 && std::lround(top.width() * dpr) >= 320 && std::lround(top.height() * dpr) >= 200,
             bridged ? "the editor of a plugin in its own process shows inside our window, at its size"
                     : "a CLAP editor shows inside our window, at its size");
     }
+#ifndef _WIN32
     XCloseDisplay(dpy);
+#endif
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
     return g_fail ? 1 : 0;
 }

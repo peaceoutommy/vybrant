@@ -16,6 +16,7 @@ RCC_DIR = build/rcc
 DESTDIR = bin
 
 SOURCES += $$files(src/*.cpp, true)
+SOURCES -= src/midi/MidiEngineWin.cpp
 HEADERS += $$files(src/*.h, true)
 RESOURCES += resources/app.qrc
 

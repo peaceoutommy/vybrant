@@ -1,4 +1,4 @@
-// A native X11 child window a plugin editor can attach to. Used by both VST2 and VST3 adapters.
+// A native child window (X11 on Linux, HWND on Windows) a plugin editor can attach to. Used by the VST2, VST3 and CLAP adapters.
 #pragma once
 #include <QWidget>
 #include <QTimer>
@@ -12,7 +12,7 @@ public:
     explicit PluginEmbedWidget(QWidget* parent = nullptr);
     ~PluginEmbedWidget() override;
     // Called once the native window exists (on first show)
-    std::function<bool(unsigned long xid, int& w, int& h)> onAttach;
+    std::function<bool(WId wid, int& w, int& h)> onAttach;
     std::function<void()> onDetach;
     std::function<void(int w, int h)> onResized;   // host -> plugin size change (user resizes)
     std::function<void()> onIdle;   // periodic idle (VST2 editors)

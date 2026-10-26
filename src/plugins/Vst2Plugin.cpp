@@ -350,10 +350,10 @@ QString Vst2Plugin::formatValue(uint32_t id) const {
 QWidget* Vst2Plugin::createEditor(QWidget* parent) {
     if (!m_info.hasEditor) return nullptr;
     auto* w = new PluginEmbedWidget(parent);
-    w->onAttach = [this](unsigned long xid, int& width, int& height) {
+    w->onAttach = [this](WId wid, int& width, int& height) {
         ERect* r = nullptr;
         dispatch(effEditGetRect, 0, 0, &r);
-        if (dispatch(effEditOpen, 0, 0, (void*)(uintptr_t)xid) == 0 && !r) return false;
+        if (dispatch(effEditOpen, 0, 0, (void*)wid) == 0 && !r) return false;
         dispatch(effEditGetRect, 0, 0, &r);
         if (r) {
             width = r->right - r->left;

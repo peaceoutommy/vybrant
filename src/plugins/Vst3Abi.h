@@ -34,6 +34,19 @@ using Sample32 = float;
 using Sample64 = double;
 using TUID = char[16];
 
+#ifdef _WIN32   // COM codes on Windows
+enum : tresult {
+    kNoInterface = (tresult)0x80004002,
+    kResultOk = 0,
+    kResultTrue = 0,
+    kResultFalse = 1,
+    kInvalidArgument = (tresult)0x80070057,
+    kNotImplemented = (tresult)0x80004001,
+    kInternalError = (tresult)0x80004005,
+    kNotInitialized = (tresult)0x8000FFFF,
+    kOutOfMemory = (tresult)0x8007000E
+};
+#else
 enum : tresult {
     kNoInterface = -1,
     kResultOk = 0,
@@ -45,6 +58,7 @@ enum : tresult {
     kNotInitialized = 5,
     kOutOfMemory = 6
 };
+#endif
 enum MediaTypes : int32 { kAudio = 0, kEvent = 1 };
 enum BusDirections : int32 { kInput = 0, kOutput = 1 };
 enum BusTypes : int32 { kMain = 0, kAux = 1 };
@@ -101,15 +115,22 @@ enum ProcessContextStates : uint32 {
     kClockValid = 1 << 15
 };
 
-// Interface IDs (non-COM byte order used on Linux/macOS)
+// Interface IDs: COM (GUID) byte order on Windows, plain big-endian on Linux/macOS
 struct Uid {
     TUID id;
 };
 constexpr Uid makeUid(uint32 l1, uint32 l2, uint32 l3, uint32 l4) {
+#ifdef _WIN32
+    return Uid{{(char)(l1 & 0xff), (char)((l1 >> 8) & 0xff), (char)((l1 >> 16) & 0xff), (char)((l1 >> 24) & 0xff),
+        (char)((l2 >> 16) & 0xff), (char)((l2 >> 24) & 0xff), (char)(l2 & 0xff), (char)((l2 >> 8) & 0xff), (char)((l3 >> 24) & 0xff),
+        (char)((l3 >> 16) & 0xff), (char)((l3 >> 8) & 0xff), (char)(l3 & 0xff), (char)((l4 >> 24) & 0xff), (char)((l4 >> 16) & 0xff),
+        (char)((l4 >> 8) & 0xff), (char)(l4 & 0xff)}};
+#else
     return Uid{{(char)((l1 >> 24) & 0xff), (char)((l1 >> 16) & 0xff), (char)((l1 >> 8) & 0xff), (char)(l1 & 0xff),
         (char)((l2 >> 24) & 0xff), (char)((l2 >> 16) & 0xff), (char)((l2 >> 8) & 0xff), (char)(l2 & 0xff), (char)((l3 >> 24) & 0xff),
         (char)((l3 >> 16) & 0xff), (char)((l3 >> 8) & 0xff), (char)(l3 & 0xff), (char)((l4 >> 24) & 0xff), (char)((l4 >> 16) & 0xff),
         (char)((l4 >> 8) & 0xff), (char)(l4 & 0xff)}};
+#endif
 }
 inline bool uidEq(const TUID a, const TUID b) { return std::memcmp(a, b, 16) == 0; }
 
@@ -144,10 +165,14 @@ constexpr Uid IUnitInfo_iid = makeUid(0x3D4BD6B5, 0x913A4FD2, 0xA886E768, 0xA5EB
 
 constexpr const char* kVstAudioEffectClass = "Audio Module Class";
 constexpr const char* kVstComponentControllerClass = "Component Controller Class";
-constexpr const char* kPlatformTypeX11EmbedWindowID = "X11EmbedWindowID";
+#ifdef _WIN32
+constexpr const char* kPlatformTypeEmbed = "HWND";
+#else
+constexpr const char* kPlatformTypeEmbed = "X11EmbedWindowID";
+#endif
 constexpr const char* kEditorViewType = "editor";
 
-// ---- structs (layouts match the SDK's packed definitions on 64-bit Linux)
+// ---- structs (layouts match the SDK's definitions on 64-bit Linux and Windows: natural alignment on both)
 struct PFactoryInfo {
     char vendor[64];
     char url[256];

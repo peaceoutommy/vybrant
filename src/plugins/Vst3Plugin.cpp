@@ -43,14 +43,20 @@ QString Vst3Module::resolveBinary(const QString& p) {
     if (fi.isDir()) {
         QDir d(p);
         QString arch = "x86_64-linux";
-#if defined(__aarch64__)
+#if defined(_WIN32)
+        arch = "x86_64-win";
+#elif defined(__aarch64__)
         arch = "aarch64-linux";
 #elif defined(__i386__)
         arch = "i386-linux";
 #endif
         QDir bin(d.filePath("Contents/" + arch));
         if (bin.exists()) {
+#ifdef _WIN32
+            auto sos = bin.entryList({"*.vst3"}, QDir::Files);
+#else
             auto sos = bin.entryList({"*.so"}, QDir::Files);
+#endif
             if (!sos.isEmpty()) return bin.filePath(sos.first());
         }
         return QString();
@@ -71,9 +77,15 @@ std::shared_ptr<Vst3Module> Vst3Module::load(const QString& path, QString* error
     auto m = std::shared_ptr<Vst3Module>(new Vst3Module());
     m->m_handle = h;
     m->m_path = path;
+#ifdef _WIN32
+    auto entry = (bool (*)())dynlib::symbol(h, "InitDll");
+    if (entry) entry();
+    m->m_exit = (ModuleExitProc)dynlib::symbol(h, "ExitDll");
+#else
     auto entry = (ModuleEntryProc)dynlib::symbol(h, "ModuleEntry");
     if (entry) entry(h);
     m->m_exit = (ModuleExitProc)dynlib::symbol(h, "ModuleExit");
+#endif
     auto gf = (GetFactoryProc)dynlib::symbol(h, "GetPluginFactory");
     if (!gf) {
         if (error) *error = "GetPluginFactory not exported (not a VST3 module)";
@@ -652,7 +664,7 @@ bool Vst3Plugin::init(const QString& path, const QString& classId, QString* erro
         m_controller->queryInterface(IMidiMapping_iid.id, (void**)&m_midiMapping);
         IPlugView* v = m_controller->createView(kEditorViewType);
         if (v) {
-            m_hasEditor = v->isPlatformTypeSupported(kPlatformTypeX11EmbedWindowID) == kResultTrue;
+            m_hasEditor = v->isPlatformTypeSupported(kPlatformTypeEmbed) == kResultTrue;
             v->release();
         }
     }
@@ -1069,7 +1081,7 @@ void Vst3Plugin::restoreState(const QJsonObject& s) {
 QWidget* Vst3Plugin::createEditor(QWidget* parent) {
     if (!m_controller || !m_hasEditor) return nullptr;
     auto* w = new PluginEmbedWidget(parent);
-    w->onAttach = [this, w](unsigned long xid, int& width, int& height) {
+    w->onAttach = [this, w](WId wid, int& width, int& height) {
         if (m_host->view) return false;
         IPlugView* v = m_controller->createView(kEditorViewType);
         if (!v) return false;
@@ -1081,7 +1093,7 @@ QWidget* Vst3Plugin::createEditor(QWidget* parent) {
             width = r.getWidth();
             height = r.getHeight();
         }
-        if (v->attached((void*)xid, kPlatformTypeX11EmbedWindowID) != kResultOk) {
+        if (v->attached((void*)wid, kPlatformTypeEmbed) != kResultOk) {
             v->setFrame(nullptr);
             v->release();
             return false;

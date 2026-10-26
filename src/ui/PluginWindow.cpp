@@ -4,11 +4,15 @@
 #include "plugins/Vst3Plugin.h"
 #include "plugins/Vst2Plugin.h"
 #include "plugins/ClapPlugin.h"
-#include "plugins/Lv2Plugin.h"
 #include "plugins/PluginBridge.h"
 #include "ui/ProcessorPicker.h"
 #include <QDir>
 #include <QScreen>
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include "plugins/Lv2Plugin.h"
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #undef Bool
@@ -18,6 +22,7 @@
 #undef KeyRelease
 #undef FocusIn
 #undef FocusOut
+#endif
 #undef Unsorted
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -278,7 +283,11 @@ void PluginWindow::build() {
         return;
     }
     bool isEffect = m_proc->kind() == ProcessorKind::Effect;
+#ifdef _WIN32
+    m_bridge->setVisible(false);   // no own-process plugins on Windows yet (PluginBridge.cpp)
+#else
     m_bridge->setVisible(m_proc->isPlugin());
+#endif
     m_bridge->setChecked(dynamic_cast<BridgedPlugin*>(m_proc) != nullptr);
     m_bypass->setVisible(isEffect);
     m_genericToggle->setVisible(m_proc->hasCustomEditor());
@@ -292,7 +301,9 @@ void PluginWindow::build() {
         if (auto* v3 = dynamic_cast<Vst3Plugin*>(m_proc)) v3->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* v2 = dynamic_cast<Vst2Plugin*>(m_proc)) v2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (auto* c = dynamic_cast<ClapPlugin*>(m_proc)) c->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
+#ifndef _WIN32
         if (auto* l2 = dynamic_cast<Lv2Plugin*>(m_proc)) l2->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
+#endif
         if (auto* br = dynamic_cast<BridgedPlugin*>(m_proc)) br->onParamEdited = [this](uint32_t, float) { m_app.model().setDirty(true); };
         if (const PluginInstanceData* d = m_app.project().plugin(pluginInstanceId())) {   // first time this GUI is shown: picture it
             const QString file = ProcessorPicker::thumbnailPath(d->manufacturer, d->name);
@@ -324,9 +335,28 @@ static void saveThumbnail(const QImage& img, const QString& file) {
     QDir().mkpath(QFileInfo(file).path());
     img.scaledToWidth(std::min(img.width(), 480), Qt::SmoothTransformation).save(file);
 }
-// The plugin's own window, read back from X: just that window, never the screen (QScreen::grabWindow reads the root window,
-// which is empty under XWayland). Only the part on screen; an empty image when X cannot give it.
-static QImage grabX11Window(unsigned long wid) {
+// The plugin's own window, never the screen. On Windows the window draws itself into our bitmap (PrintWindow), also when covered.
+#ifdef _WIN32
+static QImage grabNativeWindow(WId wid) {
+    RECT r;
+    if (!GetClientRect((HWND)wid, &r) || r.right <= 0 || r.bottom <= 0) return {};
+    QImage img(r.right, r.bottom, QImage::Format_RGB32);
+    HDC screen = GetDC(nullptr), dc = CreateCompatibleDC(screen);
+    HBITMAP bmp = CreateCompatibleBitmap(screen, r.right, r.bottom);
+    HGDIOBJ old = SelectObject(dc, bmp);
+    BITMAPINFO bi{{sizeof(BITMAPINFOHEADER), r.right, -r.bottom, 1, 32, BI_RGB}};   // top-down rows, as QImage keeps them
+    bool ok = PrintWindow((HWND)wid, dc, PW_CLIENTONLY | PW_RENDERFULLCONTENT) &&
+        GetDIBits(dc, bmp, 0, r.bottom, img.bits(), &bi, DIB_RGB_COLORS) == r.bottom;
+    SelectObject(dc, old);
+    DeleteObject(bmp);
+    DeleteDC(dc);
+    ReleaseDC(nullptr, screen);
+    return ok ? img : QImage();
+}
+#else
+// Read back from X: QScreen::grabWindow reads the root window, which is empty under XWayland. Only the part on screen; an
+// empty image when X cannot give it.
+static QImage grabNativeWindow(WId wid) {
     auto* x11 = qApp->nativeInterface<QNativeInterface::QX11Application>();
     Display* d = x11 ? x11->display() : nullptr;
     XWindowAttributes a;
@@ -349,10 +379,11 @@ static QImage grabX11Window(unsigned long wid) {
     XDestroyImage(im);
     return img;
 }
+#endif
 void PluginWindow::grabThumbnail(int gen) {
     QWidget* editor = m_thumb.editor;
     if (gen != m_thumb.gen || !editor || editor != m_body || !isVisible() || QFile::exists(m_thumb.file) || ++m_thumb.attempt > 20) return;
-    offerThumbnail(grabX11Window(editor->winId()));
+    offerThumbnail(grabNativeWindow(editor->winId()));
 }
 // Saved once two captures in a row look the same: a slow plugin shows nothing (what is behind it) or half a frame at first
 void PluginWindow::offerThumbnail(const QImage& img) {
@@ -415,7 +446,7 @@ void PluginWindow::closeEvent(QCloseEvent* e) {
     m_timer.stop();
     // closed before two captures matched: what is on show now has been seen drawn, so keep that
     if (m_thumb.editor && m_thumb.editor == m_body && !QFile::exists(m_thumb.file))
-        if (const QImage img = grabX11Window(m_thumb.editor->winId()); !flatImage(img)) saveThumbnail(img, m_thumb.file);
+        if (const QImage img = grabNativeWindow(m_thumb.editor->winId()); !flatImage(img)) saveThumbnail(img, m_thumb.file);
     QWidget::closeEvent(e);
 }
 

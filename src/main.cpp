@@ -54,6 +54,7 @@ int main(int argc, char** argv) {
         QCoreApplication::setApplicationName("Vybrant");
         return mt::PluginScanner::scanChildMain(QString::fromLocal8Bit(argv[2]));
     }
+#ifndef _WIN32
     // Plugin GUIs need an X11 window; run under XWayland when a Wayland session is detected and nothing else was requested.
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM") && !qEnvironmentVariableIsEmpty("DISPLAY")) qputenv("QT_QPA_PLATFORM", "xcb");
     // yabridge: a user-installed build in ~/.local/share/yabridge (yabridge's own user install location) takes precedence over the
@@ -65,6 +66,7 @@ int main(int argc, char** argv) {
             if (!path.startsWith(yab.toUtf8() + ":")) qputenv("PATH", yab.toUtf8() + ":" + path);
         }
     }
+#endif
     QApplication app(argc, argv);
     QCoreApplication::setOrganizationName("Vybrant");
     QCoreApplication::setApplicationName("Vybrant");

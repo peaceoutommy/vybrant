@@ -280,7 +280,11 @@ struct clap_host_latency {
 };
 
 constexpr char CLAP_EXT_GUI[] = "clap.gui";
-constexpr char CLAP_WINDOW_API_X11[] = "x11";
+#ifdef _WIN32
+constexpr char CLAP_WINDOW_API_EMBED[] = "win32";
+#else
+constexpr char CLAP_WINDOW_API_EMBED[] = "x11";
+#endif
 struct clap_window {
     const char* api;
     union {

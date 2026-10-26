@@ -1,8 +1,10 @@
 #include "audio/AudioEngine.h"
 #include "audio/RecordingEngine.h"
 #include "core/Log.h"
+#ifndef _WIN32
 #include <csetjmp>
 #include <csignal>
+#endif
 #include <chrono>
 #include <limits>
 #include <thread>
@@ -13,6 +15,10 @@ namespace mt {
 // Third-party plugin code runs inside a sigsetjmp/siglongjmp guard so a segfault inside a plugin marks the plugin
 // as crashed and bypasses it instead of taking the whole DAW down. This is best-effort isolation: the process keeps
 // running with the project intact so the user can save and recover.
+#ifdef _WIN32
+// ponytail: no crash guard on Windows yet (would need structured exception handling); a crashing plugin takes the app down
+void installCrashGuard() {}
+#else
 static thread_local sigjmp_buf* t_guard = nullptr;
 static struct sigaction s_oldSegv, s_oldFpe, s_oldIll, s_oldBus;
 static void crashHandler(int sig, siginfo_t*, void*) {
@@ -34,6 +40,7 @@ void installCrashGuard() {
     sigaction(SIGILL, &sa, &s_oldIll);
     sigaction(SIGBUS, &sa, &s_oldBus);
 }
+#endif
 
 float RtAutomationLane::valueAt(Tick t) const { return evalAutomation(points, t); }
 
@@ -804,6 +811,10 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
 }
 
 bool AudioEngine::guardedProcess(RtEffect& fx, float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
+#ifdef _WIN32
+    fx.proc->process(L, R, n, midi, ctx);
+    return true;
+#else
     if (!fx.proc->isPlugin()) {
         fx.proc->process(L, R, n, midi, ctx);
         return true;
@@ -825,6 +836,7 @@ bool AudioEngine::guardedProcess(RtEffect& fx, float* L, float* R, int n, const 
     m.id = fx.slotId;
     m_messages.push(m);
     return false;
+#endif
 }
 
 // ---------------------------------------------------------------- RT: live MIDI

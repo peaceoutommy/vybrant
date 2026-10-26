@@ -1,17 +1,56 @@
 // Minimal CLAP plugins for the self test: a stereo gain effect with one parameter, state and a reported latency
 // (64 samples, 128 above 1.5x gain: changing it asks the host for a restart, as CLAP requires while active), and a
 // multi-out instrument that writes 0.25 to its main output pair and 0.5 to an extra "Kick" pair. Above 1.95x gain the
-// gain plugin crashes on purpose, for the out-of-process test. The gain plugin's editor is a plain 320x200 X11 window named
-// "mt-test-gain-editor" (`vybrant --embed-test` looks for it inside the host's window).
+// gain plugin crashes on purpose, for the out-of-process test. The gain plugin's editor is a plain 320x200 window (X11, or a
+// HWND on Windows) named "mt-test-gain-editor" (`vybrant --embed-test` looks for it inside the host's window).
 // `vybrant --selftest` compiles it with the system C++ compiler against src/plugins/ClapAbi.h (not part of the app build).
 #include "plugins/ClapAbi.h"
 #include <cstdio>
 #include <cstring>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <X11/Xlib.h>   // after the CLAP declarations: its macros clash with nothing below
+#endif
 
 using namespace clap;
 
 namespace {
+#ifdef _WIN32
+struct Editor {
+    HWND win = nullptr;
+    bool create() { return true; }
+    void destroy() {
+        if (win) DestroyWindow(win);
+        win = nullptr;
+    }
+    void attach(const clap_window* w) {
+        win = CreateWindowExW(0, L"STATIC", L"mt-test-gain-editor", WS_CHILD, 0, 0, 320, 200, (HWND)w->win32, nullptr, nullptr, nullptr);
+    }
+    void show(bool on) { ShowWindow(win, on ? SW_SHOW : SW_HIDE); }
+};
+#else
+struct Editor {
+    Display* dpy = nullptr;
+    Window win = 0;
+    bool create() { return (dpy = XOpenDisplay(nullptr)) != nullptr; }
+    void destroy() {
+        if (win) XDestroyWindow(dpy, win);
+        if (dpy) XCloseDisplay(dpy);
+        win = 0;
+        dpy = nullptr;
+    }
+    void attach(const clap_window* w) {
+        win = XCreateSimpleWindow(dpy, w->x11, 0, 0, 320, 200, 0, 0, 0x3366cc);
+        XStoreName(dpy, win, "mt-test-gain-editor");
+        XFlush(dpy);
+    }
+    void show(bool on) {
+        on ? XMapWindow(dpy, win) : XUnmapWindow(dpy, win);
+        XFlush(dpy);
+    }
+};
+#endif
 constexpr clap_id kGainId = 7;   // not an index: the host must key parameters by id
 
 struct Gain {
@@ -20,8 +59,7 @@ struct Gain {
     double gain = 1.0;
     uint32_t latency = 0;   // reported only, the audio is not delayed
     bool restartAsked = false;
-    Display* dpy = nullptr;   // editor
-    Window win = 0;
+    Editor editor;
 };
 Gain* self(const clap_plugin* p) { return (Gain*)p->plugin_data; }
 
@@ -59,20 +97,14 @@ const clap_plugin_state state = {
 };
 const clap_plugin_latency latency = {[](const clap_plugin* p) { return self(p)->latency; }};
 const clap_plugin_gui gui = {
-    [](const clap_plugin*, const char* api, bool floating) { return !floating && !std::strcmp(api, CLAP_WINDOW_API_X11); },
+    [](const clap_plugin*, const char* api, bool floating) { return !floating && !std::strcmp(api, CLAP_WINDOW_API_EMBED); },
     [](const clap_plugin*, const char** api, bool* floating) {
-        *api = CLAP_WINDOW_API_X11;
+        *api = CLAP_WINDOW_API_EMBED;
         *floating = false;
         return true;
     },
-    [](const clap_plugin* p, const char*, bool) { return (self(p)->dpy = XOpenDisplay(nullptr)) != nullptr; },
-    [](const clap_plugin* p) {
-        auto* g = self(p);
-        if (g->win) XDestroyWindow(g->dpy, g->win);
-        if (g->dpy) XCloseDisplay(g->dpy);
-        g->win = 0;
-        g->dpy = nullptr;
-    },
+    [](const clap_plugin* p, const char*, bool) { return self(p)->editor.create(); },
+    [](const clap_plugin* p) { self(p)->editor.destroy(); },
     [](const clap_plugin*, double) { return false; },
     [](const clap_plugin*, uint32_t* w, uint32_t* h) {
         *w = 320;
@@ -84,22 +116,17 @@ const clap_plugin_gui gui = {
     [](const clap_plugin*, uint32_t*, uint32_t*) { return false; },
     [](const clap_plugin*, uint32_t, uint32_t) { return false; },
     [](const clap_plugin* p, const clap_window* w) {   // its own window inside the host's
-        auto* g = self(p);
-        g->win = XCreateSimpleWindow(g->dpy, w->x11, 0, 0, 320, 200, 0, 0, 0x3366cc);
-        XStoreName(g->dpy, g->win, "mt-test-gain-editor");
-        XFlush(g->dpy);
+        self(p)->editor.attach(w);
         return true;
     },
     [](const clap_plugin*, const clap_window*) { return false; },
     [](const clap_plugin*, const char*) {},
     [](const clap_plugin* p) {
-        XMapWindow(self(p)->dpy, self(p)->win);
-        XFlush(self(p)->dpy);
+        self(p)->editor.show(true);
         return true;
     },
     [](const clap_plugin* p) {
-        XUnmapWindow(self(p)->dpy, self(p)->win);
-        XFlush(self(p)->dpy);
+        self(p)->editor.show(false);
         return true;
     },
 };

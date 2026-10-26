@@ -93,6 +93,7 @@ AudioSettingsDialog::AudioSettingsDialog(App& app, QWidget* parent)
     form->addRow("Input channels", m_inCh);
     form->addRow("Output channels", m_outCh);
     form->addRow(m_monitor);
+#ifndef _WIN32
     auto* jack = new QCheckBox("Sync transport with JACK (play, stop and position follow other JACK apps)", this);
     jack->setChecked(m_app.jackSync());
     form->addRow(jack);
@@ -104,6 +105,7 @@ AudioSettingsDialog::AudioSettingsDialog(App& app, QWidget* parent)
             m_status->setText(err);
         }
     });
+#endif
     m_status = new QLabel(this);
     m_status->setWordWrap(true);
     form->addRow(m_status);
@@ -266,6 +268,7 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
         for (int i = 0; i < m_dirs->count(); ++i) l << m_dirs->item(i)->text();
         m_app.pluginDb().setDirectories(l);
     });
+#ifndef _WIN32
     {   // Windows plugins via yabridge
         auto* box = new QGroupBox("Windows plugins (yabridge)", this);
         auto* bl = new QVBoxLayout(box);
@@ -291,6 +294,7 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
         connect(m_yabSync, &QPushButton::clicked, this, [this] { runYabridge({"sync"}, true); });
         refreshYabridge();
     }
+#endif
     auto* sl = new QHBoxLayout();
     auto* scan = new QPushButton("Scan for new plugins", this);
     auto* rescan = new QPushButton("Rescan all", this);
@@ -355,6 +359,7 @@ PluginManagerDialog::PluginManagerDialog(App& app, QWidget* parent)
     rebuild();
 }
 void PluginManagerDialog::refreshYabridge() {
+    if (!m_yabStatus) return;   // Windows: no yabridge box
     auto st = yabridge::status();
     m_yabAdd->setEnabled(st.installed());
     m_yabSync->setEnabled(st.installed());

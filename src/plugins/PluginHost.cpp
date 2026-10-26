@@ -2,7 +2,9 @@
 #include "plugins/Vst3Plugin.h"
 #include "plugins/Vst2Plugin.h"
 #include "plugins/ClapPlugin.h"
+#ifndef _WIN32
 #include "plugins/Lv2Plugin.h"
+#endif
 #include "plugins/PluginBridge.h"
 #include <QSettings>
 #include "core/Log.h"
@@ -52,6 +54,9 @@ Status status() {
 }
 QStringList wrapperDirs() { return {QDir::homePath() + "/.vst/yabridge", QDir::homePath() + "/.vst3/yabridge"}; }
 bool isBridged(const QString& path) {
+#ifdef _WIN32
+    return false;   // the plugins are native there
+#endif
     for (auto& d : wrapperDirs())
         if (path.startsWith(d)) return true;
     // the wrappers are copies of yabridge's chainloader: cheap to recognise by the strings inside
@@ -77,19 +82,31 @@ QString PluginDatabase::databasePath() {
     QDir().mkpath(d);
     return d + "/plugins.json";
 }
+#ifdef _WIN32   // the folders the plugin installers use
+static const QString common = QDir::fromNativeSeparators(qEnvironmentVariable("CommonProgramFiles", "C:/Program Files/Common Files")),
+                     programs = QDir::fromNativeSeparators(qEnvironmentVariable("ProgramFiles", "C:/Program Files")),
+                     userCommon = QDir::fromNativeSeparators(qEnvironmentVariable("LOCALAPPDATA")) + "/Programs/Common";
+#endif
 static QStringList clapDirectories() {
+#ifdef _WIN32
+    QStringList d = {common + "/CLAP", userCommon + "/CLAP"};
+#else
     QStringList d = {QDir::homePath() + "/.clap", "/usr/lib/clap", "/usr/local/lib/clap"};
-    for (auto& p : qEnvironmentVariable("CLAP_PATH").split(':', Qt::SkipEmptyParts)) d << p;
+#endif
+    for (auto& p : qEnvironmentVariable("CLAP_PATH").split(QDir::listSeparator(), Qt::SkipEmptyParts)) d << QDir::fromNativeSeparators(p);
     return d;
 }
 QStringList PluginDatabase::defaultDirectories() {
+#ifdef _WIN32
+    QStringList d = {common + "/VST3", userCommon + "/VST3", programs + "/VSTPlugins", programs + "/Steinberg/VSTPlugins", common + "/VST2",
+        common + "/Steinberg/VST2"};
+#else
     QString home = QDir::homePath();
     QStringList d = {home + "/.vst3", "/usr/lib/vst3", "/usr/local/lib/vst3", home + "/.vst", "/usr/lib/vst", "/usr/local/lib/vst",
         home + "/.lxvst", "/usr/lib/lxvst", "/usr/local/lib/lxvst"};
-    QString env = qEnvironmentVariable("VST_PATH");
-    for (auto& p : env.split(':', Qt::SkipEmptyParts)) d << p;
-    env = qEnvironmentVariable("VST3_PATH");
-    for (auto& p : env.split(':', Qt::SkipEmptyParts)) d << p;
+#endif
+    for (const char* var : {"VST_PATH", "VST3_PATH"})
+        for (auto& p : qEnvironmentVariable(var).split(QDir::listSeparator(), Qt::SkipEmptyParts)) d << QDir::fromNativeSeparators(p);
     d << clapDirectories();
     d.removeDuplicates();
     return d;
@@ -218,7 +235,11 @@ QStringList PluginScanner::candidateFiles(const QStringList& dirs) {
             if (fi.isDir()) {
                 if (fi.fileName().endsWith(".vst3", Qt::CaseInsensitive)) out << fi.absoluteFilePath();
                 else if (!fi.fileName().endsWith(".lv2")) walk(fi.absoluteFilePath(), depth + 1);   // LV2 bundles: Lv2Plugin::scan
+#ifdef _WIN32
+            } else if (fi.suffix().compare("dll", Qt::CaseInsensitive) == 0 && !dir.contains("/Contents/")) out << fi.absoluteFilePath();
+#else
             } else if (fi.suffix() == "so" && !dir.contains("/Contents/")) out << fi.absoluteFilePath();
+#endif
             else if (fi.suffix().compare("vst3", Qt::CaseInsensitive) == 0) out << fi.absoluteFilePath();
             else if (fi.suffix().compare("clap", Qt::CaseInsensitive) == 0) out << fi.absoluteFilePath();
         }
@@ -233,10 +254,12 @@ void PluginScanner::scan(bool rescanAll) {
     m_cancel = false;
     m_queue.clear();
     m_done = 0;
+#ifndef _WIN32
     {   // LV2: lilv only reads the bundles' Turtle (no plugin code runs), so this is done in-process; one change signal for all
         const QSignalBlocker block(&m_db);
         for (auto& p : Lv2Plugin::scan()) m_db.addOrUpdate(p);
     }
+#endif
     Q_EMIT m_db.changed();
     for (auto& f : candidateFiles(m_db.directories())) {
         if (!rescanAll) {
@@ -426,11 +449,13 @@ std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData&
         Log::warn("Missing plugin: " + data.name + " (" + data.path + ")");
         return nullptr;
     }
+#ifndef _WIN32   // no own-process plugins on Windows yet: a project saved with them loads them in the app
     if (data.bridged) {
         PluginInstanceData d = data;
         d.path = path;
         return BridgedPlugin::create(d, error);
     }
+#endif
     QString err;
     std::unique_ptr<IProcessor> proc;
     if (data.format == "vst3") {
@@ -454,6 +479,7 @@ std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData&
         auto p = ClapPlugin::create(path, data.identifier, &err);
         if (p && !data.state.isEmpty()) p->restoreState(QJsonObject{{"pluginState", QString::fromLatin1(data.state.toBase64())}});
         proc = std::move(p);
+#ifndef _WIN32
     } else if (data.format == "lv2") {
         auto p = Lv2Plugin::create(data.identifier, path, &err);
         if (p) {
@@ -462,6 +488,7 @@ std::unique_ptr<IProcessor> PluginHost::createInstance(const PluginInstanceData&
             if (!st.isEmpty()) p->restoreState(st);
             proc = std::move(p);
         }
+#endif
     } else err = "Unknown plugin format " + data.format;
     if (!proc) {
         if (error) *error = err;
