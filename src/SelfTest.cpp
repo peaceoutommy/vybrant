@@ -336,9 +336,9 @@ int runSelfTest(App& app) {
         Id other = app.duplicateClip(src, at, tr2);   // plays along, on the same instrument: must stay out of the render
         Id nc = app.consolidateClips({sel}, nullptr, &err);
         const Clip* c = pr.clip(nc);
-        CHECK(c && c->type == ClipType::Audio && c->start == at && c->trackId == tr1 && c->length == len &&
-                  !pr.clip(sel) && pr.clip(other) && pr.pattern(pat),
-            "consolidate: one audio clip at the clip's start and of its length (as in FL Studio) replaces it, the pattern stays");
+        CHECK(c && c->type == ClipType::Audio && c->start == at && c->trackId != tr1 && c->length == len && pr.clip(sel) &&
+                  pr.clip(sel)->muted && pr.clip(other) && !pr.clip(other)->muted && pr.pattern(pat),
+            "consolidate: one audio clip at the clip's start and of its length on a free track; the original is muted and kept (as in FL Studio)");
         app.deleteClips({other});
         o.path = tmp.path() + "/cpost.wav";
         app.exportAudio(o, nullptr, &err);
@@ -355,7 +355,7 @@ int runSelfTest(App& app) {
         auto cut = cs ? AudioFile::load(cs->filePath, 0) : nullptr;
         model.undoStack().undo();   // the delete
         model.undoStack().undo();
-        CHECK(pr.clip(sel) && pr.clip(other) && !pr.clip(nc), "consolidate is one undo step");
+        CHECK(pr.clip(sel) && !pr.clip(sel)->muted && pr.clip(other) && !pr.clip(nc), "consolidate is one undo step");
         {   // Leave lets the tail ring on (a longer clip and file); Wrap folds it onto the start (same length, a different start)
             Id l = app.consolidateClips({sel}, nullptr, &err, App::Tail::Leave);
             const Clip* lc = pr.clip(l);
@@ -371,7 +371,7 @@ int runSelfTest(App& app) {
                 folded = std::max(folded, std::fabs(wrap->L()[i] - cut->L()[i]));
             bool wrapped = wc && wc->length == len && wrap && cut && wrap->frames == cut->frames && folded > 1e-4f;
             model.undoStack().undo();
-            CHECK(leave && wrapped && pr.clip(sel), "consolidate tails: Leave rings on past the selection, Wrap folds it onto the start");
+            CHECK(leave && wrapped && pr.clip(sel) && !pr.clip(sel)->muted, "consolidate tails: Leave rings on past the selection, Wrap folds it onto the start");
         }
         if (nc) {   // the playlist's Ctrl+Alt+C does it to its selection
             PlaylistView v(app);
@@ -381,7 +381,7 @@ int runSelfTest(App& app) {
             });
             QKeyEvent k(QEvent::KeyPress, Qt::Key_C, Qt::ControlModifier | Qt::AltModifier);
             QCoreApplication::sendEvent(&v, &k);
-            CHECK(!pr.clip(sel) && pr.clip(other) && pr.clips.back().type == ClipType::Audio && pr.clips.back().start == at,
+            CHECK(pr.clip(sel) && pr.clip(sel)->muted && pr.clip(other) && pr.clips.back().type == ClipType::Audio && pr.clips.back().start == at,
                 "Ctrl+Alt+C in the playlist consolidates the selected pattern clips");
             model.undoStack().undo();
         }

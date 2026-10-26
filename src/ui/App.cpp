@@ -2112,8 +2112,8 @@ Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(doub
     // the render is what reaches the master, so the clip must play straight into it (not through an insert a second time)
     auto freeAt = [&](const PlaylistTrack& t) {
         const MixerTrack* m = p.mixerTrack(t.mixerTrackId);
-        return (!m || m->isMaster) && std::none_of(p.clips.begin(), p.clips.end(), [&](const Clip& c) {
-            return c.trackId == t.id && !sel.count(c.id) && c.start < to && c.start + p.clipLength(c) > from;
+        return (!m || m->isMaster) && std::none_of(p.clips.begin(), p.clips.end(), [&](const Clip& c) {   // the muted originals stay
+            return c.trackId == t.id && c.start < to && c.start + p.clipLength(c) > from;
         });
     };
     Id track = 0;
@@ -2172,7 +2172,8 @@ Id App::consolidateClips(const std::vector<Id>& clipIds, std::function<bool(doub
         frames = selFrames + 1;
     }
     std::vector<std::unique_ptr<Command>> cmds;
-    for (Id id : sel) cmds.push_back(std::make_unique<RemoveObjectCommand<Clip>>(m_model, id, ""));
+    for (Id id : sel)   // as in FL Studio the originals are muted and kept, to go back to
+        cmds.push_back(std::make_unique<EditObjectCommand<Clip>>(m_model, id, "", [](Clip& x) { x.muted = true; }, 0));
     AudioSource a;
     a.id = p.newId();
     a.filePath = o.path;

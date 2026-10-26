@@ -1708,7 +1708,7 @@ void PlaylistView::showClipMenu(Clip* c, const QPoint& global) {
         if (c->length > 0)
             m.addAction("Fit to pattern length", [this, id] { m_app.edit<Clip>(id, "Fit clip to pattern", [](Clip& x) { x.length = 0; }); });
         m.addAction("Consolidate to audio\tCtrl+Alt+C", [this] { consolidateSelected(); })
-            ->setToolTip("Renders the selected pattern clips to one audio clip that replaces them (the patterns stay)");
+            ->setToolTip("Renders the selected pattern clips to one audio clip; the clips are muted and kept, as in FL Studio");
     }
     if (type == ClipType::Audio) {
         m.addAction("Edit audio clip...", [this, id] { Q_EMIT openAudioClip(id); });
