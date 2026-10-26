@@ -20,6 +20,10 @@ public:
     // tests: view-local point inside track idx at tick t
     QPoint debugPoint(int idx, Tick t) const { return QPoint(tickToX(t) + 2, trackTop(idx) + trackH(idx) / 2); }
     double debugPpt() const { return m_ppt; }
+    QPoint debugMenuButton(Id clipId) const {
+        const Clip* c = m_app.project().clip(clipId);
+        return c ? menuIconRect(*c).center() : QPoint(-1, -1);
+    }
     QPoint debugGainHandle(Id clipId) const {
         const Clip* c = m_app.project().clip(clipId);
         return c ? gainIconRect(*c).center() : QPoint(-1, -1);
@@ -87,6 +91,7 @@ private:
     QPolygonF fadeCurve(const Clip& c, int which) const;
     QRect fadeIconRect(const Clip& c, int which) const;
     QRect gainIconRect(const Clip& c) const;
+    QRect menuIconRect(const Clip& c) const;   // the clip menu button, top left in the header (empty on a clip too narrow for it)
     struct Layout {
         int headerW = 170, rulerH = 24;   // everything above the tracks: the ruler and, when open, the tempo lane under it
         QRect ruler, tempo, headers, area;

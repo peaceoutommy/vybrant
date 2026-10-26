@@ -301,6 +301,10 @@ QRect PlaylistView::fadeIconRect(const Clip& c, int which) const {
     int y = r.top() + 16;
     return which == 1 ? QRect(r.left() + 3, y, 13, 13) : QRect(r.right() - 16, y, 13, 13);
 }
+QRect PlaylistView::menuIconRect(const Clip& c) const {
+    QRect r = clipRect(c);
+    return r.width() >= 32 ? QRect(r.left() + 2, r.top() + 1, 12, 11) : QRect();
+}
 QRect PlaylistView::gainIconRect(const Clip& c) const {
     QRect r = clipRect(c);
     return QRect(r.center().x() - 22, r.bottom() - 15, 44, 13);
@@ -352,7 +356,18 @@ void PlaylistView::drawClip(QPainter& p, const Clip& c, const QRectF& rectF, dou
     p.setClipPath(shape, Qt::IntersectClip);
     p.setPen(theme::bg());
     p.setFont(theme::smallFont());
-    p.drawText(QRect(r.left() + 4, r.top(), r.width() - 8, 13), Qt::AlignVCenter | Qt::AlignLeft, c.name + (c.muted ? " (muted)" : ""));
+    QRect mi = menuIconRect(c);
+    if (!mi.isEmpty()) {   // the clip's menu button: a small down-pointing triangle before the name
+        QPointF mc = QRectF(mi).center();
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(Qt::NoPen);
+        p.setBrush(theme::bg());
+        p.drawPolygon(QPolygonF({mc + QPointF(-3.5, -1.5), mc + QPointF(3.5, -1.5), mc + QPointF(0, 2.5)}));
+        p.setRenderHint(QPainter::Antialiasing, false);
+        p.setPen(theme::bg());
+    }
+    int nameX = mi.isEmpty() ? 4 : 16;
+    p.drawText(QRect(r.left() + nameX, r.top(), r.width() - nameX - 4, 13), Qt::AlignVCenter | Qt::AlignLeft, c.name + (c.muted ? " (muted)" : ""));
     QRect body = r.adjusted(1, 14, -1, -1);
     if (c.type == ClipType::Pattern) {
         if (auto* pat = proj.pattern(c.sourceId)) {
@@ -870,6 +885,10 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
             }
         }
         m_drag = Erasing;
+        return;
+    }
+    if (c && e->button() == Qt::LeftButton && menuIconRect(*c).contains(e->pos())) {   // the clip's menu button, whatever the tool
+        showClipMenu(c, e->globalPosition().toPoint());
         return;
     }
     if (m_tool == Erase) {
