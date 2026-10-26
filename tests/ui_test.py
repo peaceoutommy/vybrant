@@ -409,6 +409,17 @@ def main():
     check(ins.send("projpanel") == first, "clicking the clip again goes back to its pattern", ins.send("projpanel"))
     ins.quit()
 
+    # ---- without an audio device (one that can't open: an impossible sample rate) the transport bar still takes changes
+    cfg17 = os.path.join(tmp, "cfg17")
+    os.makedirs(os.path.join(cfg17, "Vybrant"))
+    with open(os.path.join(cfg17, "Vybrant", "Vybrant.conf"), "w") as f:
+        f.write("[audio]\nsampleRate=1\n")
+    ins = Instance(cfg17, sock)
+    time.sleep(0.3)   # the transport bar's display ticks (every 33 ms) run first
+    r = ins.send("patcombo")
+    check(r == "selected=Pattern 2 patterns=2", "with no audio device the transport bar still takes changes ('+ New pattern')", r)
+    ins.quit()
+
     # ---- the effect / instrument picker: cards by default, a remembered list view, search, a star that makes a favourite
     cfg14 = os.path.join(tmp, "cfg14")
     os.makedirs(cfg14)

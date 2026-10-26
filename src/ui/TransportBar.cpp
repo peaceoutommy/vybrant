@@ -258,6 +258,7 @@ void TransportBar::uiTick() {
     if (!e.deviceRunning()) {
         m_stats->setText("\u26a0 NO AUDIO DEVICE - Options > Audio settings");
         m_stats->setStyleSheet("color:#e2665c; font-family: 'Geist Mono', monospace; font-size:7.5pt; font-weight:bold;");
+        m_updating = false;   // left set, every transport control would ignore the user
         return;
     } else if (m_stats->styleSheet().contains("e2665c"))
         theme::styled(m_stats, "color:@textDim@; font-family: 'Geist Mono', monospace; font-size:7.5pt;");
