@@ -124,7 +124,7 @@ export function Download() {
           <div>
             <p className="label">System requirements</p>
             <ul className="specs mono">
-              <li>64-bit Linux (x86_64) from 2024 or newer: glibc 2.39+, e.g. Ubuntu 24.04, Fedora 40, Debian 13</li>
+              <li>Any 64-bit Linux (x86_64) distribution from 2024 on: Arch, CachyOS, Manjaro, Ubuntu 24.04+, Fedora 40+, Debian 13+ (glibc 2.39 or newer)</li>
               <li>FUSE 2 for AppImages (libfuse2), shipped by most distributions</li>
               <li>PipeWire, JACK or ALSA for audio; ALSA for MIDI</li>
               <li>X11 or XWayland for plugin windows</li>
