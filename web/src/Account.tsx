@@ -97,6 +97,9 @@ function LicensePanel() {
               <button className="btn btn-primary" onClick={copy}>
                 {copied ? 'Copied' : 'Copy license'}
               </button>
+              <a href="/download" className="btn btn-ghost">
+                Download Tactum
+              </a>
             </div>
             <p className="muted small">
               Open Tactum and paste it when asked, or later under Help → License…

@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'motion/react';
-import { Nav } from './Nav';
+import { Footer, Nav } from './Nav';
 
 const features = [
   { title: 'Patterns and playlist', text: 'Step sequencer, piano roll and a playlist that arranges patterns, audio and automation.' },
@@ -12,8 +12,8 @@ const features = [
 ];
 
 const steps = [
-  { title: 'Create an account', text: 'Sign in with Google or your email.' },
-  { title: 'Generate your license', text: 'One per account, ready in a second.' },
+  { title: 'Download Tactum', text: 'One file for 64-bit Linux, the same one for every update.', href: '/download' },
+  { title: 'Get your license', text: 'Sign in with Google or your email; one free license per account.', href: '/account' },
   { title: 'Paste it into Tactum', text: 'Tactum checks it on your machine. No connection needed after that.' },
 ];
 
@@ -49,11 +49,11 @@ export function Landing() {
             sidechains, and run your own plugins.
           </motion.p>
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
-            <a href="/account" className="btn btn-primary">
-              Get your free license
+            <a href="/download" className="btn btn-primary">
+              Download for Linux
             </a>
-            <a href="#features" className="btn btn-ghost">
-              See what's inside
+            <a href="/account" className="btn btn-ghost">
+              Get your free license
             </a>
           </motion.div>
           <motion.p className="caption" {...reveal} transition={{ ...reveal.transition, delay: 0.3 }}>
@@ -100,7 +100,7 @@ export function Landing() {
             {steps.map((s, i) => (
               <motion.li key={s.title} {...reveal} transition={{ ...reveal.transition, delay: i * 0.1 }}>
                 <span className="step-number">{String(i + 1).padStart(2, '0')}</span>
-                <h3>{s.title}</h3>
+                <h3>{s.href ? <a href={s.href} className="link">{s.title}</a> : s.title}</h3>
                 <p>{s.text}</p>
               </motion.li>
             ))}
@@ -118,16 +118,13 @@ export function Landing() {
               <li>One license per account</li>
               <li>Works offline</li>
             </ul>
-            <a href="/account" className="btn btn-primary">
-              Get your free license
+            <a href="/download" className="btn btn-primary">
+              Download for Linux
             </a>
           </motion.div>
         </section>
       </main>
-      <footer className="footer container">
-        <span>© {new Date().getFullYear()} Tactum</span>
-        <span className="mono">Free software under GPL-3.0-or-later</span>
-      </footer>
+      <Footer />
     </>
   );
 }

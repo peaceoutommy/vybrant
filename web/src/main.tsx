@@ -4,6 +4,7 @@ import { ClerkProvider } from '@clerk/react';
 import { MotionConfig } from 'motion/react';
 import { Landing } from './Landing';
 import { Account } from './Account';
+import { Download } from './Download';
 import './styles.css';
 
 const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -28,7 +29,9 @@ const appearance = {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ClerkProvider publishableKey={key} afterSignOutUrl="/" signInFallbackRedirectUrl="/account" appearance={appearance}>
-      <MotionConfig reducedMotion="user">{location.pathname.startsWith('/account') ? <Account /> : <Landing />}</MotionConfig>
+      <MotionConfig reducedMotion="user">
+        {location.pathname.startsWith('/account') ? <Account /> : location.pathname.startsWith('/download') ? <Download /> : <Landing />}
+      </MotionConfig>
     </ClerkProvider>
   </StrictMode>,
 );

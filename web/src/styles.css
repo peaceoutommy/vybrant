@@ -169,6 +169,27 @@ ul, ol { padding: 0; list-style: none; }
   color: var(--faint);
 }
 
+.link { text-decoration: underline; text-decoration-color: rgba(255, 255, 255, 0.25); text-underline-offset: 3px; }
+.link:hover { text-decoration-color: var(--text); }
+
+/* Download */
+.notice { margin-top: 24px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; color: var(--dim); }
+.command {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0 10px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.35);
+}
+.command code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 400 12.5px/1.6 var(--mono); color: var(--text); }
+.two-col { display: grid; grid-template-columns: 3fr 2fr; gap: 48px; }
+.specs { margin-top: 20px; display: grid; gap: 14px; }
+.specs li { padding-top: 14px; border-top: 1px solid var(--line); }
+@media (max-width: 720px) { .two-col { grid-template-columns: 1fr; gap: 64px; } }
+
 /* Account */
 .account { padding-top: 96px; padding-bottom: 96px; display: flex; justify-content: center; }
 .signin { display: flex; justify-content: center; }

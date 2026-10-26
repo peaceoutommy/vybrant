@@ -1,5 +1,14 @@
 import { Show, UserButton } from '@clerk/react';
 
+export function Footer() {
+  return (
+    <footer className="footer container">
+      <span>© {new Date().getFullYear()} Tactum</span>
+      <span className="mono">Free software under GPL-3.0-or-later</span>
+    </footer>
+  );
+}
+
 export function Nav() {
   return (
     <header className="nav">
@@ -10,8 +19,8 @@ export function Nav() {
         </a>
         <nav className="nav-links" aria-label="Sections">
           <a href="/#features">Features</a>
-          <a href="/#license">License</a>
           <a href="/#pricing">Pricing</a>
+          <a href="/download">Download</a>
         </nav>
         <div className="nav-actions">
           <Show when="signed-out">
