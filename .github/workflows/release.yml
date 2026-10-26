@@ -1,7 +1,7 @@
 name: Release
 
-# A tag like v0.1.0 builds an AppImage and publishes it as a GitHub release. "Run workflow" on the Actions tab builds one
-# without releasing it (it's attached to the run as an artifact).
+# A tag like v0.1.0 builds an AppImage and a portable Windows zip and publishes them as a GitHub release. "Run workflow" on
+# the Actions tab builds both without releasing them (they're attached to the run as artifacts).
 on:
   push:
     tags: ['v*']
@@ -58,8 +58,54 @@ jobs:
           name: appimage
           path: Vybrant-*.AppImage
 
+  windows:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          install: >-
+            zip mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-portaudio mingw-w64-ucrt-x86_64-libsndfile
+            mingw-w64-ucrt-x86_64-libsamplerate mingw-w64-ucrt-x86_64-rubberband mingw-w64-ucrt-x86_64-lame
+            mingw-w64-ucrt-x86_64-fftw mingw-w64-ucrt-x86_64-openssl
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Self test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ./build/Vybrant.exe --selftest
+
+      - name: Package portable zip
+        run: |
+          dir="Vybrant-${{ github.ref_name }}-windows-x64"
+          packaging/windows-dist.sh build/Vybrant.exe "$MINGW_PREFIX" "$dir"
+          zip -qr "$dir.zip" "$dir"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: Vybrant-*-windows-x64.zip
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [appimage, windows]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" Vybrant-*.AppImage --title "$GITHUB_REF_NAME" --generate-notes
+        run: gh release create "$GITHUB_REF_NAME" Vybrant-* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
