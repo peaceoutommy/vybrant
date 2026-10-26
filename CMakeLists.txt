@@ -10,7 +10,7 @@ pkg_check_modules(DEPS REQUIRED IMPORTED_TARGET portaudio-2.0 alsa sndfile sampl
 find_package(X11 REQUIRED)
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.h)
 set(CMAKE_AUTORCC ON)
-add_executable(vybrant ${SOURCES} resources/fonts.qrc)
+add_executable(vybrant ${SOURCES} resources/app.qrc)
 target_include_directories(vybrant PRIVATE src)
 target_link_libraries(vybrant PRIVATE Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network PkgConfig::DEPS ${X11_LIBRARIES} ${CMAKE_DL_LIBS} pthread)
 target_compile_options(vybrant PRIVATE -Wall -Wno-unused-parameter -Wno-unused-function -fno-strict-aliasing)

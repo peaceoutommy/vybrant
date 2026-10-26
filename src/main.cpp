@@ -14,6 +14,7 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QFontDatabase>
+#include <QIcon>
 #include <cstring>
 #include "License.h"
 #include <cstdio>
@@ -73,6 +74,10 @@ int main(int argc, char** argv) {
     for (const char* f : {"Geist-Light", "Geist-Regular", "Geist-Medium", "Geist-SemiBold", "GeistMono-Regular", "GeistMono-Medium"})
         QFontDatabase::addApplicationFont(QString(":/fonts/%1.ttf").arg(f));
     QApplication::setFont(QFont("Geist", 9));
+    // The window carries its own icon and names its launcher, so taskbars show the logo without an icon-theme lookup
+    // (the AppImage installs no icon) and group the window with vybrant.desktop
+    QApplication::setWindowIcon(QIcon(":/vybrant.png"));
+    QGuiApplication::setDesktopFileName("vybrant");
     mt::theme::setPalette(mt::theme::loadSavedTheme());
     app.setStyleSheet(mt::theme::stylesheet());
     if (argc >= 4 && std::strcmp(argv[1], "--plugin-bridge") == 0)
