@@ -1,5 +1,5 @@
-// ALSA sequencer based MIDI engine: device enumeration, input thread feeding the audio engine's lock-free queue,
-// output drained from the engine, MIDI clock, and controller-learn support.
+// MIDI engine: device enumeration, input feeding the audio engine's lock-free queue, output drained from the engine, MIDI clock,
+// and controller-learn support. Devices go through the ALSA sequencer on Linux and WinMM on Windows.
 #pragma once
 #include "dsp/Processor.h"
 #include "core/RingBuffer.h"
@@ -46,7 +46,8 @@ Q_SIGNALS:
 private:
     void threadLoop();
     void handleAlsaEvent(void* ev);
-    void handleClock(int type, int songPos);
+    void handleClock(int status, int songPos);   // a MIDI realtime / song position status byte
+    void received(const MidiEvent& e);   // from the device thread: to the engine, and to controller learn
     void flushOutput();
     void connectInput(const MidiPortInfo& p, bool connect);
     void connectOutput(const MidiPortInfo& p, bool connect);
