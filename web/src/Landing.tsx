@@ -12,7 +12,7 @@ const features = [
 ];
 
 const steps = [
-  { title: 'Download Vybrant', text: 'One file for 64-bit Linux, the same one for every update.', href: '/download' },
+  { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: '/download' },
   { title: 'Get your license', text: 'Sign in with Google or your email; one free license per account.', href: '/account' },
   { title: 'Paste it into Vybrant', text: 'Vybrant checks it on your machine. No connection needed after that.' },
 ];
@@ -37,7 +37,7 @@ export function Landing() {
       <main>
         <section className="hero container">
           <motion.p className="label" {...reveal}>
-            Digital audio workstation · Linux
+            Digital audio workstation · Linux · Windows
           </motion.p>
           <motion.h1 {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
             A studio you
@@ -45,12 +45,12 @@ export function Landing() {
             can <em>feel.</em>
           </motion.h1>
           <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
-            Vybrant is a complete music studio for Linux. Sequence patterns, play parts into the piano roll, mix with sends and
+            Vybrant is a complete music studio for Linux and Windows. Sequence patterns, play parts into the piano roll, mix with sends and
             sidechains, and run your own plugins.
           </motion.p>
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
             <a href="/download" className="btn btn-primary">
-              Download for Linux
+              Download
             </a>
             <a href="/account" className="btn btn-ghost">
               Get your free license
@@ -119,7 +119,7 @@ export function Landing() {
               <li>Works offline</li>
             </ul>
             <a href="/download" className="btn btn-primary">
-              Download for Linux
+              Download
             </a>
           </motion.div>
         </section>

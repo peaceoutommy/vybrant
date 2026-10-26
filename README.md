@@ -1,6 +1,6 @@
 # Vybrant
 
-A Linux-native digital audio workstation with a pattern-based workflow: Channel Rack + step sequencer, Piano Roll,
+A digital audio workstation for Linux and Windows with a pattern-based workflow: Channel Rack + step sequencer, Piano Roll,
 Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP/LV2 hosting,
 automation, audio/MIDI recording and offline rendering. Original UI, original DSP.
 
@@ -9,6 +9,9 @@ automation, audio/MIDI recording and offline rendering. Original UI, original DS
 Each release on GitHub has an AppImage: make it executable and run it (`chmod +x Vybrant-*.AppImage`). It runs on
 distributions with glibc 2.39 or newer (Ubuntu 24.04+, Fedora 40+, Arch) and uses the system's JACK library
 (`pipewire-jack` or `jack2`) for audio.
+
+For Windows 10/11 (64-bit) there is a portable zip: unzip it anywhere and start `Vybrant.exe`. The Windows build hosts
+VST3, VST2 and CLAP plugins in the app; LV2, JACK transport sync and running plugins in their own process are Linux-only for now.
 
 ## Building
 
@@ -44,6 +47,21 @@ silences itself.
 Plugin GUIs need an X11 window, so on Wayland the app starts under XWayland (`QT_QPA_PLATFORM=xcb`) unless you set
 the platform yourself.
 
+### Windows
+
+Built with MinGW-w64 (MSYS2 UCRT64) and CMake; `src/midi/MidiEngineWin.cpp` (WinMM) replaces the ALSA MIDI backend and
+`src/core/DynLib.cpp` loads plugin DLLs. In an MSYS2 UCRT64 shell, with the packages the `windows` job in
+`.github/workflows/ci.yml` installs:
+
+```bash
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
+./build/Vybrant.exe --selftest
+packaging/windows-dist.sh build/Vybrant.exe "$MINGW_PREFIX" Vybrant-windows-x64   # the portable folder: exe, DLLs, Qt plugin
+```
+
+Cross-building from Linux works too, against an MSYS2 package tree (e.g. [quasi-msys2](https://github.com/HolyBlackCat/quasi-msys2))
+with clang + lld: pass `-DVYBRANT_HOST_QT_BIN=/usr/lib/qt6` so the build host's own `moc` and `rcc` run, and test under Wine.
+
 ## Tests and code style
 
 ```bash
@@ -53,7 +71,7 @@ python3 tests/sync_test.py            # JACK transport and MIDI clock in, agains
 QT_QPA_PLATFORM=xcb ./bin/vybrant --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
 ```
 
-All but the embed test run in CI (`.github/workflows/ci.yml`). The UI test uses a private config directory and socket, so it is
+All but the embed test run in CI (`.github/workflows/ci.yml`); the self test also runs on Windows there. The UI test uses a private config directory and socket, so it is
 safe to run while the app is open. Sources are formatted with `clang-format` (`.clang-format` in the root):
 
 ```bash
@@ -142,9 +160,11 @@ main path. Delays are recomputed whenever an effect is added, removed, bypassed 
 VST3 bundles (`*.vst3/Contents/x86_64-linux/*.so`) and VST2 `.so` files are discovered in the standard Linux paths
 (`~/.vst3`, `/usr/lib/vst3`, `~/.vst`, `/usr/lib/vst`, `/usr/lib/lxvst`, `$VST_PATH`, `$VST3_PATH`) and any folder
 added in the Plugin Manager. CLAP plugins (`*.clap`) are found in `~/.clap`, `/usr/lib/clap`, `/usr/local/lib/clap` and
-`$CLAP_PATH`. The host talks to plugins through its own minimal declarations of the public binary
+`$CLAP_PATH`. On Windows: `Common Files\VST3`, `Common Files\CLAP` (and their per-user `%LOCALAPPDATA%\Programs\Common`
+twins), `Program Files\VSTPlugins`, `Program Files\Steinberg\VSTPlugins`, `Common Files\VST2` and the same environment
+variables. The host talks to plugins through its own minimal declarations of the public binary
 interfaces (`src/plugins/Vst3Abi.h`, `Vst2Abi.h`, `ClapAbi.h`); no SDK code is included, so redistribution is not bound by the
-SDK licences. Plugin state, parameters (by stable id), latency, editors (X11 embedded with a host run loop for VST3)
+SDK licences. Plugin state, parameters (by stable id), latency, editors (X11 embedded with a host run loop for VST3; HWND children on Windows)
 and MIDI mapping are supported. Failed plugins are listed with the reason and can be hidden or rescanned.
 
 LV2 plugins are found through lilv in `$LV2_PATH`, `~/.lv2`, `/usr/local/lib/lv2` and `/usr/lib/lv2` (read in-process: lilv only
