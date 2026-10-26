@@ -43,7 +43,7 @@ const reveal = {
 export function Download() {
   const { release, state } = useLatestRelease();
   const [copied, setCopied] = useState(false);
-  const command = 'chmod +x Tactum-*.AppImage && ./Tactum-*.AppImage';
+  const command = 'chmod +x Vybrant-*.AppImage && ./Vybrant-*.AppImage';
   const copy = async () => {
     await navigator.clipboard.writeText(command);
     setCopied(true);
@@ -60,15 +60,15 @@ export function Download() {
             Download
           </motion.p>
           <motion.h1 {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
-            Get <em>Tactum.</em>
+            Get <em>Vybrant.</em>
           </motion.h1>
           <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
-            One download for every update. Tactum asks for your license the first time it starts, and it's free with an
+            One download for every update. Vybrant asks for your license the first time it starts, and it's free with an
             account.
           </motion.p>
           {!onLinux && (
             <motion.p className="notice" {...reveal} transition={{ ...reveal.transition, delay: 0.2 }}>
-              Tactum runs on Linux. There's no Windows or macOS version yet.
+              Vybrant runs on Linux. There's no Windows or macOS version yet.
             </motion.p>
           )}
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
@@ -109,7 +109,7 @@ export function Download() {
               <span className="step-number">02</span>
               <h3>Paste your license</h3>
               <p>
-                Tactum asks for it at the first start. <a href="/account" className="link">Generate yours</a> with a free account.
+                Vybrant asks for it at the first start. <a href="/account" className="link">Generate yours</a> with a free account.
               </p>
             </li>
             <li>

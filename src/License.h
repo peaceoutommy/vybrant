@@ -15,7 +15,7 @@ struct Info {
 };
 
 Info verify(const QString& key, const QByteArray& publicKey);   // publicKey: the 32 raw bytes
-Info current();   // the stored license, checked against Tactum's own key
+Info current();   // the stored license, checked against Vybrant's own key
 bool ensure();   // a valid license, or the activation dialog until one is entered; false: the user chose to quit
 QDialog* makeDialog(QWidget* parent, bool required);   // required: Quit instead of Cancel (startup)
 

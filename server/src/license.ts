@@ -11,7 +11,7 @@ export function loadPrivateKey(base64Der: string): KeyObject {
   return createPrivateKey({ key: Buffer.from(base64Der, 'base64'), format: 'der', type: 'pkcs8' });
 }
 
-// "<payload>.<signature>", both base64url: Ed25519 over the payload's JSON bytes. Tactum checks it offline with the
+// "<payload>.<signature>", both base64url: Ed25519 over the payload's JSON bytes. Vybrant checks it offline with the
 // matching public key (src/License.cpp), so the format here and there must stay the same.
 export function signLicense(payload: LicensePayload, key: KeyObject): string {
   const body = Buffer.from(JSON.stringify(payload));

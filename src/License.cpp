@@ -41,7 +41,7 @@ Info current() { return verify(QSettings().value("license/key").toString(), kPro
 
 QDialog* makeDialog(QWidget* parent, bool required) {
     auto* d = new QDialog(parent);
-    d->setWindowTitle("Tactum license");
+    d->setWindowTitle("Vybrant license");
     d->setMinimumWidth(460);
     auto* lay = new QVBoxLayout(d);
     auto* intro = new QLabel(
@@ -70,7 +70,7 @@ QDialog* makeDialog(QWidget* parent, bool required) {
         ok->setEnabled(i.valid);
         status->setText(edit->toPlainText().trimmed().isEmpty() ? QString()
                 : i.valid ? QString("Licensed to %1 (%2)").arg(i.name.toHtmlEscaped(), i.email.toHtmlEscaped())
-                          : QString("<span style='color:#e06c5a'>This is not a valid Tactum license key.</span>"));
+                          : QString("<span style='color:#e06c5a'>This is not a valid Vybrant license key.</span>"));
     };
     QObject::connect(edit, &QPlainTextEdit::textChanged, d, check);
     QObject::connect(get, &QPushButton::clicked, d, [] { QDesktopServices::openUrl(QUrl(kAccountUrl)); });

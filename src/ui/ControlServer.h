@@ -1,5 +1,5 @@
-// Local control socket for scripting and automated testing: `tactum-ctl <command>` talks to the running instance.
-// Socket: $XDG_RUNTIME_DIR/tactum.sock (one line per command, one line reply).
+// Local control socket for scripting and automated testing: `vybrant-ctl <command>` talks to the running instance.
+// Socket: $XDG_RUNTIME_DIR/vybrant.sock (one line per command, one line reply).
 #pragma once
 #include <QObject>
 #include <QLocalServer>

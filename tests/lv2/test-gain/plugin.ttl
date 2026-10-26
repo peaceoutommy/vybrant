@@ -1,7 +1,7 @@
 @prefix doap: <http://usefulinc.com/ns/doap#> .
 @prefix lv2: <http://lv2plug.in/ns/lv2core#> .
 
-<urn:tactum:test-gain>
+<urn:vybrant:test-gain>
     a lv2:Plugin, lv2:AmplifierPlugin ;
     doap:name "MT Test Gain" ;
     lv2:optionalFeature lv2:hardRTCapable ;

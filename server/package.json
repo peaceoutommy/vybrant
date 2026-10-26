@@ -1,7 +1,7 @@
 {
-  "name": "tactum-license-server",
+  "name": "vybrant-license-server",
   "private": true,
-  "description": "Accounts (Clerk) and license signing for Tactum",
+  "description": "Accounts (Clerk) and license signing for Vybrant",
   "scripts": {
     "build": "nest build",
     "dev": "nest start --watch",

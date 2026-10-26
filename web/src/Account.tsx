@@ -98,11 +98,11 @@ function LicensePanel() {
                 {copied ? 'Copied' : 'Copy license'}
               </button>
               <a href="/download" className="btn btn-ghost">
-                Download Tactum
+                Download Vybrant
               </a>
             </div>
             <p className="muted small">
-              Open Tactum and paste it when asked, or later under Help → License…
+              Open Vybrant and paste it when asked, or later under Help → License…
             </p>
           </motion.div>
         )}

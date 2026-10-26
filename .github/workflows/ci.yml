@@ -21,7 +21,7 @@ jobs:
 
       - name: Build
         run: |
-          qmake6 Tactum.pro
+          qmake6 Vybrant.pro
           make -j"$(nproc)"
 
       - name: Self test
@@ -29,12 +29,12 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           XDG_CONFIG_HOME: ${{ runner.temp }}/cfg
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: ./bin/tactum --selftest
+        run: ./bin/vybrant --selftest
 
       - name: UI test (control socket)
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: python3 tests/ui_test.py ./bin/tactum
+        run: python3 tests/ui_test.py ./bin/vybrant
 
       - name: CLAP ABI check (skips without the official headers)
         run: python3 tests/clap_abi_check.py
@@ -42,7 +42,7 @@ jobs:
       - name: Sync test (JACK transport, MIDI clock in; skips what the runner lacks)
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}
-        run: python3 tests/sync_test.py ./bin/tactum
+        run: python3 tests/sync_test.py ./bin/vybrant
 
   web:
     runs-on: ubuntu-24.04

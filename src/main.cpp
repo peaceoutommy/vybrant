@@ -1,4 +1,4 @@
-// Tactum - Linux native DAW. Entry point.
+// Vybrant - Linux native DAW. Entry point.
 #include "ui/App.h"
 #include "ui/MainWindow.h"
 #include "ui/ControlServer.h"
@@ -27,17 +27,20 @@ int runBackupTest(App& app);
 int runDockTest(QMainWindow* win);
 }   // namespace mt
 
-// The app was called MusicThingy until 2026-10: its settings, plugin database, presets, templates and autosaves move over
+// The app was called MusicThingy, then Tactum (until 2026-10): its settings (license included), plugin database and pictures,
+// presets, templates and autosaves move over from the newest old name found
 static void migrateOldName() {
     QString cfg = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
     QString data = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    if (QDir(cfg + "/MusicThingy").exists() && !QDir(cfg + "/Tactum").exists()) {
-        QDir().rename(cfg + "/MusicThingy", cfg + "/Tactum");
-        QFile::rename(cfg + "/Tactum/MusicThingy.conf", cfg + "/Tactum/Tactum.conf");
-    }
-    if (QDir(data + "/MusicThingy/MusicThingy").exists() && !QDir(data + "/Tactum").exists()) {
-        QDir().rename(data + "/MusicThingy", data + "/Tactum");
-        QDir().rename(data + "/Tactum/MusicThingy", data + "/Tactum/Tactum");
+    for (const QString old : {"Tactum", "MusicThingy"}) {
+        if (QDir(cfg + "/" + old).exists() && !QDir(cfg + "/Vybrant").exists()) {
+            QDir().rename(cfg + "/" + old, cfg + "/Vybrant");
+            QFile::rename(cfg + "/Vybrant/" + old + ".conf", cfg + "/Vybrant/Vybrant.conf");
+        }
+        if (QDir(data + "/" + old + "/" + old).exists() && !QDir(data + "/Vybrant").exists()) {
+            QDir().rename(data + "/" + old, data + "/Vybrant");
+            QDir().rename(data + "/Vybrant/" + old, data + "/Vybrant/Vybrant");
+        }
     }
 }
 
@@ -45,8 +48,8 @@ int main(int argc, char** argv) {
     // Plugin scanning runs in a child process so a crashing plugin cannot take the DAW down.
     if (argc >= 3 && std::strcmp(argv[1], "--scan-plugin") == 0) {
         QCoreApplication core(argc, argv);
-        QCoreApplication::setOrganizationName("Tactum");
-        QCoreApplication::setApplicationName("Tactum");
+        QCoreApplication::setOrganizationName("Vybrant");
+        QCoreApplication::setApplicationName("Vybrant");
         return mt::PluginScanner::scanChildMain(QString::fromLocal8Bit(argv[2]));
     }
     // Plugin GUIs need an X11 window; run under XWayland when a Wayland session is detected and nothing else was requested.
@@ -61,8 +64,8 @@ int main(int argc, char** argv) {
         }
     }
     QApplication app(argc, argv);
-    QCoreApplication::setOrganizationName("Tactum");
-    QCoreApplication::setApplicationName("Tactum");
+    QCoreApplication::setOrganizationName("Vybrant");
+    QCoreApplication::setApplicationName("Vybrant");
     migrateOldName();
     QApplication::setStyle("Fusion");
     mt::theme::setPalette(mt::theme::loadSavedTheme());
@@ -91,7 +94,7 @@ int main(int argc, char** argv) {
     if (QGuiApplication::platformName() != "offscreen" && !mt::license::ensure()) return 0;
     mt::MainWindow win(daw);
     win.show();
-    mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/tactum.sock)
+    mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/vybrant.sock)
     QString openFile, screenshot, renderPath, panel;
     bool quitAfter = false;
     for (int i = 1; i < argc; ++i) {
@@ -107,7 +110,7 @@ int main(int argc, char** argv) {
     if (quitAfter) win.setForceClose(true);
     if (!openFile.isEmpty()) daw.openProject(openFile);
     else if (renderPath.isEmpty()) QTimer::singleShot(0, &win, [&win] { win.startupChecks(); });
-    if (!renderPath.isEmpty()) {   // batch render: tactum song.mtp --render out.wav [--quit]
+    if (!renderPath.isEmpty()) {   // batch render: vybrant song.mtp --render out.wav [--quit]
         QTimer::singleShot(500, &win, [&daw, renderPath, quitAfter] {
             mt::RenderOptions o;
             o.path = renderPath;

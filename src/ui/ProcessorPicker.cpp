@@ -457,7 +457,7 @@ ProcessorPicker::ProcessorPicker(App& app, ProcessorKind kind, QWidget* parent)
     m_recent = s.value("picker/recent").toStringList();
     m_pictures = s.value("picker/pictures", true).toBool();
     for (auto& i : NativeRegistry::instance().all())
-        if (i.kind == kind) m_entries.push_back({"native:" + i.key, i.name, "Tactum", "native", inst ? nativeInstrumentCategory(i.key) : i.category});
+        if (i.kind == kind) m_entries.push_back({"native:" + i.key, i.name, "Vybrant", "native", inst ? nativeInstrumentCategory(i.key) : i.category});
     for (auto& p : m_app.pluginDb().plugins()) {
         if (p.failed || p.hidden || (p.category == "Instrument") != inst) continue;
         m_entries.push_back({"plugin:" + p.key(), p.name, p.vendor, p.format, categoryOf(p)});

@@ -3,7 +3,7 @@ import { Show, UserButton } from '@clerk/react';
 export function Footer() {
   return (
     <footer className="footer container">
-      <span>© {new Date().getFullYear()} Tactum</span>
+      <span>© {new Date().getFullYear()} Vybrant</span>
       <span className="mono">Free software under GPL-3.0-or-later</span>
     </footer>
   );
@@ -13,9 +13,9 @@ export function Nav() {
   return (
     <header className="nav">
       <div className="container nav-row">
-        <a href="/" className="brand" aria-label="Tactum home">
+        <a href="/" className="brand" aria-label="Vybrant home">
           <img src="/logo.svg" alt="" width={26} height={26} />
-          <span>TACTUM</span>
+          <span>VYBRANT</span>
         </a>
         <nav className="nav-links" aria-label="Sections">
           <a href="/#features">Features</a>

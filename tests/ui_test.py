@@ -2,13 +2,13 @@
 """UI behaviour tests driven through the control socket (see src/ui/ControlServer.cpp).
 
 Starts an offscreen instance with a private config directory and socket, so it never touches a running
-Tactum or the user's settings. Run from the repository root after building:
+Vybrant or the user's settings. Run from the repository root after building:
 
-    python3 tests/ui_test.py [path/to/tactum]
+    python3 tests/ui_test.py [path/to/vybrant]
 """
 import os, socket, subprocess, sys, tempfile, time
 
-BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "bin", "tactum")
+BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(__file__), "..", "bin", "vybrant")
 fails = 0
 
 
@@ -63,7 +63,7 @@ def main():
     tmp = tempfile.mkdtemp(prefix="mt-uitest-")
     cfg, sock = os.path.join(tmp, "cfg"), os.path.join(tmp, "s.sock")  # short socket path: AF_UNIX limit
     os.makedirs(cfg)
-    print("Tactum UI test")
+    print("Vybrant UI test")
 
     # ---- rack ⇄ piano roll: step-shaped notes stay steps, anything else becomes piano-roll notes
     ins = Instance(cfg, sock)
@@ -182,8 +182,8 @@ def main():
     with wave.open(os.path.join(lib, "snare_hit.wav"), "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(44100); w.writeframes(b"\x10\x00" * 4410)
     cfg7 = os.path.join(tmp, "cfg7")
-    os.makedirs(os.path.join(cfg7, "Tactum"))
-    with open(os.path.join(cfg7, "Tactum", "Tactum.conf"), "w") as f:
+    os.makedirs(os.path.join(cfg7, "Vybrant"))
+    with open(os.path.join(cfg7, "Vybrant", "Vybrant.conf"), "w") as f:
         f.write(f"[browser]\ndirs={lib}\n")
     ins = Instance(cfg7, sock)
     before = len(ins.send("channels").split(" | "))
@@ -383,20 +383,22 @@ def main():
     # ---- the license dialog tells a bad key apart (a good one needs the real signing key, see --selftest for the format)
     ins = Instance(cfg14, sock)
     r = ins.send(f"licensedialog {png} eyJ2IjoxfQ.bm90IGEgc2lnbmF0dXJl")
-    check("not a valid" in r and os.path.getsize(png) > 0, "the license dialog rejects a key that is not signed by Tactum", r)
+    check("not a valid" in r and os.path.getsize(png) > 0, "the license dialog rejects a key that is not signed by Vybrant", r)
     ins.quit()
 
-    # ---- the app was called MusicThingy: its settings and data move to the new name on the first start
-    cfg12 = os.path.join(tmp, "cfg12")
-    os.makedirs(os.path.join(cfg12, "MusicThingy"))
-    os.makedirs(os.path.join(cfg12, "data", "MusicThingy", "MusicThingy", "presets"))
-    with open(os.path.join(cfg12, "MusicThingy", "MusicThingy.conf"), "w") as f:
-        f.write("[ui]\nmigrated=1\n")
-    ins = Instance(cfg12, sock)
-    ins.quit()
-    moved = os.path.exists(os.path.join(cfg12, "Tactum", "Tactum.conf")) and os.path.isdir(os.path.join(cfg12, "data", "Tactum", "Tactum", "presets"))
-    check(moved and not os.path.exists(os.path.join(cfg12, "MusicThingy")), "settings and data from the old name move to Tactum",
-          sorted(os.path.relpath(os.path.join(r, n), cfg12) for r, ds, fs in os.walk(cfg12) for n in ds + fs))
+    # ---- the app was called MusicThingy, then Tactum: settings and data move to Vybrant on the first start
+    for n, old in enumerate(["MusicThingy", "Tactum"]):
+        c = os.path.join(tmp, f"cfg-old{n}")
+        os.makedirs(os.path.join(c, old))
+        os.makedirs(os.path.join(c, "data", old, old, "thumbnails"))
+        with open(os.path.join(c, old, f"{old}.conf"), "w") as f:
+            f.write("[license]\nkey=abc\n")
+        ins = Instance(c, sock)
+        ins.quit()
+        conf = os.path.join(c, "Vybrant", "Vybrant.conf")
+        moved = os.path.exists(conf) and "key=abc" in open(conf).read() and os.path.isdir(os.path.join(c, "data", "Vybrant", "Vybrant", "thumbnails"))
+        check(moved and not os.path.exists(os.path.join(c, old)), f"settings and data from {old} move to Vybrant",
+              sorted(os.path.relpath(os.path.join(r, x), c) for r, ds, fs in os.walk(c) for x in ds + fs))
 
     print("\n%s" % ("All UI checks passed" if fails == 0 else f"{fails} UI check(s) FAILED"))
     return 1 if fails else 0

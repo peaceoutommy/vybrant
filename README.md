@@ -1,4 +1,4 @@
-# Tactum
+# Vybrant
 
 A Linux-native digital audio workstation with a pattern-based workflow: Channel Rack + step sequencer, Piano Roll,
 Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP/LV2 hosting,
@@ -6,7 +6,7 @@ automation, audio/MIDI recording and offline rendering. Original UI, original DS
 
 ## Download
 
-Each release on GitHub has an AppImage: make it executable and run it (`chmod +x Tactum-*.AppImage`). It runs on
+Each release on GitHub has an AppImage: make it executable and run it (`chmod +x Vybrant-*.AppImage`). It runs on
 distributions with glibc 2.39 or newer (Ubuntu 24.04+, Fedora 40+, Arch) and uses the system's JACK library
 (`pipewire-jack` or `jack2`) for audio.
 
@@ -28,13 +28,13 @@ Dependencies (all available from common distro repositories):
 | License check | OpenSSL `libcrypto` (Ed25519) |
 
 ```bash
-qmake6 Tactum.pro && make -j$(nproc)      # primary build
+qmake6 Vybrant.pro && make -j$(nproc)      # primary build
 # or
 cmake -B build-cmake && cmake --build build-cmake -j$(nproc)
-./bin/tactum
+./bin/vybrant
 ```
 
-Command line: `tactum [project.mtp] [--render out.wav] [--selftest] [--screenshot file.png] [--quit]`.
+Command line: `vybrant [project.mtp] [--render out.wav] [--selftest] [--screenshot file.png] [--quit]`.
 `--selftest` runs the built-in test suite (serializer round-trip, undo/redo, every native processor, delay
 compensation, routing-cycle detection, automation, offline render). `--scan-plugin <path>` is used internally by the
 out-of-process plugin scanner, and `--plugin-bridge <socket> <shm>` by plugins that run in their own process (plugin
@@ -47,10 +47,10 @@ the platform yourself.
 ## Tests and code style
 
 ```bash
-./bin/tactum --selftest          # engine / model checks (serializer, undo, processors, render)
+./bin/vybrant --selftest          # engine / model checks (serializer, undo, processors, render)
 python3 tests/ui_test.py              # UI behaviour through the control socket, in an offscreen instance
 python3 tests/sync_test.py            # JACK transport and MIDI clock in, against a dummy jackd / ALSA client
-QT_QPA_PLATFORM=xcb ./bin/tactum --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
+QT_QPA_PLATFORM=xcb ./bin/vybrant --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
 ```
 
 All but the embed test run in CI (`.github/workflows/ci.yml`). The UI test uses a private config directory and socket, so it is
@@ -161,9 +161,9 @@ is the hook for future format versions.
 
 ## Licenses for users
 
-Tactum asks for a license key at startup (Help > License... changes it later). Keys come from the website: people sign in
+Vybrant asks for a license key at startup (Help > License... changes it later). Keys come from the website: people sign in
 (Clerk: Google or email) and generate one license per account. A key is a small JSON payload (account id, name, email) plus
-an Ed25519 signature; Tactum verifies it offline against the public key in `src/License.cpp`.
+an Ed25519 signature; Vybrant verifies it offline against the public key in `src/License.cpp`.
 
 - `server/`: NestJS API. `GET/POST /api/license` behind the Clerk session token; the license is kept in the user's Clerk
   private metadata (no database). `npm run keygen` makes a signing key pair, `npm test` checks the signing.
@@ -178,7 +178,7 @@ cd ../web && cp .env.example .env.local   # VITE_CLERK_PUBLISHABLE_KEY
 npm install && npm run dev            # :5173, proxies /api to :3000
 ```
 
-A new key pair invalidates every license made with the old one once Tactum ships the new public key. As free software,
+A new key pair invalidates every license made with the old one once Vybrant ships the new public key. As free software,
 the check can be removed from the source; it guards the official builds.
 
 ## License

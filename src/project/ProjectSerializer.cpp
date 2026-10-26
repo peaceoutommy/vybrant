@@ -37,7 +37,7 @@ QJsonObject ProjectSerializer::toJson(const Project& p) {
     const QString dir = p.settings.projectDir;
     QJsonObject root;
     root["formatVersion"] = kFormatVersion;
-    root["application"] = "Tactum";
+    root["application"] = "Vybrant";
     root["project"] = QJsonObject{{"title", p.meta.title}, {"author", p.meta.author}, {"comments", p.meta.comments},
         {"created", p.meta.created}, {"modified", p.meta.modified}, {"genre", p.meta.genre}, {"sampleRate", p.settings.sampleRate},
         {"bitDepth", p.settings.bitDepth}, {"nextId", (double)p.nextId}, {"selectedPattern", (double)p.selectedPatternId},
@@ -176,7 +176,7 @@ QJsonObject ProjectSerializer::migrate(QJsonObject root, int fromVersion) {
 bool ProjectSerializer::fromJson(const QJsonObject& rootIn, Project& p, QString* error) {
     int ver = rootIn["formatVersion"].toInt(0);
     if (ver <= 0) {
-        if (error) *error = "Not a Tactum project (missing formatVersion)";
+        if (error) *error = "Not a Vybrant project (missing formatVersion)";
         return false;
     }
     if (ver > kFormatVersion) {

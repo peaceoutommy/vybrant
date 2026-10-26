@@ -5,7 +5,7 @@
   --faint: #5d6674;
   --line: rgba(255, 255, 255, 0.08);
   --card: rgba(255, 255, 255, 0.025);
-  --accent: #f2a93b;   /* Tactum's own highlight, used sparingly */
+  --accent: #f2a93b;   /* Vybrant's own highlight, used sparingly */
   --sans: 'Geist', ui-sans-serif, system-ui, sans-serif;
   --mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, monospace;
   --ease: cubic-bezier(0.22, 1, 0.36, 1);

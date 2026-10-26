@@ -369,7 +369,7 @@ QMimeData* BrowserModel::mimeData(const QModelIndexList& indexes) const {
     int kind = idx.data(KindRole).toInt();
     QString path = idx.data(PathRole).toString();
     if (isRootFolder(idx)) {
-        md->setData("application/x-tactum-folder", path.toUtf8());
+        md->setData("application/x-vybrant-folder", path.toUtf8());
         return md;
     }
     if (kind == AudioFile || kind == ProjectFile) md->setUrls({QUrl::fromLocalFile(path)});
@@ -389,8 +389,8 @@ QMimeData* BrowserModel::mimeData(const QModelIndexList& indexes) const {
 }
 
 bool BrowserModel::dropMimeData(const QMimeData* data, Qt::DropAction, int row, int, const QModelIndex& parent) {
-    if (!data->hasFormat("application/x-tactum-folder")) return false;
-    QString path = QString::fromUtf8(data->data("application/x-tactum-folder"));
+    if (!data->hasFormat("application/x-vybrant-folder")) return false;
+    QString path = QString::fromUtf8(data->data("application/x-vybrant-folder"));
     if (!m_dirs.contains(path)) return false;
     // target position among the root library folders (drops on categories clamp to the folder block)
     int targetRow = parent.isValid() ? parent.row() : row;

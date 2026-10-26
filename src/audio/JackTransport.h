@@ -1,5 +1,5 @@
 // JACK transport sync: play / stop / position follow the other JACK clients (and the tempo, when a timebase master
-// publishes one), and Tactum's own play / stop / seek drive the JACK transport for them in turn.
+// publishes one), and Vybrant's own play / stop / seek drive the JACK transport for them in turn.
 #pragma once
 #include "core/Types.h"
 #include <QObject>

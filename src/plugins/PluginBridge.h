@@ -1,4 +1,4 @@
-// Out-of-process plugins: each bridged plugin runs in its own `tactum --plugin-bridge` process, so a plugin that
+// Out-of-process plugins: each bridged plugin runs in its own `vybrant --plugin-bridge` process, so a plugin that
 // crashes (or corrupts memory) takes only that process down; the app keeps running and the plugin goes silent.
 // Audio is handed over per block through shared memory and a pair of process-shared semaphores (no added latency);
 // everything else (create, state, value text, editor) goes over a local socket as JSON lines. Editors are X11 windows
@@ -88,7 +88,7 @@ private:
     bool m_shuttingDown = false;
 };
 
-// Entry point of the plugin process (`tactum --plugin-bridge <socket> <shm>`)
+// Entry point of the plugin process (`vybrant --plugin-bridge <socket> <shm>`)
 int pluginBridgeMain(const QString& socketName, const QString& shmName);
 
 }   // namespace mt

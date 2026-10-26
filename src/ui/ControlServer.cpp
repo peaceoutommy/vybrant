@@ -59,7 +59,7 @@ QString ControlServer::socketPath() {
     if (!env.isEmpty()) return env; /* tests: a private socket so they never talk to the user's instance */
     QString d = qEnvironmentVariable("XDG_RUNTIME_DIR");
     if (d.isEmpty()) d = QDir::tempPath();
-    return d + "/tactum.sock";
+    return d + "/vybrant.sock";
 }
 
 ControlServer::ControlServer(App& app, MainWindow& win, QObject* parent)

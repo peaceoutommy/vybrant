@@ -12,9 +12,9 @@ const features = [
 ];
 
 const steps = [
-  { title: 'Download Tactum', text: 'One file for 64-bit Linux, the same one for every update.', href: '/download' },
+  { title: 'Download Vybrant', text: 'One file for 64-bit Linux, the same one for every update.', href: '/download' },
   { title: 'Get your license', text: 'Sign in with Google or your email; one free license per account.', href: '/account' },
-  { title: 'Paste it into Tactum', text: 'Tactum checks it on your machine. No connection needed after that.' },
+  { title: 'Paste it into Vybrant', text: 'Vybrant checks it on your machine. No connection needed after that.' },
 ];
 
 // Reveal as it scrolls into view, once
@@ -45,7 +45,7 @@ export function Landing() {
             can <em>feel.</em>
           </motion.h1>
           <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
-            Tactum is a complete music studio for Linux. Sequence patterns, play parts into the piano roll, mix with sends and
+            Vybrant is a complete music studio for Linux. Sequence patterns, play parts into the piano roll, mix with sends and
             sidechains, and run your own plugins.
           </motion.p>
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
@@ -69,7 +69,7 @@ export function Landing() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
-            <img src="/tactum.webp" alt="Tactum's playlist with patterns arranged over eight bars" width={1600} height={640} />
+            <img src="/vybrant.webp" alt="Vybrant's playlist with patterns arranged over eight bars" width={1600} height={640} />
           </motion.div>
         </div>
 

@@ -1,6 +1,6 @@
-# Tactum DAW - qmake project (Linux native)
+# Vybrant DAW - qmake project (Linux native)
 TEMPLATE = app
-TARGET = tactum
+TARGET = vybrant
 QT += core gui widgets network
 CONFIG += c++20 link_pkgconfig
 CONFIG -= debug_and_release
@@ -22,7 +22,7 @@ HEADERS += $$files(src/*.h, true)
 target.path = $$(HOME)/.local/bin
 # the launcher gets the full path: not every desktop's launcher has ~/.local/bin on its PATH
 desktop.path = $$(HOME)/.local/share/applications
-desktop.extra = sed \"s|^Exec=tactum|Exec=$$(HOME)/.local/bin/tactum|\" $$PWD/resources/tactum.desktop > $(INSTALL_ROOT)$$desktop.path/tactum.desktop
-icon.files = resources/tactum.svg
+desktop.extra = sed \"s|^Exec=vybrant|Exec=$$(HOME)/.local/bin/vybrant|\" $$PWD/resources/vybrant.desktop > $(INSTALL_ROOT)$$desktop.path/vybrant.desktop
+icon.files = resources/vybrant.svg
 icon.path = $$(HOME)/.local/share/icons/hicolor/scalable/apps
 INSTALLS += target desktop icon

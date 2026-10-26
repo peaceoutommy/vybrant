@@ -22,10 +22,10 @@ bool MidiEngine::start() {
         Log::warn("ALSA sequencer unavailable; MIDI disabled");
         return false;
     }
-    snd_seq_set_client_name(seq, "Tactum");
-    m_inPort = snd_seq_create_simple_port(seq, "Tactum In", SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE,
+    snd_seq_set_client_name(seq, "Vybrant");
+    m_inPort = snd_seq_create_simple_port(seq, "Vybrant In", SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE,
         SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
-    m_outPort = snd_seq_create_simple_port(seq, "Tactum Out", SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ,
+    m_outPort = snd_seq_create_simple_port(seq, "Vybrant Out", SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ,
         SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
     m_seq = seq;
     m_running.store(true);

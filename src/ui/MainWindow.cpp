@@ -148,7 +148,7 @@ private:
 MainWindow::MainWindow(App& app, QWidget* parent)
     : QMainWindow(parent)
     , m_app(app) {
-    setWindowTitle("Tactum");
+    setWindowTitle("Vybrant");
     resize(1500, 900);
     setDockNestingEnabled(true);
     setDockOptions(AllowNestedDocks | AllowTabbedDocks | AnimatedDocks | GroupedDragging);
@@ -767,10 +767,10 @@ void MainWindow::buildMenus() {
         },
         this));
     help->addAction(reg.add(
-        "help.about", "About Tactum", "Help", QKeySequence(),
+        "help.about", "About Vybrant", "Help", QKeySequence(),
         [this] {
-            QMessageBox::about(this, "About Tactum",
-                "<b>Tactum</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
+            QMessageBox::about(this, "About Vybrant",
+                "<b>Vybrant</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
         },
         this));
 }
@@ -820,7 +820,7 @@ void MainWindow::uiTick() {
     }
 }
 void MainWindow::updateTitle() {
-    setWindowTitle(QString("%1%2 - Tactum").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : ""));
+    setWindowTitle(QString("%1%2 - Vybrant").arg(m_app.projectTitle(), m_app.model().isDirty() ? "*" : ""));
 }
 
 void MainWindow::openEditor(Id id, const QString& titleIn) {
@@ -863,7 +863,7 @@ bool MainWindow::maybeSave() {
 bool MainWindow::doOpen(const QString& pathIn) {
     if (!maybeSave()) return false;
     QString path = pathIn;
-    if (path.isEmpty()) path = QFileDialog::getOpenFileName(this, "Open project", QString(), "Tactum project (*.mtp)");
+    if (path.isEmpty()) path = QFileDialog::getOpenFileName(this, "Open project", QString(), "Vybrant project (*.mtp)");
     if (path.isEmpty()) return false;
     return m_app.openProject(path);
 }
@@ -872,7 +872,7 @@ bool MainWindow::doSave() {
     return m_app.saveProject();
 }
 bool MainWindow::doSaveAs() {
-    QString path = QFileDialog::getSaveFileName(this, "Save project", m_app.projectTitle() + ".mtp", "Tactum project (*.mtp)");
+    QString path = QFileDialog::getSaveFileName(this, "Save project", m_app.projectTitle() + ".mtp", "Vybrant project (*.mtp)");
     if (path.isEmpty()) return false;
     if (!path.endsWith(".mtp")) path += ".mtp";
     bool ok = m_app.saveProjectAs(path);

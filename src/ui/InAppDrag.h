@@ -12,7 +12,7 @@ bool runInAppDrag(QWidget* source, std::unique_ptr<QMimeData> mime, const QStrin
 
 // Our drags carry "kind|value" (audio|path, native|key, plugin|key, pattern|id, lane|id, preset|path) under kItemMime,
 // next to plain file URLs for audio
-inline const char* const kItemMime = "application/x-tactum-item";
+inline const char* const kItemMime = "application/x-vybrant-item";
 inline bool hasAppDrop(const QMimeData* m) { return m->hasUrls() || m->hasFormat(kItemMime); }
 struct DropItem {
     QString kind, value;

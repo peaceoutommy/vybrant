@@ -1,5 +1,5 @@
-// A new Ed25519 key pair for signing licenses: the private key goes in the server's .env, the public key into Tactum
-// (kProductKey in src/License.cpp). Licenses made with an old private key stop working once Tactum ships the new public key.
+// A new Ed25519 key pair for signing licenses: the private key goes in the server's .env, the public key into Vybrant
+// (kProductKey in src/License.cpp). Licenses made with an old private key stop working once Vybrant ships the new public key.
 import { generateKeyPairSync } from 'node:crypto';
 
 const { privateKey, publicKey } = generateKeyPairSync('ed25519');

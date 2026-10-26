@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=Tactum
+Name=Vybrant
 Comment=Digital audio workstation
-Exec=tactum %f
-Icon=tactum
+Exec=vybrant %f
+Icon=vybrant
 Terminal=false
 Categories=AudioVideo;Audio;Music;
-MimeType=application/x-tactum-project;
+MimeType=application/x-vybrant-project;
