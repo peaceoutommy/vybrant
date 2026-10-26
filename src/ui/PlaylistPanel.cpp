@@ -716,7 +716,9 @@ void PlaylistView::paintEvent(QPaintEvent*) {
             const Clip* b = brush();
             const Pattern* pat = m_app.project().pattern(m_app.project().selectedPatternId);
             if (b || pat) {
-                QColor pc = b && b->type != ClipType::Pattern ? theme::accent() : pat ? pat->color : theme::accent();
+                QColor pc = (b && b->type != ClipType::Pattern) || m_pickLane || !m_pickFile.isEmpty() ? theme::accent()
+                    : pat                                                                         ? pat->color
+                                                                                                  : theme::accent();
                 Tick t = snap(xToTick(m_hoverPos.x()));
                 QRect r(tickToX(t), trackTop(tr) + 1, std::max(3, (int)(brushLength() * m_ppt)),
                     trackH(tr) - 2);
@@ -992,7 +994,10 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
         Tick at = std::max<Tick>(0, snap(xToTick(e->pos().x())));
         const Clip* b = brush();
         Id id = 0;
-        if (b && b->type != ClipType::Pattern) {
+        if (!b && (m_pickLane || !m_pickFile.isEmpty())) {   // picked in the project panel: a new clip of it, then it is the brush
+            id = m_pickLane ? m_app.addAutomationClip(t.id, m_pickLane, at, 0) : m_app.addAudioClip(t.id, m_pickFile, at);
+            if (const Clip* nc = proj.clip(id)) setBrush(*nc);
+        } else if (b && b->type != ClipType::Pattern) {
             Clip n = *b;   // copy first: inserting may move the clip list
             n.id = proj.newId();
             n.trackId = t.id;
@@ -1034,7 +1039,16 @@ void PlaylistView::revealClips(const std::vector<Id>& ids) {
     setFocus();
     invalidate();
 }
+void PlaylistView::pickSource(ClipType type, Id id, const QString& file) {
+    m_hasBrush = false;
+    m_pickType = type;
+    m_pickLane = type == ClipType::Automation ? id : 0;
+    m_pickFile = type == ClipType::Audio ? file : QString();
+    update();
+}
 void PlaylistView::setBrush(const Clip& c) {
+    m_pickLane = 0;
+    m_pickFile.clear();
     m_brush = c;
     m_brushClip = c.id;
     m_hasBrush = true;
@@ -1052,6 +1066,11 @@ const Clip* PlaylistView::brush() const {
 Tick PlaylistView::brushLength() const {
     auto& proj = m_app.project();
     if (const Clip* b = brush()) return proj.clipLength(*b);
+    if (const AutomationLane* l = m_pickLane ? proj.lane(m_pickLane) : nullptr) return l->length;
+    if (!m_pickFile.isEmpty()) {
+        for (auto& a : proj.audioSources)
+            if (a.filePath == m_pickFile && a.sampleRate > 0) return proj.transport.tempoMap().ticksFor(0, a.frames / a.sampleRate);
+    }
     const Pattern* p = proj.pattern(proj.selectedPatternId);
     return p ? proj.patternLength(*p) : 0;
 }

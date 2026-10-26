@@ -99,7 +99,11 @@ ProjectSamplesPanel::ProjectSamplesPanel(App& app, QWidget* parent)
     lay->addWidget(box, 1);
     // click: select a pattern (samples stay silent - right-click > Preview plays one); double-click: place at the playhead
     auto activate = [this](QListWidgetItem* it) {
-        if (it && m_tab == Patterns) m_app.selectPattern(it->data(ProjectItemList::IdRole).toULongLong());
+        if (!it) return;
+        Id id = it->data(ProjectItemList::IdRole).toULongLong();
+        if (m_tab == Patterns) m_app.selectPattern(id);
+        Q_EMIT picked(m_tab == Samples ? ClipType::Audio : m_tab == Patterns ? ClipType::Pattern : ClipType::Automation, id,
+            it->data(ProjectItemList::PathRole).toString());
     };
     connect(m_list, &QListWidget::itemClicked, this, activate);
     connect(m_list, &QListWidget::currentItemChanged, this, [this, activate](QListWidgetItem* it, QListWidgetItem*) {

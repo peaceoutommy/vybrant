@@ -30,6 +30,9 @@ public:
     }
     void revealClips(const std::vector<Id>& ids);   // select these clips and scroll the earliest into view
     std::set<Id> debugSelection() const { return m_selected; }
+    // The project panel picked a row: the draw tool places a new clip of it next (a pattern: the selected one), instead of the
+    // last clip clicked. The first clip placed becomes the brush, so a resize carries on to the next ones as usual.
+    void pickSource(ClipType type, Id id, const QString& file);
     QString debugInfo() const { return QString("sel=%1 ppt=%2 tool=%3 tempo=%4").arg(m_selected.size()).arg(m_ppt).arg(m_tool).arg(m_tempoOpen); }
     void refresh();
     void uiTick();
@@ -153,6 +156,9 @@ private:
     // FL: the last clicked (or resized) clip is the brush - the draw tool places a copy of it: the same pattern / sample /
     // automation, at its size and with its settings. Choosing another pattern elsewhere goes back to placing that pattern.
     Id m_brushClip = 0;
+    ClipType m_pickType = ClipType::Pattern;
+    Id m_pickLane = 0;   // picked automation lane
+    QString m_pickFile;   // picked sample
     Clip m_brush;   // kept in case that clip is deleted
     Id m_brushPatSel = 0;   // selected pattern when the brush was set
     bool m_hasBrush = false;

@@ -499,6 +499,7 @@ void MainWindow::buildDocks() {
     connect(m_samples, &ProjectSamplesPanel::openAudioClip, this, [this](Id id) { (new AudioClipEditor(m_app, id, this))->show(); });
     connect(m_samples, &ProjectSamplesPanel::openSample, this, [this](Id sid) { (new AudioClipEditor(m_app, 0, this, sid))->show(); });
     connect(m_samples, &ProjectSamplesPanel::openEditor, this, [this](Id ch) { openEditor(ch); });
+    connect(m_samples, &ProjectSamplesPanel::picked, m_playlist->view(), &PlaylistView::pickSource);
     connect(&m_app, &App::revealInProject, m_samples, &ProjectSamplesPanel::reveal);
     connect(m_samples, &ProjectSamplesPanel::showOnPlaylist, this, [this](const std::vector<Id>& ids) {
         if (m_pages->currentWidget() != m_workspace) showMixerPage(false);

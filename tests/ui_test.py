@@ -366,6 +366,15 @@ def main():
     placed = ins.send("clips").split()[-1]
     check(hat.endswith("A") and placed == "3:3840+" + hat.split("+")[1], "clicking a sample makes the draw tool place that sample",
           f"{hat} -> {placed}")
+    ins.send("projpick 1 0")   # the pattern in the project panel: it is placed next, not the sample
+    ins.send("pldrag 4 3840 4 3840")
+    after_pattern = ins.send("clips").split()[-1]
+    ins.send("projpick 0 0")   # and the sample again
+    ins.send("pldrag 5 3840 5 3840")
+    after_sample = ins.send("clips").split()[-1]
+    check(after_pattern.startswith("4:3840+") and not after_pattern.endswith("A") and after_sample.startswith("5:3840+") and
+          after_sample.endswith("A"), "what is picked in the project panel (pattern, then sample) is what the draw tool places next",
+          f"{after_pattern} {after_sample}")
     b, z = map(float, ins.send("plpinch 0.5").split())
     check(abs(z - b * 1.5) < 1e-6, "trackpad pinch zooms the playlist", f"{b} -> {z}")
     ins.quit()

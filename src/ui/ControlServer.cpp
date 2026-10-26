@@ -434,6 +434,10 @@ QString ControlServer::handle(const QString& line) {
         return QString("channels=%1 toast=%2").arg(m_app.project().channels.size()).arg(toast);
     }
     if (c == "projpanel") return m_win.samplesPanel()->debugState();
+    if (c == "projpick" && a.size() >= 3) {   // click a row in the project panel: projpick <tab 0 samples / 1 patterns / 2 automation> <row>
+        m_win.samplesPanel()->debugPick(a[1].toInt(), a[2].toInt());
+        return m_win.samplesPanel()->debugState();
+    }
     if (c == "patcombo") {   // pick the transport bar's "+ New pattern" entry: "selected=<name> patterns=<n>"
         for (auto* cb : m_win.findChildren<QComboBox*>())
             if (cb->toolTip().startsWith("Selected pattern")) cb->setCurrentIndex(cb->count() - 1);

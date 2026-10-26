@@ -80,6 +80,10 @@ public:
     void debugDoubleClickFirst();   // tests: double-click the first row of the current tab
     bool debugDropFile(const QString& path);   // tests: a browser drop of a file onto the list
     void debugShowFirst();   // tests: 'Show on playlist' on the first row
+    void debugPick(int tab, int row) {   // tests: click a row of a tab
+        setTab(tab);
+        if (auto* it = m_list->item(row)) Q_EMIT m_list->itemClicked(it);
+    }
     void debugRemoveFirst() {   // tests: 'Delete' on the first sample row
         if (m_list->count()) removeSamples({m_list->item(0)->data(ProjectItemList::PathRole).toString()});
     }
@@ -89,6 +93,7 @@ Q_SIGNALS:
     void openSample(Id sourceId);   // a project sample no clip uses: sample-only details
     void openEditor(Id channelId);   // a sample that only lives on a channel: that channel's editor
     void showOnPlaylist(const std::vector<Id>& clipIds);
+    void picked(ClipType type, Id id, const QString& file);   // a row was chosen: the playlist's draw tool places it next (file: samples)
 
 private:
     void rebuild();
