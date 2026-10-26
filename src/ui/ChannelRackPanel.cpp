@@ -91,12 +91,7 @@ void RackView::uiTick() {
         if (tv.songMode) {
             local = -1;
             for (auto& c : m_app.project().clips)
-                if (c.type == ClipType::Pattern && c.sourceId == p->id && tv.positionTicks >= c.start &&
-                    tv.positionTicks < c.start + c.length) {
-                    local = ((Tick)tv.positionTicks - c.start + c.sourceOffset) %
-                        std::max<Tick>(p->effectiveLength(m_app.project().transport.timeSig), 1);
-                    break;
-                }
+                if (c.sourceId == p->id && (local = m_app.project().patternPosAt(c, (Tick)tv.positionTicks)) >= 0) break;
         }
         if (local >= 0) ps = (int)(local / p->stepTicks());
     }

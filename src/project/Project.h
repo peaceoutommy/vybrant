@@ -407,6 +407,14 @@ struct Project {
         }
         return c.length;
     }
+    // Where in its pattern a pattern clip is at song position t, as the engine plays it: -1 outside the clip, and past the
+    // pattern's end in a clip that does not repeat it (the pattern plays once there)
+    Tick patternPosAt(const Clip& c, Tick t) const {
+        if (c.type != ClipType::Pattern || t < c.start || t >= c.start + clipLength(c)) return -1;
+        const Pattern* p = pattern(c.sourceId);
+        Tick len = p ? std::max<Tick>(p->effectiveLength(transport.timeSig), 1) : 1, off = t - c.start + c.sourceOffset;
+        return c.loopSource ? off % len : (off < len ? off : -1);
+    }
     Tick songLength() const {
         Tick e = 0;
         for (auto& c : clips) e = std::max(e, c.start + clipLength(c));

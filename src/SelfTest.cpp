@@ -1001,6 +1001,28 @@ int runSelfTest(App& app) {
         pr.transport = saved;
         eng.rebuild(pr);
     }
+    {   // the channel rack's play position in a pattern clip follows the engine: clip length, repeat or play once
+        Project pr;
+        Pattern pat;
+        pat.id = pr.newId();
+        pat.stepCount = 16;   // empty: one bar
+        pr.patterns.push_back(pat);
+        Clip c;
+        c.id = pr.newId();
+        c.type = ClipType::Pattern;
+        c.sourceId = pat.id;
+        c.start = 4 * PPQ;
+        c.length = 0;   // follows the pattern: one bar
+        Tick bar = 4 * PPQ;
+        bool follows = pr.patternPosAt(c, 4 * PPQ + PPQ) == PPQ && pr.patternPosAt(c, 4 * PPQ + bar) == -1 && pr.patternPosAt(c, 0) == -1;
+        c.length = 4 * bar;
+        c.loopSource = true;
+        bool repeats = pr.patternPosAt(c, 4 * PPQ + 2 * bar + PPQ) == PPQ;
+        c.loopSource = false;
+        bool once = pr.patternPosAt(c, 4 * PPQ + PPQ) == PPQ && pr.patternPosAt(c, 4 * PPQ + 2 * bar + PPQ) == -1;
+        CHECK(follows && repeats && once,
+            "the rack's play position: in a clip of the pattern's own length, a repeating longer clip, and a longer clip that plays it once");
+    }
     // ---- song mode with no loop area repeats the song from its start at the last clip's whole bar; an export runs straight on
     {
         auto& pr = app.project();
