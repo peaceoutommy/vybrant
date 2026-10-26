@@ -1015,6 +1015,8 @@ int runSelfTest(App& app) {
                 t, QPointF(px, py), v.mapToGlobal(QPointF(px, py)), b, t == QEvent::MouseButtonRelease ? Qt::NoButton : b, Qt::NoModifier);
             QCoreApplication::sendEvent(&v, &e);
         };
+        mouse(QEvent::MouseButtonPress, 40, 12, Qt::LeftButton);   // the lane starts closed: "Tempo" beside the ruler opens it
+        mouse(QEvent::MouseButtonRelease, 40, 12, Qt::LeftButton);
         mouse(QEvent::MouseButtonDblClick, x + 10, y, Qt::LeftButton);   // snaps to the bar line at beat 4
         bool added = pr.transport.tempoPoints.size() == 1 && pr.transport.tempoPoints[0].tick == 4 * PPQ;
         double b0 = added ? pr.transport.tempoPoints[0].bpm : 0;

@@ -487,6 +487,12 @@ QString ControlServer::handle(const QString& line) {
         return "ok";
     }
     if (c == "plinfo") return m_win.playlist()->view()->debugInfo();
+    if (c == "pltempo") {   // click "Tempo" in the playlist's header column (opens / closes the tempo lane): -> plinfo
+        auto* v = m_win.playlist()->view();
+        QPoint at = v->debugInfo().endsWith("tempo=0") ? QPoint(40, 12) : QPoint(40, 34);   // closed: beside the ruler; open: heading the lane
+        sendDrag(v, at, at, 0);
+        return v->debugInfo();
+    }
     if (c == "prlane" && a.size() >= 2) {   // piano-roll bottom lane: 0 velocity, 1 pan, 2 release, 3 fine pitch
         m_win.pianoRoll()->view()->setLane(a[1].toInt());
         return "ok";

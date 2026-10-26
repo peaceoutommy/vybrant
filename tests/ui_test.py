@@ -318,6 +318,10 @@ def main():
     os.makedirs(cfg4)
     ins = Instance(cfg4, sock)
     ins.send("action view.playlist")
+    info = ins.send("plinfo")
+    opened, closed = ins.send("pltempo"), ins.send("pltempo")
+    check(info.endswith("tempo=0") and opened.endswith("tempo=1") and closed.endswith("tempo=0"),
+          "the tempo lane starts closed; clicking Tempo opens and closes it", f"{info} | {opened} | {closed}")
     ins.send("pldrag 0 3840 0 7680 -5")   # stretch the demo's 1-bar clip to 2 bars by its right edge
     check(ins.send("clips") == "0:0+7680", "playlist clip resizes by its right edge", ins.send("clips"))
     ins.send("pldrag 1 0 1 0")

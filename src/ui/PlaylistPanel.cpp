@@ -36,6 +36,7 @@ PlaylistView::Layout PlaylistView::layout() const {
     Layout l;
     int w = width() - 14, h = height() - 14;
     l.ruler = QRect(l.headerW, 0, w - l.headerW, 24);
+    l.rulerH = m_tempoOpen ? 44 : 24;
     l.tempo = QRect(l.headerW, 24, w - l.headerW, l.rulerH - 24);
     l.headers = QRect(0, l.rulerH, l.headerW, h - l.rulerH);
     l.area = QRect(l.headerW, l.rulerH, w - l.headerW, h - l.rulerH);
@@ -179,7 +180,11 @@ int PlaylistView::tempoPointAt(const QPoint& p) const {
         if (std::abs(tickToX(pts[i].tick) - p.x()) <= 5) return i;
     return -1;
 }
+QRect PlaylistView::tempoToggleRect(const Layout& L) const {
+    return m_tempoOpen ? QRect(0, L.tempo.top(), L.headerW, L.tempo.height()) : QRect(0, 0, L.headerW, L.ruler.height());
+}
 void PlaylistView::paintTempoLane(QPainter& p, const Layout& L) {
+    if (!m_tempoOpen) return;
     const auto& tr = m_app.project().transport;
     TempoMap m = tr.tempoMap();
     p.save();
@@ -627,7 +632,7 @@ void PlaylistView::renderCache() {
     p.fillRect(QRect(0, 0, L.headerW, L.rulerH), theme::panel());
     p.setPen(theme::textDim());
     p.setFont(theme::smallFont());
-    p.drawText(QRect(10, L.tempo.top(), L.headerW - 14, L.tempo.height()), Qt::AlignVCenter | Qt::AlignLeft, "Tempo");
+    p.drawText(tempoToggleRect(L).adjusted(10, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft, m_tempoOpen ? "\u25BE  Tempo" : "\u25B8  Tempo");
     p.setPen(theme::border());
     p.drawLine(0, L.rulerH - 1, L.headerW, L.rulerH - 1);
 }
@@ -762,6 +767,11 @@ void PlaylistView::mousePressEvent(QMouseEvent* e) {
     auto& proj = m_app.project();
     if (e->button() == Qt::MiddleButton) {
         m_drag = Pan;
+        return;
+    }
+    if (e->button() == Qt::LeftButton && tempoToggleRect(L).contains(e->pos())) {
+        m_tempoOpen = !m_tempoOpen;
+        invalidate();
         return;
     }
     if (L.tempo.contains(e->pos())) {

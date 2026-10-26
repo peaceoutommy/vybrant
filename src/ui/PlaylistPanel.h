@@ -26,7 +26,7 @@ public:
     }
     void revealClips(const std::vector<Id>& ids);   // select these clips and scroll the earliest into view
     std::set<Id> debugSelection() const { return m_selected; }
-    QString debugInfo() const { return QString("sel=%1 ppt=%2 tool=%3").arg(m_selected.size()).arg(m_ppt).arg(m_tool); }
+    QString debugInfo() const { return QString("sel=%1 ppt=%2 tool=%3 tempo=%4").arg(m_selected.size()).arg(m_ppt).arg(m_tool).arg(m_tempoOpen); }
     void refresh();
     void uiTick();
     void zoomToFit();
@@ -87,7 +87,7 @@ private:
     QRect fadeIconRect(const Clip& c, int which) const;
     QRect gainIconRect(const Clip& c) const;
     struct Layout {
-        int headerW = 170, rulerH = 44;   // everything above the tracks: the ruler and the tempo lane under it
+        int headerW = 170, rulerH = 24;   // everything above the tracks: the ruler and, when open, the tempo lane under it
         QRect ruler, tempo, headers, area;
     };
     Layout layout() const;
@@ -96,6 +96,7 @@ private:
     int tempoY(double bpm) const;
     int tempoPointAt(const QPoint& p) const;   // index into transport.tempoPoints, -1 = none
     void paintTempoLane(QPainter& p, const Layout& L);
+    QRect tempoToggleRect(const Layout& L) const;   // "Tempo" in the header column: opens / closes the lane
     void showTempoMenu(int idx, const QPoint& global);
     void addTimeSigActions(QMenu& m, int x);   // the ruler menu's time-signature entries for a right-click at x
     QColor clipColor(const Clip& c) const;
@@ -153,6 +154,7 @@ private:
     const Clip* brush() const;   // nullptr: place the selected pattern
     Tick brushLength() const;
     double m_vzoom = 1.0;
+    bool m_tempoOpen = false;   // most songs keep one tempo: the lane (and its line) stays out of sight until asked for
 };
 
 class PlaylistPanel : public QWidget {
