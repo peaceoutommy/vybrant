@@ -261,7 +261,7 @@ static QMap<QString, QString> themeTokens() {
         {"accent2", t.accent2.name()},
         {"bar", bar.name()},
         {"menu", mix(t.panel, t.panelLight, 0.4).name()},
-        {"checkedBg", activeFill().name()},
+        {"checkedBg", QString("qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 %1, stop:1 %2)").arg(activeTop().name(), activeBottom().name())},
         {"checkedFg", t.text.name()},
         {"checkedBorder", mix(bar, t.text, 0.3).name()},
         {"listSel", mix(t.bg, t.accent, t.dark ? 0.42 : 0.55).name()},   // selection follows the primary accent, not accent2

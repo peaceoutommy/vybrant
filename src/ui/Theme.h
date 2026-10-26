@@ -83,8 +83,16 @@ inline QColor mix(const QColor& a, const QColor& b, double f) {
     return QColor(
         (int)(a.red() * (1 - f) + b.red() * f), (int)(a.green() * (1 - f) + b.green() * f), (int)(a.blue() * (1 - f) + b.blue() * f));
 }
-// Active (checked) button fill: the toolbar shade pulled toward the text colour - lighter on dark themes, darker on light ones
-inline QColor activeFill() { return mix(mix(bg(), panel(), 0.55), text(), 0.16); }
+// Active (checked) button fill: a gradient that deepens downward, from the toolbar shade pulled toward the text colour (lighter on
+// dark themes, darker on light ones) to a cooler, deeper shade tinted with accent2
+inline QColor activeTop() { return mix(mix(bg(), panel(), 0.55), text(), isDark() ? 0.20 : 0.08); }
+inline QColor activeBottom() { return mix(mix(mix(bg(), panel(), 0.55), accent2(), isDark() ? 0.3 : 0.22), text(), isDark() ? 0.0 : 0.16); }
+inline QBrush activeBrush(const QRectF& r) {
+    QLinearGradient g(r.topLeft(), r.bottomLeft());
+    g.setColorAt(0, activeTop());
+    g.setColorAt(1, activeBottom());
+    return g;
+}
 // Icons are painted in one flat colour that contrasts with the chrome, so a checked button only changes its background.
 // Alternating row shade: a step away from panel, in whichever direction the theme needs.
 inline QColor altRow() { return current().dark ? current().panel.darker(118) : current().panel.lighter(105); }

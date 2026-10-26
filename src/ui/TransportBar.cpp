@@ -287,8 +287,9 @@ void ModeSwitch::paintEvent(QPaintEvent*) {
     auto half = [&](QRectF hr, const QString& t, bool on) {
         if (on) {
             p.setPen(Qt::NoPen);
-            p.setBrush(theme::activeFill());
-            p.drawRoundedRect(hr.adjusted(1, 1, -1, -1), 2, 2);
+            QRectF fill = hr.adjusted(1, 1, -1, -1);
+            p.setBrush(theme::activeBrush(fill));
+            p.drawRoundedRect(fill, 2, 2);
         }
         p.setPen(on ? theme::text() : theme::textDim());
         QFont f = theme::smallFont();
