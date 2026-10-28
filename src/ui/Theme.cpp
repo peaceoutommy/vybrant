@@ -28,7 +28,7 @@ QWidget* barSeparator(QWidget* parent) {
 static Palette mk(const char* id, const char* name, bool dark, const char* bg, const char* panel, const char* panelLight,
     const char* surface, const char* raised, const char* hover, const char* border, const char* grid, const char* gridStrong,
     const char* text, const char* textDim, const char* accent, const char* accent2, const char* green, const char* red,
-    const char* playhead) {
+    const char* playhead, const char* glow = "#aab2c4") {
     Palette p;
     p.id = id;
     p.name = name;
@@ -49,6 +49,7 @@ static Palette mk(const char* id, const char* name, bool dark, const char* bg, c
     p.green = QColor(green);
     p.red = QColor(red);
     p.playhead = QColor(playhead);
+    p.glow = QColor(glow);
     return p;
 }
 
@@ -58,6 +59,10 @@ const std::vector<Palette>& presets() {
         // Vybrant: the website's look - near-black, cool greys, a soft white for "on", the one warm colour kept for the playhead
         mk("vybrant", "Vybrant", true, "#05070a", "#13161b", "#191d23", "#0f1216", "#1b1f26", "#222730", "#232831", "#1a1e24", "#272c35",
             "#eef1f5", "#8b94a1", "#e6e9ee", "#8b9cc4", "#5fc08a", "#e5675c", "#f2a93b"),
+        // Obsidian: black glass with a violet undertone in every layer; a luminous blue-violet for "on", a deep amethyst
+        // underneath it (clips, wires, the base of checked buttons), violet light at the top bar, a lilac playhead
+        mk("obsidian", "Obsidian", true, "#07060b", "#121019", "#191623", "#0b0a11", "#1d1929", "#271f38", "#231d30", "#15121d", "#251f33",
+            "#ece8f5", "#8c84a3", "#985cff", "#6d2ed8", "#3ecf9a", "#ff5c7c", "#d9c8ff", "#8c6af5"),
         mk("midnight", "Midnight", true, "#15171b", "#1c1f24", "#24282e", "#111316", "#23272d", "#252930", "#2b3037", "#22262b", "#30363d",
             "#d3d7dd", "#7e8691", "#f0a13a", "#55a0f0", "#5fc074", "#e05a5a", "#ffd266"),
         mk("graphite", "Graphite", true, "#191919", "#212121", "#2a2a2a", "#131313", "#282828", "#2e2e2e", "#333333", "#242424", "#3a3a3a",
@@ -112,6 +117,7 @@ static const struct {
     {"green", "Green", &Palette::green},
     {"red", "Red", &Palette::red},
     {"playhead", "Playhead", &Palette::playhead},
+    {"glow", "Top bar glow", &Palette::glow},
 };
 QStringList paletteRoleNames() {
     QStringList l;
@@ -275,7 +281,7 @@ static QMap<QString, QString> themeTokens() {
         {"focus", mix(t.border, t.textDim, 0.5).name()},
         {"radius", QString("%1px").arg(radius())},
         {"pill", QString("%1px").arg(radius() * 2)},   // buttons and tabs read as pills, like the website's
-        {"glow", mix(bar, QColor(0xaa, 0xb2, 0xc4), t.dark ? 0.3 : 0.0).name()},   // smoky light at the top bar
+        {"glow", mix(bar, t.glow, t.dark ? 0.3 : 0.0).name()},   // smoky light at the top bar
         {"mono", "'Geist Mono', monospace"},
     };
 }

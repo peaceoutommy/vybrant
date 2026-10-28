@@ -41,6 +41,7 @@ struct Palette {
     QColor accent2;   // secondary highlight: list selection, clips
     QColor green, red;   // status colours (armed, clipping, ...)
     QColor playhead;
+    QColor glow{0xaa, 0xb2, 0xc4};   // light tinting the top bar (dark themes)
     bool dark = true;   // lets painted widgets pick a contrasting shade where it matters
 };
 
