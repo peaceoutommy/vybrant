@@ -1,0 +1,4 @@
+# HTTPS in front of the API; the domain's DNS A/AAAA record must point at this VPS before the first start
+{$API_DOMAIN} {
+	reverse_proxy api:3000
+}

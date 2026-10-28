@@ -198,6 +198,23 @@ cd ../web && cp .env.example .env.local   # VITE_CLERK_PUBLISHABLE_KEY
 npm install && npm run dev            # :5173, proxies /api to :3000
 ```
 
+### Deploying the license API
+
+`server/` runs on any VPS with Docker: `compose.yaml` builds the API and puts Caddy in front of it, which serves it over HTTPS
+and renews the certificate itself. Point a DNS record for the API's domain (e.g. `api.vybrant.audio`) at the VPS and open
+ports 80 and 443, then copy `server/` there (without `node_modules`, `dist` and your local `.env`) and:
+
+```bash
+cp .env.example .env    # production values, see below
+docker compose up -d --build
+```
+
+- `LICENSE_PRIVATE_KEY`: the key the shipped app's public key belongs to (your current one), not a new `npm run keygen`.
+- `CLERK_SECRET_KEY`: the production instance's `sk_live_...`; `WEB_ORIGIN`: the website's exact origin (`https://...`).
+- `API_DOMAIN`: the API's domain. Build the website with `VITE_API_URL=https://<API_DOMAIN>` and the `pk_live_...` key.
+
+Update with the new files and `docker compose up -d --build`; logs: `docker compose logs -f api`.
+
 A new key pair invalidates every license made with the old one once Vybrant ships the new public key. As free software,
 the check can be removed from the source; it guards the official builds.
 

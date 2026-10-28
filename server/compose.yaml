@@ -1,0 +1,20 @@
+# On the VPS, in this folder: fill in .env (see .env.example), then `docker compose up -d --build`.
+# Caddy answers on 80/443 and gets the HTTPS certificate for API_DOMAIN; the API itself is not published.
+services:
+  api:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443", "443:443/udp"]
+    environment:
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data   # the certificates: keeping them avoids Let's Encrypt rate limits on redeploys
+
+volumes:
+  caddy_data:

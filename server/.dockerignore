@@ -1,0 +1,5 @@
+# .env holds the license signing key: it must never end up in an image
+.env
+node_modules
+dist
+test
