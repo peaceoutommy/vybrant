@@ -62,7 +62,7 @@ static QWidget* knobCell(QWidget* parent, const QString& name, float pos, float 
     vl->addWidget(knob, 0, Qt::AlignHCenter);
     value = new QLabel(w);
     value->setAlignment(Qt::AlignCenter);
-    value->setStyleSheet("color:#d6dae0; font-size:8pt;");
+    theme::styled(value, "color:@text@; font-size:8pt;");   // follows the theme (a fixed light grey vanished on Daylight)
     vl->addWidget(value);
     return w;
 }
