@@ -908,6 +908,22 @@ void Saturation::reset() {
     m_toneL.reset();
     m_toneR.reset();
 }
+static inline float saturate(float x, float drive, float bias, int type) {
+    x = x * drive + bias;
+    switch (type) {
+    case 1: return (fastTanh(x) + 0.15f * x * x * (x > 0 ? 1 : -1));
+    case 2: return x / (1.f + std::fabs(x)) * 1.5f;
+    default: return fastTanh(x);
+    }
+}
+float Saturation::transfer(float x) const {
+    auto& p = m_params;
+    float drive = 1.f + p.get(pDrive) * 15.f, bias = p.get(pBias) * 0.3f;
+    int type = p.getInt(pType);
+    float y = (saturate(x, drive, bias, type) - saturate(0, drive, bias, type)) / std::sqrt(drive);   // the DC blocker takes the offset
+    mixDry(y, x, p.get(pMix));
+    return y * dbToGain(p.get(pOutput));
+}
 void Saturation::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
     float drive = 1.f + p.get(pDrive) * 15.f, mix = p.get(pMix), og = dbToGain(p.get(pOutput));
@@ -916,18 +932,12 @@ void Saturation::process(float* L, float* R, int n, const MidiEventList&, const 
     m_toneL.set(Biquad::LowPass, m_sr, p.get(pTone), 0.7f);
     m_toneR = m_toneL;
     float comp = 1.f / std::sqrt(drive);
-    auto shape = [&](float x) {
-        x = x * drive + bias;
-        switch (type) {
-        case 1: return (fastTanh(x) + 0.15f * x * x * (x > 0 ? 1 : -1));
-        case 2: return x / (1.f + std::fabs(x)) * 1.5f;
-        default: return fastTanh(x);
-        }
-    };
+    auto shape = [&](float x) { return saturate(x, drive, bias, type); };
     for (int i = 0; i < n; ++i) {
         float l = m_dcL.process(m_toneL.process(shape(L[i]))) * comp, r = m_dcR.process(m_toneR.process(shape(R[i]))) * comp;
         mixDry(l, L[i], mix);
         mixDry(r, R[i], mix);
+        tap.push(L[i], R[i], l * og, r * og);
         L[i] = l * og;
         R[i] = r * og;
     }
@@ -944,35 +954,45 @@ Waveshaper::Waveshaper() {
     p.add(pSymmetry, "Asymmetry", -1, 1, 0);
 }
 void Waveshaper::reset() {}
+static inline float waveshape(float x, int curve, float amt, float ig, float asym) {
+    x *= ig;
+    x += asym * 0.2f;
+    float k = 1.f + amt * 20.f;
+    switch (curve) {
+    case 1: return clamp(x * k, -1.f, 1.f) / std::sqrt(k) * 2.f;
+    case 2: {
+        float y = x * k;
+        y = std::fmod(y + 1.f, 4.f);
+        if (y < 0) y += 4.f;
+        return (y < 2 ? y - 1 : 3 - y) * 0.7f;
+    }
+    case 3: return std::sin(x * k * 0.5f);
+    case 4: {
+        float y = clamp(x * (1 + amt * 3), -1.f, 1.f);
+        return (2 * y * y - 1) * amt + y * (1 - amt);
+    }
+    case 5: return std::fabs(x * (1 + amt * 3)) * 2.f - 1.f;
+    default: return fastTanh(x * k) / std::sqrt(k) * 2.f;
+    }
+}
+float Waveshaper::transfer(float x) const {
+    auto& p = m_params;
+    int curve = p.getInt(pCurve);
+    float amt = p.get(pAmount), ig = dbToGain(p.get(pInput)), asym = p.get(pSymmetry);
+    float y = waveshape(x, curve, amt, ig, asym) - waveshape(0, curve, amt, ig, asym);   // the DC blocker takes the offset
+    mixDry(y, x, p.get(pMix));
+    return y * dbToGain(p.get(pOutput));
+}
 void Waveshaper::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
     int curve = p.getInt(pCurve);
     float amt = p.get(pAmount), mix = p.get(pMix), ig = dbToGain(p.get(pInput)), og = dbToGain(p.get(pOutput)), asym = p.get(pSymmetry);
-    auto f = [&](float x) {
-        x *= ig;
-        x += asym * 0.2f;
-        float k = 1.f + amt * 20.f;
-        switch (curve) {
-        case 1: return clamp(x * k, -1.f, 1.f) / std::sqrt(k) * 2.f;
-        case 2: {
-            float y = x * k;
-            y = std::fmod(y + 1.f, 4.f);
-            if (y < 0) y += 4.f;
-            return (y < 2 ? y - 1 : 3 - y) * 0.7f;
-        }
-        case 3: return std::sin(x * k * 0.5f);
-        case 4: {
-            float y = clamp(x * (1 + amt * 3), -1.f, 1.f);
-            return (2 * y * y - 1) * amt + y * (1 - amt);
-        }
-        case 5: return std::fabs(x * (1 + amt * 3)) * 2.f - 1.f;
-        default: return fastTanh(x * k) / std::sqrt(k) * 2.f;
-        }
-    };
+    auto f = [&](float x) { return waveshape(x, curve, amt, ig, asym); };
     for (int i = 0; i < n; ++i) {
         float l = m_dcL.process(f(L[i])), r = m_dcR.process(f(R[i]));
         mixDry(l, L[i], mix);
         mixDry(r, R[i], mix);
+        tap.push(L[i], R[i], l * og, r * og);
         L[i] = l * og;
         R[i] = r * og;
     }
@@ -1008,6 +1028,7 @@ void BitCrusher::process(float* L, float* R, int n, const MidiEventList&, const 
         float l = m_holdL, r = m_holdR;
         mixDry(l, L[i], mix);
         mixDry(r, R[i], mix);
+        tap.push(L[i], R[i], l, r);
         L[i] = l;
         R[i] = r;
     }
@@ -1029,6 +1050,25 @@ void Distortion::reset() {
     m_lcL.reset();
     m_lcR.reset();
 }
+static inline float distort(float x, float drive, int type) {
+    x *= drive;
+    switch (type) {
+    case 1: return (x > 0 ? 1.f : -1.f) * (1.f - std::exp(-std::fabs(x)));
+    case 2: return clamp(x, -1.f, 1.f);
+    case 3: {
+        float y = std::fmod(x + 1.f, 4.f);
+        if (y < 0) y += 4.f;
+        return y < 2 ? y - 1 : 3 - y;
+    }
+    default: return fastTanh(x);
+    }
+}
+float Distortion::transfer(float x) const {
+    auto& p = m_params;
+    float y = distort(x, 1.f + p.get(pDrive) * 60.f, p.getInt(pType));
+    mixDry(y, x, p.get(pMix));
+    return y * dbToGain(p.get(pLevel));
+}
 void Distortion::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
     float drive = 1.f + p.get(pDrive) * 60.f;
@@ -1038,23 +1078,12 @@ void Distortion::process(float* L, float* R, int n, const MidiEventList&, const 
     m_toneR = m_toneL;
     m_lcL.set(Biquad::HighPass, m_sr, p.get(pLowCut), 0.7f);
     m_lcR = m_lcL;
-    auto f = [&](float x) {
-        x *= drive;
-        switch (type) {
-        case 1: return (x > 0 ? 1.f : -1.f) * (1.f - std::exp(-std::fabs(x)));
-        case 2: return clamp(x, -1.f, 1.f);
-        case 3: {
-            float y = std::fmod(x + 1.f, 4.f);
-            if (y < 0) y += 4.f;
-            return y < 2 ? y - 1 : 3 - y;
-        }
-        default: return fastTanh(x);
-        }
-    };
+    auto f = [&](float x) { return distort(x, drive, type); };
     for (int i = 0; i < n; ++i) {
         float l = m_dcL.process(m_toneL.process(f(m_lcL.process(L[i])))), r = m_dcR.process(m_toneR.process(f(m_lcR.process(R[i]))));
         mixDry(l, L[i], mix);
         mixDry(r, R[i], mix);
+        tap.push(L[i], R[i], l * og, r * og);
         L[i] = l * og;
         R[i] = r * og;
     }
@@ -1085,8 +1114,10 @@ void GainUtility::process(float* L, float* R, int n, const MidiEventList&, const
         float a = (pan + 1) * 0.25f * kPi;
         float gl = std::cos(a) * 1.4142f, gr = std::sin(a) * 1.4142f;
         float bl = bal > 0 ? 1 - bal : 1, br = bal < 0 ? 1 + bal : 1;
-        L[i] *= g * gl * bl;
-        R[i] *= g * gr * br;
+        const float l = L[i] * (g * gl * bl), r = R[i] * (g * gr * br);
+        tap.push(L[i], R[i], l, r);
+        L[i] = l;
+        R[i] = r;
     }
 }
 StereoWidth::StereoWidth() {
@@ -1121,6 +1152,7 @@ void StereoWidth::process(float* L, float* R, int n, const MidiEventList&, const
             r = m_hpR.process(r) + lowM;
         }
         float m = (l + r) * 0.5f * mg, s = (l - r) * 0.5f * w * sg;
+        tap.push(L[i], R[i], m + s, m - s);
         L[i] = m + s;
         R[i] = m - s;
     }
@@ -1139,6 +1171,7 @@ void PhaseInvert::process(float* L, float* R, int n, const MidiEventList&, const
     for (int i = 0; i < n; ++i) {
         float l = L[i] * gl, r = R[i] * gr;
         if (sw) std::swap(l, r);
+        tap.push(L[i], R[i], l, r);
         L[i] = l;
         R[i] = r;
     }
@@ -1161,8 +1194,10 @@ void MonoConversion::process(float* L, float* R, int n, const MidiEventList&, co
         case 3: m = (L[i] - R[i]) * 0.5f; break;
         default: m = (L[i] + R[i]) * 0.5f;
         }
-        L[i] = L[i] + (m - L[i]) * mix;
-        R[i] = R[i] + (m - R[i]) * mix;
+        const float l = L[i] + (m - L[i]) * mix, r = R[i] + (m - R[i]) * mix;
+        tap.push(L[i], R[i], l, r);
+        L[i] = l;
+        R[i] = r;
     }
 }
 
@@ -1253,8 +1288,8 @@ void MeterEffect::process(float* L, float* R, int n, const MidiEventList&, const
         m_hl *= 0.98f;
         m_hr *= 0.98f;
     }
-    m_pkL.store(pl);
-    m_pkR.store(pr);
+    m_pkL.store(std::max(pl, m_pkL.load()));   // kept until the editor takes it (levels())
+    m_pkR.store(std::max(pr, m_pkR.load()));
     m_rmsL.store(std::sqrt(m_sqL));
     m_rmsR.store(std::sqrt(m_sqR));
     m_holdL.store(m_hl);

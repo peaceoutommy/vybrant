@@ -293,9 +293,26 @@ dsp::LFO m_lfo;
 ;
 
 // ---------------- Distortion ----------------
+// The newest input and output samples, for an editor's scope: the audio thread writes them, the UI copies them, no locks
+struct StereoTap {
+    static constexpr uint32_t kSize = 4096;   // a power of two
+    std::atomic<float> buf[4][kSize];   // input L, input R, output L, output R
+    std::atomic<uint32_t> pos{0};   // samples written so far (wraps)
+    void push(float inL, float inR, float outL, float outR) {
+        const uint32_t p = pos.load(std::memory_order_relaxed), i = p & (kSize - 1);
+        buf[0][i].store(inL, std::memory_order_relaxed);
+        buf[1][i].store(inR, std::memory_order_relaxed);
+        buf[2][i].store(outL, std::memory_order_relaxed);
+        buf[3][i].store(outR, std::memory_order_relaxed);
+        pos.store(p + 1, std::memory_order_release);
+    }
+};
+
 MT_EFFECT(Saturation, "native.saturation", "Saturation")
 public:
 enum P : uint32_t { pDrive = 1, pTone, pMix, pOutput, pType, pBias };
+float transfer(float x) const;   // input -> output at the current settings, filters left out (the editor's curve)
+StereoTap tap;
 
 private:
 dsp::Biquad m_toneL, m_toneR;
@@ -306,6 +323,8 @@ dsp::DcBlocker m_dcL, m_dcR;
 MT_EFFECT(Waveshaper, "native.waveshaper", "Waveshaper")
 public:
 enum P : uint32_t { pCurve = 1, pAmount, pMix, pInput, pOutput, pSymmetry };
+float transfer(float x) const;
+StereoTap tap;
 
 private:
 dsp::DcBlocker m_dcL, m_dcR;
@@ -315,6 +334,7 @@ dsp::DcBlocker m_dcL, m_dcR;
 MT_EFFECT(BitCrusher, "native.bitcrusher", "Bit Crusher")
 public:
 enum P : uint32_t { pBits = 1, pDownsample, pMix, pDither, pJitter };
+StereoTap tap;
 
 private:
 float m_holdL = 0, m_holdR = 0;
@@ -326,6 +346,8 @@ dsp::Rng m_rng;
 MT_EFFECT(Distortion, "native.distortion", "Distortion")
 public:
 enum P : uint32_t { pDrive = 1, pType, pTone, pLevel, pMix, pLowCut };
+float transfer(float x) const;
+StereoTap tap;
 
 private:
 dsp::Biquad m_toneL, m_toneR, m_lcL, m_lcR;
@@ -340,6 +362,7 @@ void onPrepare() override;
 
 public:
 enum P : uint32_t { pGain = 1, pPan, pBalance, pMute };
+StereoTap tap;
 
 private:
 Smoother m_g, m_p;
@@ -349,6 +372,7 @@ Smoother m_g, m_p;
 MT_EFFECT(StereoWidth, "native.stereowidth", "Stereo Width")
 public:
 enum P : uint32_t { pWidth = 1, pMonoBelow, pBassMonoFreq, pMidGain, pSideGain };
+StereoTap tap;
 
 private:
 dsp::Biquad m_lpL, m_lpR, m_hpL, m_hpR;
@@ -358,12 +382,14 @@ dsp::Biquad m_lpL, m_lpR, m_hpL, m_hpR;
 MT_EFFECT(PhaseInvert, "native.phaseinvert", "Phase Inversion")
 public:
 enum P : uint32_t { pLeft = 1, pRight, pSwap };
+StereoTap tap;
 }
 ;
 
 MT_EFFECT(MonoConversion, "native.mono", "Mono Conversion")
 public:
 enum P : uint32_t { pMode = 1, pMix };
+StereoTap tap;
 }
 ;
 
@@ -396,7 +422,8 @@ enum P : uint32_t { pHold = 1, pRmsWindow };
 struct Levels {
     float peakL, peakR, rmsL, rmsR, holdL, holdR;
 };
-Levels levels() const { return {m_pkL.load(), m_pkR.load(), m_rmsL.load(), m_rmsR.load(), m_holdL.load(), m_holdR.load()}; }
+// UI: the peaks since the previous call (so a 30 Hz meter misses no block), the RMS and the held peaks
+Levels levels() { return {m_pkL.exchange(0), m_pkR.exchange(0), m_rmsL.load(), m_rmsR.load(), m_holdL.load(), m_holdR.load()}; }
 
 private:
 std::atomic<float> m_pkL{0}, m_pkR{0}, m_rmsL{0}, m_rmsR{0}, m_holdL{0}, m_holdR{0};
