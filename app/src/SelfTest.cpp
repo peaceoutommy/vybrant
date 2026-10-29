@@ -20,6 +20,7 @@
 #include <QSettings>
 #include "ui/AudioEditor.h"
 #include "ui/PlaylistPanel.h"
+#include "ui/PluginWindow.h"
 #ifndef _WIN32
 #include "plugins/Lv2Plugin.h"
 #endif
@@ -2146,5 +2147,60 @@ int runEmbedTest(App& app) {
 #endif
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
     return g_fail ? 1 : 0;
+}
+// `vybrant --editor-shot <processor key> <out.png>` (e.g. native.compressor): a native processor's editor after a few seconds
+// of test signal, so its meters, curves and scopes show something. Effects get drum hits over a tone sweeping 80 Hz - 8 kHz,
+// instruments a repeated chord. For working on editors without opening the app; QT_QPA_PLATFORM=offscreen is enough.
+int runEditorShot(App& app, const QString& key, const QString& out) {
+    auto proc = NativeRegistry::instance().create(key);
+    if (!proc) {
+        std::printf("no native processor %s\n", qPrintable(key));
+        return 1;
+    }
+    const int sr = 44100, B = 512;
+    proc->prepare(sr, B);
+    std::unique_ptr<QWidget> ed(proc->createEditor(nullptr));
+    if (!ed) ed.reset(new GenericParamPanel(app, 0, proc.get(), nullptr, 6));   // no editor of its own: the generic knobs
+    ed->resize(ed->sizeHint().expandedTo(QSize(320, 200)));
+    ed->show();
+    const bool inst = proc->kind() == ProcessorKind::Instrument;
+    std::vector<float> L(B), R(B);
+    MidiEventList midi;
+    ProcessContext ctx;
+    ctx.sampleRate = sr;
+    ctx.blockSize = B;
+    ctx.playing = true;
+    double phase = 0;
+    for (int64_t n = 0, blk = 0; n < 3 * sr; n += B, ++blk) {
+        midi.clear();
+        for (int i = 0; i < B; ++i) {
+            const double s = (n + i) / double(sr), beat = std::fmod(s, 0.5);
+            phase += 2 * M_PI * 80 * std::pow(100.0, std::fmod(s, 3.0) / 3.0) / sr;
+            const float kick = beat < 0.15 ? (float)(std::exp(-beat * 25) * std::sin(2 * M_PI * 55 * s)) : 0.f;
+            L[i] = R[i] = inst ? 0.f : 0.25f * (float)std::sin(phase) + 0.8f * kick;
+            if (inst && (n + i) % (sr / 2) == 0)
+                for (int note : {60, 64, 67}) {
+                    MidiEvent on;
+                    on.data1 = (uint8_t)note, on.data2 = 100, on.velocity = 0.8f, on.sampleOffset = i;
+                    midi.add(on);
+                }
+            if (inst && (n + i) % (sr / 2) == sr / 4)
+                for (int note : {60, 64, 67}) {
+                    MidiEvent off;
+                    off.type = MidiEvent::NoteOff, off.data1 = (uint8_t)note, off.sampleOffset = i;
+                    midi.add(off);
+                }
+        }
+        ctx.positionSamples = n;
+        proc->process(L.data(), R.data(), B, midi, ctx);
+        if (blk % 2 == 0) {   // in about real time, so the editor's refresh timers see what the DSP just measured
+            QThread::msleep(20);
+            QCoreApplication::processEvents();
+        }
+    }
+    QCoreApplication::processEvents();
+    const bool ok = ed->grab().save(out);
+    std::printf("%s: %s (%dx%d)\n", qPrintable(key), ok ? qPrintable(out) : "could not save", ed->width(), ed->height());
+    return ok ? 0 : 1;
 }
 }   // namespace mt
