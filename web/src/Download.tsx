@@ -78,21 +78,27 @@ function Screen({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+// The last step on both: the dialog Vybrant opens until it has a license
+function LicenseStep() {
+  return (
+    <li>
+      <Screen title="Vybrant license">
+        <span className="screen-field">eyJ2IjoxLC...</span>
+        <span className="screen-btn">Get a license</span>
+        <span className="screen-btn on">Activate</span>
+      </Screen>
+      <span className="step-number">03</span>
+      <h3>Paste your license</h3>
+      <p>
+        Vybrant asks for it once. <a href="/account" className="link">Generate yours</a> with a free account.
+      </p>
+    </li>
+  );
+}
+
 function WindowsSteps() {
   return (
     <ol className="steps">
-      <li>
-        <Screen title="Windows protected your PC">
-          <p className="screen-text">Microsoft Defender SmartScreen prevented an unrecognised app from starting.</p>
-          <p className="screen-text">
-            <u>More info</u> → Vybrant-setup.exe
-          </p>
-          <span className="screen-btn on">Run anyway</span>
-        </Screen>
-        <span className="step-number">01</span>
-        <h3>Open the installer</h3>
-        <p>Double-click the file you downloaded. Vybrant isn't code-signed yet, so Windows may stop it first: choose More info, then Run anyway.</p>
-      </li>
       <li>
         <Screen title="Vybrant Setup">
           <p className="screen-text">Select Setup Install Mode</p>
@@ -100,9 +106,9 @@ function WindowsSteps() {
           <span className="screen-radio">Install for all users</span>
           <span className="screen-btn on">Next</span>
         </Screen>
-        <span className="step-number">02</span>
-        <h3>Install it for you</h3>
-        <p>Install for me only needs no admin rights. Then click Next through the pages; you can add a desktop icon on the way.</p>
+        <span className="step-number">01</span>
+        <h3>Run the installer</h3>
+        <p>Double-click the file you downloaded and choose Install for me only: no admin rights needed. Then click Next through the pages.</p>
       </li>
       <li>
         <Screen title="Vybrant Setup">
@@ -110,13 +116,11 @@ function WindowsSteps() {
           <span className="screen-check on">Launch Vybrant</span>
           <span className="screen-btn on">Finish</span>
         </Screen>
-        <span className="step-number">03</span>
-        <h3>Launch and paste your license</h3>
-        <p>
-          Vybrant is in the Start menu from now on, and .mtp projects open in it. It asks for your license once:{' '}
-          <a href="/account" className="link">generate yours</a> with a free account.
-        </p>
+        <span className="step-number">02</span>
+        <h3>Finish and launch</h3>
+        <p>Vybrant is in the Start menu from now on, and .mtp projects open in it. Leave Launch Vybrant ticked and click Finish.</p>
       </li>
+      <LicenseStep />
     </ol>
   );
 }
@@ -153,18 +157,7 @@ function LinuxSteps() {
         <h3>Add it to your apps</h3>
         <p>On its first start it offers to install itself: a launcher in your applications menu, and .mtp projects open in it.</p>
       </li>
-      <li>
-        <Screen title="Vybrant license">
-          <span className="screen-field">eyJ2IjoxLC...</span>
-          <span className="screen-btn">Get a license</span>
-          <span className="screen-btn on">Activate</span>
-        </Screen>
-        <span className="step-number">03</span>
-        <h3>Paste your license</h3>
-        <p>
-          Vybrant asks for it once. <a href="/account" className="link">Generate yours</a> with a free account.
-        </p>
-      </li>
+      <LicenseStep />
     </ol>
   );
 }
