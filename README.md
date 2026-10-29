@@ -4,6 +4,10 @@ A digital audio workstation for Linux and Windows with a pattern-based workflow:
 Playlist arrangement, a routable Mixer with sends/sidechains, native instruments and effects, VST2/VST3/CLAP/LV2 hosting,
 automation, audio/MIDI recording and offline rendering. Original UI, original DSP.
 
+- `app/`: the program (C++ / Qt): sources, tests, resources, packaging. Build and test commands below run from here.
+- `api/`: the license API (NestJS), deployed to a VPS.
+- `web/`: the website (React), on Cloudflare Pages.
+
 ## Download
 
 Each release on GitHub has an AppImage: make it executable and run it (`chmod +x Vybrant-*.AppImage`). It runs on
@@ -31,6 +35,7 @@ Dependencies (all available from common distro repositories):
 | License check | OpenSSL `libcrypto` (Ed25519) |
 
 ```bash
+cd app
 qmake6 Vybrant.pro && make -j$(nproc)      # primary build
 # or
 cmake -B build-cmake && cmake --build build-cmake -j$(nproc)
@@ -49,11 +54,12 @@ the platform yourself.
 
 ### Windows
 
-Built with MinGW-w64 (MSYS2 UCRT64) and CMake; `src/midi/MidiEngineWin.cpp` (WinMM) replaces the ALSA MIDI backend and
-`src/core/DynLib.cpp` loads plugin DLLs. In an MSYS2 UCRT64 shell, with the packages the `windows` job in
+Built with MinGW-w64 (MSYS2 UCRT64) and CMake; `app/src/midi/MidiEngineWin.cpp` (WinMM) replaces the ALSA MIDI backend and
+`app/src/core/DynLib.cpp` loads plugin DLLs. In an MSYS2 UCRT64 shell, with the packages the `windows` job in
 `.github/workflows/ci.yml` installs:
 
 ```bash
+cd app
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release && cmake --build build
 ./build/Vybrant.exe --selftest
 packaging/windows-dist.sh build/Vybrant.exe "$MINGW_PREFIX" Vybrant-windows-x64   # the portable folder: exe, DLLs, Qt plugin
@@ -65,6 +71,7 @@ with clang + lld: pass `-DVYBRANT_HOST_QT_BIN=/usr/lib/qt6` so the build host's 
 ## Tests and code style
 
 ```bash
+cd app
 ./bin/vybrant --selftest          # engine / model checks (serializer, undo, processors, render)
 python3 tests/ui_test.py              # UI behaviour through the control socket, in an offscreen instance
 python3 tests/sync_test.py            # JACK transport and MIDI clock in, against a dummy jackd / ALSA client
@@ -72,16 +79,16 @@ QT_QPA_PLATFORM=xcb ./bin/vybrant --embed-test   # plugin editors embed, in-proc
 ```
 
 All but the embed test run in CI (`.github/workflows/ci.yml`, when the app changes); the self test also runs on Windows there. The UI test uses a private config directory and socket, so it is
-safe to run while the app is open. Sources are formatted with `clang-format` (`.clang-format` in the root):
+safe to run while the app is open. Sources are formatted with `clang-format` (`app/.clang-format`):
 
 ```bash
-git ls-files 'src/*.cpp' 'src/*.h' | xargs clang-format -i
+cd app && git ls-files 'src/*.cpp' 'src/*.h' | xargs clang-format -i
 ```
 
 ## Architecture
 
 ```
-src/
+app/src/
   core/      Types (ticks, ids), lock-free SPSC queues, parameter model with atomics, command-based UndoStack
   project/   Project model (source of truth), JSON serializer with format version + migration, ProjectModel + commands
   dsp/       IProcessor interface shared by native and hosted processors, DSP utilities,
@@ -163,7 +170,7 @@ added in the Plugin Manager. CLAP plugins (`*.clap`) are found in `~/.clap`, `/u
 `$CLAP_PATH`. On Windows: `Common Files\VST3`, `Common Files\CLAP` (and their per-user `%LOCALAPPDATA%\Programs\Common`
 twins), `Program Files\VSTPlugins`, `Program Files\Steinberg\VSTPlugins`, `Common Files\VST2` and the same environment
 variables. The host talks to plugins through its own minimal declarations of the public binary
-interfaces (`src/plugins/Vst3Abi.h`, `Vst2Abi.h`, `ClapAbi.h`); no SDK code is included, so redistribution is not bound by the
+interfaces (`app/src/plugins/Vst3Abi.h`, `Vst2Abi.h`, `ClapAbi.h`); no SDK code is included, so redistribution is not bound by the
 SDK licences. Plugin state, parameters (by stable id), latency, editors (X11 embedded with a host run loop for VST3; HWND children on Windows)
 and MIDI mapping are supported. Failed plugins are listed with the reason and can be hidden or rescanned.
 
@@ -183,7 +190,7 @@ is the hook for future format versions.
 
 Vybrant asks for a license key at startup (Help > License... changes it later). Keys come from the website: people sign in
 (Clerk: Google or email) and generate one license per account. A key is a small JSON payload (account id, name, email) plus
-an Ed25519 signature; Vybrant verifies it offline against the public key in `src/License.cpp`.
+an Ed25519 signature; Vybrant verifies it offline against the public key in `app/src/License.cpp`.
 
 - `api/`: NestJS API. `GET/POST /api/license` behind the Clerk session token; the license is kept in the user's Clerk
   private metadata (no database). `npm run keygen` makes a signing key pair, `npm test` checks the signing.
@@ -227,4 +234,4 @@ the check can be removed from the source; it guards the official builds.
 
 ## License
 
-GPL-3.0-or-later, see [LICENSE](LICENSE). The bundled Geist fonts (`resources/fonts`) are under the SIL Open Font License, see `resources/fonts/OFL.txt`. (It links Rubber Band and FFTW, which are GPL.)
+GPL-3.0-or-later, see [LICENSE](LICENSE). The bundled Geist fonts (`app/resources/fonts`) are under the SIL Open Font License, see `app/resources/fonts/OFL.txt`. (It links Rubber Band and FFTW, which are GPL.)

@@ -1,16 +1,19 @@
 name: CI
 
-# The app (Linux and Windows): runs when its code, tests or build files change. web/ and api/ have their own workflow.
+# The app (app/, Linux and Windows): runs when it changes. web/ and api/ have their own workflow.
 on:
   push:
     branches: [main]
-    paths: ['src/**', 'tests/**', 'resources/**', 'packaging/**', 'Vybrant.pro', 'CMakeLists.txt', '.clang-format', '.github/workflows/ci.yml']
+    paths: ['app/**', '.github/workflows/ci.yml']
   pull_request:
-    paths: ['src/**', 'tests/**', 'resources/**', 'packaging/**', 'Vybrant.pro', 'CMakeLists.txt', '.clang-format', '.github/workflows/ci.yml']
+    paths: ['app/**', '.github/workflows/ci.yml']
 
 jobs:
   build-and-test:
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -52,6 +55,7 @@ jobs:
     defaults:
       run:
         shell: msys2 {0}
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -86,6 +90,9 @@ jobs:
   format-check:
     # Pinned to the clang-format the code is formatted with: versions differ in their output
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format

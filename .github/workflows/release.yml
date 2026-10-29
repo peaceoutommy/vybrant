@@ -13,6 +13,9 @@ permissions:
 jobs:
   appimage:
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -56,13 +59,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: Vybrant-*.AppImage
+          path: app/Vybrant-*.AppImage   # artifact paths are from the repository root
 
   windows:
     runs-on: windows-2025
     defaults:
       run:
         shell: msys2 {0}
+        working-directory: app
     steps:
       - uses: actions/checkout@v4
 
@@ -103,7 +107,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: Vybrant-*-windows-x64.zip
+          path: app/Vybrant-*-windows-x64.zip
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
