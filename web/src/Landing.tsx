@@ -43,9 +43,9 @@ export function Landing() {
             Digital audio workstation · Linux · Windows
           </motion.p>
           <motion.h1 {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
-            A studio you
+            From first loop
             <br />
-            can <em>feel.</em>
+            to <em>finished track.</em>
           </motion.h1>
           <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
             Vybrant is a complete music studio for Linux and Windows. Sequence patterns, play parts into the piano roll, mix with sends and
