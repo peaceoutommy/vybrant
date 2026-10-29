@@ -2,7 +2,7 @@ Running it: from the project folder
 
 ./bin/vybrant
 
-To rebuild after changes: qmake6 Vybrant.pro && make -j$(nproc). If you want it available everywhere (menu launcher + vybrant on the command line without the path), install it into your home directory — no root needed:
+To rebuild after changes: qmake6 Vybrant.pro && make -j$(nproc). If you want it available everywhere (menu launcher + vybrant on the command line without the path), install it into your home directory (no root needed):
 
 make install
 
