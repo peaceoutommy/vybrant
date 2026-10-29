@@ -19,7 +19,7 @@ namespace mt::license {
 // The public half of the key the license server signs with (server: npm run keygen)
 static const QByteArray kProductKey = QByteArray::fromHex("f5a35f1d803d86005dced8508e786ce6f0d661f5df19acda71fff534e5021c7e");
 // ponytail: the website's local dev address until it has a domain; set the real one before a release
-static const char* kAccountUrl = "http://localhost:5173/account";
+static const char* kAccountUrl = "https://vybrant.studio/account";
 
 Info verify(const QString& key, const QByteArray& publicKey) {
     const QStringList parts = key.simplified().remove(' ').split('.');
