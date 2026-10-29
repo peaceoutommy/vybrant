@@ -156,6 +156,7 @@ struct NoteOffScheduler {
 struct RtChannel {
     Id id;
     IProcessor* instrument = nullptr;
+    std::atomic<bool>* crashed = nullptr;   // a plugin instrument's: set once it crashed, it is skipped from then on
     int mixerTrackIdx = 0;
     ChannelControls* ctl = nullptr;
     bool enabled = true;

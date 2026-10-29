@@ -1729,6 +1729,42 @@ int runSelfTest(App& app) {
         CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && residentBytes() > 1e6,
             "buttons show the hand cursor, and the process's memory is read");
     }
+    {   // a plugin instrument that throws (yabridge does once its Wine host is gone) is bypassed like a crashed one: the render goes
+        // on, and saving keeps the state it had instead of asking the plugin again
+        struct Throwing : IProcessor {
+            ParameterSet ps;
+            QString key() const override { return "test:throwing"; }
+            QString displayName() const override { return "Throwing"; }
+            ProcessorKind kind() const override { return ProcessorKind::Instrument; }
+            void prepare(double, int) override {}
+            void process(float*, float*, int, const MidiEventList&, const ProcessContext&) override { throw std::runtime_error("gone"); }
+            ParameterSet& params() override { return ps; }
+            bool isPlugin() const override { return true; }
+            QJsonObject saveState() const override { throw std::runtime_error("gone"); }
+        };
+        auto prevFactory = app.engine().pluginFactory();
+        app.engine().setPluginFactory([](const PluginInstanceData&) { return std::make_unique<Throwing>(); });
+        PluginInstanceData pd;
+        pd.id = app.project().newId();
+        pd.state = "before";
+        app.model().insert<PluginInstanceData>(pd, "");
+        Id ch = app.addChannel(ChannelType::Plugin, "plugin", "Throwing", QString(), pd.id);
+        app.engine().rebuild(app.project());
+        QTemporaryDir dir;
+        RenderOptions o;
+        o.path = dir.path() + "/throw.wav";
+        o.end = PPQ;
+        o.tailSeconds = 0;
+        QString err;
+        bool rendered = app.exportAudio(o, nullptr, &err);
+        app.engine().syncStateToProject(app.project());
+        const PluginInstanceData* after = app.project().plugin(pd.id);
+        CHECK(rendered && app.engine().registry().crashFlag(pd.id).load() && after && after->state == "before" && after->crashed,
+            "a plugin that throws is bypassed: the app keeps running, and saving keeps its last state");
+        app.deleteChannel(ch);
+        app.engine().setPluginFactory(prevFactory);
+        app.engine().rebuild(app.project());
+    }
     {   // the Parametric EQ's curve: dragging a band's handle moves that band and switches it on
         Id t1 = app.project().mixerTracks[1].id;
         Id slot = app.addEffect(t1, "native.parametriceq");

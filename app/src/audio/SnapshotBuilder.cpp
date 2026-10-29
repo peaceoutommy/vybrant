@@ -133,17 +133,22 @@ std::vector<std::pair<Id, IProcessor*>> RuntimeRegistry::pluginProcessors() cons
     return v;
 }
 
+// A plugin that crashed in the app keeps the state it was last saved with: asking it again could crash the app, and one whose
+// Wine host is gone throws (one in its own process answers with its last known state)
+static void pluginState(IProcessor* proc, PluginInstanceData* pd) {
+    if (!pd || (pd->crashed && !pd->bridged)) return;
+    try {
+        QJsonObject st = proc->saveState();
+        pd->state = QByteArray::fromBase64(st["pluginState"].toString().toLatin1());
+        pd->controllerState = QByteArray::fromBase64(st["controllerState"].toString().toLatin1());
+        pd->latency = proc->latencySamples();
+    } catch (...) { pd->crashed = true; }
+}
 void RuntimeRegistry::syncStateToProject(Project& p) const {
     for (auto& c : p.channels)
         if (auto* proc = processor(c.id)) {
-            if (proc->isPlugin()) {
-                QJsonObject st = proc->saveState();
-                if (auto* pd = p.plugin(c.pluginInstanceId)) {
-                    pd->state = QByteArray::fromBase64(st["pluginState"].toString().toLatin1());
-                    pd->controllerState = QByteArray::fromBase64(st["controllerState"].toString().toLatin1());
-                    pd->latency = proc->latencySamples();
-                }
-            } else {
+            if (proc->isPlugin()) pluginState(proc, p.plugin(c.pluginInstanceId));
+            else {
                 c.instrumentState = proc->saveState();
                 if (auto* s = dynamic_cast<Sampler*>(proc)) c.samplePath = s->samplePath();
             }
@@ -151,14 +156,8 @@ void RuntimeRegistry::syncStateToProject(Project& p) const {
     for (auto& t : p.mixerTracks)
         for (auto& e : t.effects)
             if (auto* proc = processor(e.id)) {
-                if (proc->isPlugin()) {
-                    QJsonObject st = proc->saveState();
-                    if (auto* pd = p.plugin(e.pluginInstanceId)) {
-                        pd->state = QByteArray::fromBase64(st["pluginState"].toString().toLatin1());
-                        pd->controllerState = QByteArray::fromBase64(st["controllerState"].toString().toLatin1());
-                        pd->latency = proc->latencySamples();
-                    }
-                } else e.state = proc->saveState();
+                if (proc->isPlugin()) pluginState(proc, p.plugin(e.pluginInstanceId));
+                else e.state = proc->saveState();
             }
 }
 
@@ -366,6 +365,7 @@ void AudioEngine::rebuild(const Project& p) {
         RtChannel rc;
         rc.id = c.id;
         rc.instrument = m_registry.ensureInstrument(c, p, m_sr, m_maxBlock, m_pluginFactory, s.generation);
+        if (c.pluginInstanceId) rc.crashed = &m_registry.crashFlag(c.pluginInstanceId);
 
         rc.ctl = &m_registry.channel(c.id);
         rc.ctl->volume.store(c.volume);

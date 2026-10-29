@@ -98,6 +98,7 @@ public:
     int maxBlockSize() const { return m_maxBlock; }
     RuntimeRegistry& registry() { return m_registry; }
     void setPluginFactory(RuntimeRegistry::PluginFactory f) { m_pluginFactory = std::move(f); }
+    const RuntimeRegistry::PluginFactory& pluginFactory() const { return m_pluginFactory; }
     void setRecordingEngine(RecordingEngine* r) { m_recording = r; }
 
     // ---- Project -> runtime ----
@@ -198,7 +199,8 @@ private:
     void drainCommands();
     void releaseAllNotes(bool resetInstruments);   // RT: drop scheduled note-offs and send every channel AllNotesOff
     void processTrack(Snapshot& s, RtTrack& t, int n, const ProcessContext& ctx, float* outL, float* outR);
-    bool guardedProcess(RtEffect& fx, float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx);
+    bool guardedProcess(IProcessor* proc, Id slotId, std::atomic<bool>* crashed, float* L, float* R, int n, const MidiEventList& midi,
+        const ProcessContext& ctx);
     void renderMetronome(float* L, float* R, int n, Tick t0, Tick t1, TimeSignature ts, Tick barStart);
     void renderPreview(float* L, float* R, int n);
     void onAssetLoaded(const QString& path);

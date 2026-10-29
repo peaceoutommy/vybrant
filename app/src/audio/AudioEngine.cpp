@@ -594,11 +594,11 @@ void AudioEngine::processSubBlock(const float* in, int inCh, float* outL, float*
     }
     // Instruments -> channel buffers -> mixer track inputs
     for (auto& c : s.channels) {
-        if (!c.instrument) {
+        if (!c.instrument || (c.crashed && c.crashed->load()) ||
+            !guardedProcess(c.instrument, c.id, c.crashed, c.bufL.data(), c.bufR.data(), n, c.midi, ctx)) {
             c.midi.clear();
             continue;
         }
-        c.instrument->process(c.bufL.data(), c.bufR.data(), n, c.midi, ctx);
         if (c.isMidiOut) {
             if (auto* om = c.instrument->outputMidi())
                 for (int i = 0; i < om->count; ++i) {
@@ -719,7 +719,7 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
                 std::copy(R, R + n, m_dryR.data());
             }
             static MidiEventList empty;
-            if (!guardedProcess(fx, L, R, n, empty, ctx)) continue;
+            if (!guardedProcess(fx.proc, fx.slotId, fx.crashed, L, R, n, empty, ctx)) continue;
             if (fx.mix < 0.999f)
                 for (int i = 0; i < n; ++i) {
                     L[i] = m_dryL[i] + (L[i] - m_dryL[i]) * fx.mix;
@@ -810,33 +810,36 @@ void AudioEngine::processTrack(Snapshot& s, RtTrack& t, int n, const ProcessCont
     }
 }
 
-bool AudioEngine::guardedProcess(RtEffect& fx, float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) {
-#ifdef _WIN32
-    fx.proc->process(L, R, n, midi, ctx);
-    return true;
-#else
-    if (!fx.proc->isPlugin()) {
-        fx.proc->process(L, R, n, midi, ctx);
+bool AudioEngine::guardedProcess(IProcessor* proc, Id slotId, std::atomic<bool>* crashed, float* L, float* R, int n,
+    const MidiEventList& midi, const ProcessContext& ctx) {
+    if (!proc->isPlugin()) {
+        proc->process(L, R, n, midi, ctx);
         return true;
     }
+    volatile bool ok = false;   // read after a siglongjmp
+#ifndef _WIN32
     sigjmp_buf jb;
     sigjmp_buf* prev = t_guard;
     t_guard = &jb;
-    if (sigsetjmp(jb, 1) == 0) {
-        fx.proc->process(L, R, n, midi, ctx);
-        t_guard = prev;
-        return true;
-    }
+    if (sigsetjmp(jb, 1) == 0)
+#endif
+        try {
+            proc->process(L, R, n, midi, ctx);
+            ok = true;
+        } catch (...) {   // a thrown exception is a crash too: yabridge throws one when its Wine host process is gone
+        }
+#ifndef _WIN32
     t_guard = prev;
-    if (fx.crashed) fx.crashed->store(true);
+#endif
+    if (ok) return true;
+    if (crashed) crashed->store(true);
     std::fill(L, L + n, 0.f);
     std::fill(R, R + n, 0.f);
     EngineMessage m;
     m.type = EngineMessage::PluginCrashed;
-    m.id = fx.slotId;
+    m.id = slotId;
     m_messages.push(m);
     return false;
-#endif
 }
 
 // ---------------------------------------------------------------- RT: live MIDI
