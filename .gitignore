@@ -17,3 +17,4 @@ Recordings/
 launch.json
 # Claude Code agent worktrees (local scratch checkouts)
 .claude/worktrees/
+__pycache__/
