@@ -213,7 +213,14 @@ docker compose up -d --build
 - `CLERK_SECRET_KEY`: the production instance's `sk_live_...`; `WEB_ORIGIN`: the website's exact origin (`https://...`).
 - `API_DOMAIN`: the API's domain. Build the website with `VITE_API_URL=https://<API_DOMAIN>` and the `pk_live_...` key.
 
-Update with the new files and `docker compose up -d --build`; logs: `docker compose logs -f api`.
+Logs: `docker compose logs -f api`. After that first manual start, every push to `main` that changes `server/` deploys
+itself (`.github/workflows/deploy-api.yml`: test, copy to `~/vybrant-api`, rebuild, check it answers over HTTPS). One-time
+setup: a deploy key whose public half is in the VPS user's `~/.ssh/authorized_keys` (that user runs `docker` without
+`sudo`, and the VPS has `rsync`), then in the repository's Settings > Secrets and variables > Actions:
+
+- secrets `VPS_SSH_KEY` (the deploy key's private half), `VPS_TARGET` (`user@host`) and `VPS_KNOWN_HOSTS` (the output of
+  `ssh-keyscan <host>`, so the workflow only talks to this server)
+- variable `API_DOMAIN`
 
 A new key pair invalidates every license made with the old one once Vybrant ships the new public key. As free software,
 the check can be removed from the source; it guards the official builds.

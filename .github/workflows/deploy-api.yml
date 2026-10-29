@@ -1,0 +1,50 @@
+name: Deploy API
+
+# Every push to main that touches server/ tests the license API, copies it to the VPS (~/vybrant-api) and rebuilds it there
+# with Docker Compose. The VPS keeps its own .env (made once by hand, see README): secrets never leave it or reach CI.
+# Repository secrets: VPS_SSH_KEY (a deploy key's private half), VPS_KNOWN_HOSTS (`ssh-keyscan <host>`), VPS_TARGET
+# (user@host). Repository variable: API_DOMAIN, for the check after the deploy.
+on:
+  push:
+    branches: [main]
+    paths: ['server/**', '.github/workflows/deploy-api.yml']
+  workflow_dispatch:
+
+concurrency: deploy-api   # one deploy at a time; a newer push waits for the running one
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Test
+        run: cd server && npm ci && npm test
+
+      - name: Copy to the VPS and rebuild
+        env:
+          SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          TARGET: ${{ secrets.VPS_TARGET }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519 && chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # --delete removes files deleted from server/; excluded paths (the VPS's .env) are never touched
+          rsync -az --delete --exclude node_modules --exclude dist --exclude .env server/ "$TARGET:vybrant-api/"
+          ssh "$TARGET" 'cd vybrant-api && docker compose up -d --build --remove-orphans && docker image prune -f'
+
+      - name: Check it answers over HTTPS
+        env:
+          API_DOMAIN: ${{ vars.API_DOMAIN }}
+        run: |
+          for _ in $(seq 1 20); do   # the new container needs a few seconds to start
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$API_DOMAIN/api/license" || true)
+            [ "$code" = 401 ] && echo "https://$API_DOMAIN/api/license answers 401 (no login): up" && exit 0
+            sleep 3
+          done
+          echo "https://$API_DOMAIN/api/license answered $code, expected 401"; exit 1
