@@ -1708,6 +1708,32 @@ int runSelfTest(App& app) {
         CHECK(delayOk, "dragging a delay's first echo later and higher sets time and mix; raising the second echo raises the feedback");
         CHECK(tremOk, "dragging a tremolo's wave wider and taller sets a slower rate and more depth");
     }
+    {   // the Saturation editor's curve is a control: dragging it up raises Drive and leaves Bias where it was
+        const Id track = app.project().mixerTracks[1].id, slot = app.addEffect(track, "native.saturation");
+        app.engine().rebuild(app.project());
+        bool ok = false;
+        if (IProcessor* sat = app.processor(slot)) {
+            const float drive = sat->params().get(Saturation::pDrive), bias = sat->params().get(Saturation::pBias);
+            std::unique_ptr<QWidget> ed(sat->createEditor(nullptr));
+            ed->resize(ed->sizeHint());
+            ed->show();
+            QCoreApplication::processEvents();
+            if (QWidget* d = ed->findChild<QWidget*>("display")) {
+                auto send = [d](QEvent::Type type, QPointF at, Qt::MouseButtons held) {
+                    QMouseEvent e(type, at, d->mapToGlobal(at), Qt::LeftButton, held, Qt::NoModifier);
+                    QCoreApplication::sendEvent(d, &e);
+                };
+                const QPointF at(d->height() / 2.0, d->height() / 2.0);   // the middle of the curve panel
+                send(QEvent::MouseButtonPress, at, Qt::LeftButton);
+                send(QEvent::MouseMove, at - QPointF(0, 60), Qt::LeftButton);
+                send(QEvent::MouseButtonRelease, at - QPointF(0, 60), Qt::NoButton);
+                ok = sat->params().get(Saturation::pDrive) > drive + 0.1f && sat->params().get(Saturation::pBias) == bias;
+            }
+        }
+        CHECK(ok, "dragging up on the Saturation editor's curve raises Drive and leaves Bias alone");
+        app.removeEffect(track, slot);
+        app.engine().rebuild(app.project());
+    }
     {   // projects saved straight into Documents/Vybrant/Projects get a folder of their own; anywhere else the chosen place is kept
         const QString root = App::projectsDir();
         CHECK(QDir(root).exists() && App::projectFolderPath(root + "/Song.mtp") == root + "/Song/Song.mtp" &&
