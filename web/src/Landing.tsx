@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { Footer, Nav } from './Nav';
 import { buildOs, osName } from './platform';
+import { useLatestRelease } from './release';
 
 const features = [
   { title: 'Patterns and playlist', text: 'Step sequencer, piano roll and a playlist that arranges patterns, audio and automation.' },
@@ -30,6 +31,7 @@ export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: shot, offset: ['start end', 'center center'] });
   const tilt = useTransform(scrollYProgress, [0, 1], [14, 0]);   // the screenshot lies back, then stands up as it arrives
+  const download = useLatestRelease().release?.[buildOs]?.url ?? '/download';   // the file itself; the download page until it's known
 
   return (
     <>
@@ -50,7 +52,7 @@ export function Landing() {
             sidechains, and run your own plugins.
           </motion.p>
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
-            <a href="/download" className="btn btn-primary">
+            <a href={download} className="btn btn-primary">
               Download for {osName[buildOs]}
             </a>
             <a href="/account" className="btn btn-ghost">
@@ -119,7 +121,7 @@ export function Landing() {
               <li>One license per account</li>
               <li>Works offline</li>
             </ul>
-            <a href="/download" className="btn btn-primary">
+            <a href={download} className="btn btn-primary">
               Download for {osName[buildOs]}
             </a>
           </motion.div>

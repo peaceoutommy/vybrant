@@ -132,3 +132,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "$GITHUB_REF_NAME" Vybrant-* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+
+  downloads:
+    needs: publish
+    uses: ./.github/workflows/downloads.yml
+    with:
+      tag: ${{ github.ref_name }}
+    secrets: inherit

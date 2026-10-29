@@ -69,6 +69,7 @@ ul, ol { padding: 0; list-style: none; }
 .btn:disabled { opacity: 0.6; cursor: default; }
 .btn-primary { background: var(--text); color: var(--bg); }
 .btn-primary:hover { background: #fff; }
+.btn[aria-disabled="true"] { opacity: 0.5; pointer-events: none; }   /* no file to link to yet */
 .btn-ghost { border-color: var(--line); color: var(--text); background: rgba(255, 255, 255, 0.02); }
 .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.22); }
 .btn-sm { height: 36px; padding: 0 16px; font-size: 14px; }

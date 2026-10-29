@@ -1,0 +1,51 @@
+name: Downloads
+
+# Copies a release's AppImage and Windows installer to the Cloudflare R2 bucket behind downloads.vybrant.studio and points
+# latest.json at them; the website's download buttons link there, since a private repository's release files aren't public.
+# Runs after every release; "Run workflow" on the Actions tab copies an existing one (a tag like v0.1.2).
+# Needs secrets R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and the variable R2_BUCKET.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, e.g. v0.1.2
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_REQUEST_CHECKSUM_CALCULATION: when_required   # R2 rejects the checksums newer AWS CLIs send by default
+      AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+      R2_ENDPOINT: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+      BUCKET: s3://${{ vars.R2_BUCKET }}
+    steps:
+      - name: Fetch the release's files
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern '*x86_64.AppImage' --pattern '*windows-x64-setup.exe'
+
+      - name: Upload them, then latest.json
+        run: |
+          v="${TAG#v}"
+          linux=$(ls *x86_64.AppImage) windows=$(ls *windows-x64-setup.exe)
+          for f in "$linux" "$windows"; do
+            aws s3 cp "$f" "$BUCKET/$v/$f" --endpoint-url "$R2_ENDPOINT" --content-disposition attachment --only-show-errors
+          done
+          jq -n --arg v "$v" --arg date "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json publishedAt -q .publishedAt)" \
+            --arg l "$v/$linux" --argjson ls "$(stat -c%s "$linux")" --arg w "$v/$windows" --argjson ws "$(stat -c%s "$windows")" \
+            '{version: $v, date: $date, linux: {path: $l, size: $ls}, windows: {path: $w, size: $ws}}' > latest.json
+          cat latest.json
+          aws s3 cp latest.json "$BUCKET/latest.json" --endpoint-url "$R2_ENDPOINT" --content-type application/json \
+            --cache-control "max-age=60" --only-show-errors

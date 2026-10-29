@@ -1,45 +1,8 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Footer, Nav } from './Nav';
 import { buildOs, os, osName, type BuildOs } from './platform';
-
-// The release workflow (.github/workflows/release.yml) publishes the AppImage and the Windows installer here on every v* tag
-const REPO = 'peaceoutommy/vybrant';
-const RELEASES = `https://github.com/${REPO}/releases`;
-
-interface Build {
-  size: number;
-  url: string;   // the file itself
-}
-interface Release {
-  version: string;
-  date: string;
-  notes: string;   // the release page
-  linux?: Build;
-  windows?: Build;
-}
-
-// The latest release, from GitHub's API: null while loading or when there is none (the buttons then open the releases page)
-function useLatestRelease() {
-  const [release, setRelease] = useState<Release | null>(null);
-  const [state, setState] = useState<'loading' | 'ready' | 'none'>('loading');
-  useEffect(() => {
-    fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
-      .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((r) => {
-        const build = (name: RegExp): Build | undefined => {   // the builds we make; never another arch
-          const a = r.assets.find((a: { name: string }) => name.test(a.name));
-          return a && { size: a.size, url: a.browser_download_url };
-        };
-        const linux = build(/x86_64\.AppImage$/), windows = build(/windows-x64-setup\.exe$/) ?? build(/windows-x64\.zip$/);
-        if (!linux && !windows) return setState('none');
-        setRelease({ version: r.tag_name.replace(/^v/, ''), date: r.published_at, notes: r.html_url, linux, windows });
-        setState('ready');
-      })
-      .catch(() => setState('none'));
-  }, []);
-  return { release, state };
-}
+import { useLatestRelease } from './release';
 
 const kind: Record<BuildOs, string> = { linux: 'AppImage for 64-bit Linux', windows: 'Installer for 64-bit Windows' };
 const other: BuildOs = buildOs === 'linux' ? 'windows' : 'linux';
@@ -189,7 +152,7 @@ export function Download() {
             </motion.p>
           )}
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
-            <a href={mine?.url ?? `${RELEASES}/latest`} className="btn btn-primary">
+            <a href={mine?.url} className="btn btn-primary" aria-disabled={!mine}>
               Download for {osName[buildOs]}
             </a>
             <a href="/account" className="btn btn-ghost">
@@ -198,15 +161,19 @@ export function Download() {
           </motion.div>
           <motion.p className="caption" {...reveal} transition={{ ...reveal.transition, delay: 0.3 }} aria-live="polite">
             {state === 'loading' && 'Looking up the latest version…'}
-            {(state === 'none' || (release && !release[buildOs])) && kind[buildOs]}
+            {(state === 'none' || (release && !mine)) && `${kind[buildOs]} · Downloads are unavailable right now, try again in a minute`}
             {release && mine &&
               `Version ${release.version} · ${(mine.size / 1048576).toFixed(0)} MB · ${kind[buildOs]} · ${new Date(
                 release.date,
               ).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
-            <br />
-            <a href={release?.[other]?.url ?? `${RELEASES}/latest`} className="link">
-              Also for {osName[other]}
-            </a>
+            {release?.[other] && (
+              <>
+                <br />
+                <a href={release[other].url} className="link">
+                  Also for {osName[other]}
+                </a>
+              </>
+            )}
           </motion.p>
         </section>
 
@@ -231,35 +198,13 @@ export function Download() {
           </p>
         </section>
 
-        <section className="section container two-col">
-          <div>
-            <p className="label">System requirements · {osName[shown]}</p>
-            <ul className="specs mono">
-              {requirements[shown].map((r) => (
-                <li key={r}>{r}</li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="label">More</p>
-            <ul className="specs mono">
-              <li>
-                <a className="link" href={release?.notes ?? RELEASES}>
-                  Release notes
-                </a>
-              </li>
-              <li>
-                <a className="link" href={RELEASES}>
-                  All versions
-                </a>
-              </li>
-              <li>
-                <a className="link" href={`https://github.com/${REPO}`}>
-                  Source code (GPL-3.0-or-later)
-                </a>
-              </li>
-            </ul>
-          </div>
+        <section className="section container">
+          <p className="label">System requirements · {osName[shown]}</p>
+          <ul className="specs mono">
+            {requirements[shown].map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
         </section>
       </main>
       <Footer />
