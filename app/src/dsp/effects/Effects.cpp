@@ -335,20 +335,6 @@ void ParametricEQ::process(float* L, float* R, int n, const MidiEventList&, cons
     }
     tapOut.push(L, R, n, m_sr);
 }
-float ParametricEQ::magnitudeDb(float hz) const {
-    // Evaluate |H(e^jw)| of the cascade for the UI curve
-    double w = 2 * M_PI * hz / m_sr;
-    double cw = std::cos(w), sw = std::sin(w), c2 = std::cos(2 * w), s2 = std::sin(2 * w);
-    double mag = 1;
-    for (int b = 0; b < kBands; ++b) {
-        if (!m_params.getBool(bp(b, 0))) continue;
-        const auto& q = m_l[b];
-        double nr = q.b0 + q.b1 * cw + q.b2 * c2, ni = -(q.b1 * sw + q.b2 * s2);
-        double dr = 1 + q.a1 * cw + q.a2 * c2, di = -(q.a1 * sw + q.a2 * s2);
-        mag *= std::sqrt((nr * nr + ni * ni) / (dr * dr + di * di + 1e-20));
-    }
-    return (float)(20 * std::log10(mag + 1e-9)) + m_params.get(pOutput);
-}
 
 // ============================================================ Shelving EQ
 ShelvingEQ::ShelvingEQ() {

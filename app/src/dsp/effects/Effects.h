@@ -126,7 +126,6 @@ public:
 static constexpr int kBands = 6;
 enum P : uint32_t { pBandBase = 10 /* + band*5: enabled, type, freq, gain, q */, pOutput = 1 };
 static uint32_t bp(int band, int which) { return pBandBase + band * 5 + which; }
-float magnitudeDb(float hz) const;
 AnalysisTap tapIn, tapOut;
 
 private:

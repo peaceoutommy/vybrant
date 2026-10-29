@@ -62,6 +62,8 @@ static const QString kGuiLib = "-lX11";
         }                                                                                                                                  \
     } while (0)
 
+bool eqHandleDragSelfTest(IProcessor* eq);   // ui/editors/EqEditors.cpp
+
 int runSelfTest(App& app) {
     std::setvbuf(stdout, nullptr, _IONBF, 0);   // a crash keeps the lines before it (stdout to a pipe is buffered)
     std::printf("Vybrant self test\n");
@@ -1644,6 +1646,15 @@ int runSelfTest(App& app) {
                 .arg(broken.join(", "))
                 .toUtf8()
                 .constData());
+    }
+    {   // the Parametric EQ's curve: dragging a band's handle moves that band and switches it on
+        Id t1 = app.project().mixerTracks[1].id;
+        Id slot = app.addEffect(t1, "native.parametriceq");
+        app.engine().rebuild(app.project());
+        IProcessor* eq = app.processor(slot);
+        CHECK(eq && eqHandleDragSelfTest(eq), "dragging a band handle on the Parametric EQ curve moves its freq and gain and turns it on");
+        app.removeEffect(t1, slot);
+        app.engine().rebuild(app.project());
     }
     {   // projects saved straight into Documents/Vybrant/Projects get a folder of their own; anywhere else the chosen place is kept
         const QString root = App::projectsDir();
