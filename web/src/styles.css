@@ -92,34 +92,29 @@ ul, ol { padding: 0; list-style: none; }
 
 /* Hero */
 .hero { padding-top: 120px; text-align: center; display: flex; flex-direction: column; align-items: center; }
-/* The mark on a glass cube above the headline (Cube.tsx): it tumbles, bobs and leans toward the pointer */
+/* The mark on a big glass cube in the background (Cube.tsx): off to the side, dim, turning slowly behind the text */
+.hero { position: relative; isolation: isolate; }
+main { overflow-x: clip; }   /* the cube reaches past the window's edge: no sideways scroll */
 .cube-wrap {
-  --s: clamp(76px, 10vw, 112px);
-  position: relative;
+  --s: clamp(200px, 30vw, 440px);
+  position: absolute;
+  z-index: -1;
+  top: 70px;
+  right: max(-10vw, -140px);
   width: var(--s);
   height: var(--s);
-  margin: 0 0 56px;
-  perspective: 800px;
-  animation: bob 6s ease-in-out infinite alternate;
+  pointer-events: none;
+  animation: bob 9s ease-in-out infinite alternate;
 }
-.cube-wrap::after {   /* its light on the floor */
-  content: '';
-  position: absolute;
-  left: -40%;
-  right: -40%;
-  bottom: -46px;
-  height: 22px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(170, 178, 196, 0.22), transparent);
-  filter: blur(4px);
-}
+.cube-dim { width: 100%; height: 100%; perspective: 1600px; opacity: 0.2; }   /* dimmed here: the wrapper's opacity is the fade-in */
+@media (max-width: 700px) { .cube-wrap { top: -20px; right: -30vw; } .cube-dim { opacity: 0.14; } }   /* a corner of it, clear of the text */
 .cube-tilt, .cube { width: 100%; height: 100%; transform-style: preserve-3d; }
-.cube { animation: tumble 32s linear infinite; }
+.cube { animation: tumble 90s linear infinite; }
 .face {
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(255, 255, 255, 0.32);
-  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: calc(var(--s) * 0.05);
   background: url(/logo.png) center / 60% no-repeat, linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02));
   box-shadow: inset 0 0 24px rgba(170, 178, 196, 0.18);
   backface-visibility: hidden;   /* only the faces turned to you: the back ones' marks would show through the glass */
@@ -131,7 +126,7 @@ ul, ol { padding: 0; list-style: none; }
 .face.top { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
 .face.bottom { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
 @keyframes tumble { from { transform: rotateX(-20deg) rotateY(0); } to { transform: rotateX(340deg) rotateY(720deg); } }
-@keyframes bob { from { transform: translateY(-6px); } to { transform: translateY(6px); } }
+@keyframes bob { from { transform: translateY(-14px); } to { transform: translateY(14px); } }
 
 .hero h1 {
   margin-top: 22px;
