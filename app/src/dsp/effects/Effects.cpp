@@ -16,6 +16,13 @@ static inline float sidechainSample(const ProcessContext& ctx, int i, float fall
     return ctx.sidechainL ? (ctx.sidechainL[i] + (ctx.sidechainR ? ctx.sidechainR[i] : ctx.sidechainL[i])) * 0.5f : fallback;
 }
 
+// loudest sample of a stereo block, in dB: what the dynamics editors' level meters show
+static float peakDb(const float* L, const float* R, int n) {
+    float pk = 0;
+    for (int i = 0; i < n; ++i) pk = std::max({pk, std::fabs(L[i]), std::fabs(R[i])});
+    return gainToDb(pk);
+}
+
 // ============================================================ Compressor
 Compressor::Compressor() {
     auto& p = m_params;
@@ -39,20 +46,15 @@ void Compressor::process(float* L, float* R, int n, const MidiEventList&, const 
     float makeup = p.getBool(pAutoMakeup) ? -th * (1.f - 1.f / ratio) * 0.5f : p.get(pMakeup);
     float mg = dbToGain(makeup);
     m_env.set(m_sr, p.get(pAttack), p.get(pRelease));
-    float minGr = 0;
+    const float inDb = peakDb(L, R, n);
+    float minGr = 0, db = DynamicsMeter::kFloor, gr = 0;
     for (int i = 0; i < n; ++i) {
         float det = sc ? sidechainSample(ctx, i, 0) : std::max(std::fabs(L[i]), std::fabs(R[i]));
         if (rms) det = det * det;
         float env = m_env.process(det);
         if (rms) env = std::sqrt(env);
-        float db = gainToDb(env);
-        float over = db - th;
-        float gr;
-        if (knee > 0 && over > -knee / 2 && over < knee / 2) {
-            float x = over + knee / 2;
-            gr = (1.f / ratio - 1.f) * x * x / (2.f * knee);
-        } else if (over > 0) gr = over * (1.f / ratio - 1.f);
-        else gr = 0;
+        db = gainToDb(env);
+        gr = gainDb(db - th, ratio, knee);
         minGr = std::min(minGr, gr);
         float g = dbToGain(gr) * mg;
         float dl = L[i], dr = R[i];
@@ -61,7 +63,7 @@ void Compressor::process(float* L, float* R, int n, const MidiEventList&, const 
         mixDry(L[i], dl, mix);
         mixDry(R[i], dr, mix);
     }
-    m_gr.store(minGr);
+    meter.post(inDb, peakDb(L, R, n), minGr, db, db + gr);
 }
 
 // ============================================================ Limiter (lookahead brickwall)
@@ -97,6 +99,7 @@ void Limiter::process(float* L, float* R, int n, const MidiEventList&, const Pro
     }   // note: size change only happens when user edits param (rare); vector kept at prepare size in practice
     float relCoeff = std::exp(-1.f / (float)(m_sr * p.get(pRelease) * 0.001f));
     float minGr = 0;
+    const float inDb = peakDb(L, R, n);
     for (int i = 0; i < n; ++i) {
         float l = L[i] * ing, r = R[i] * ing;
         float pk = std::max(std::fabs(l), std::fabs(r));
@@ -119,7 +122,8 @@ void Limiter::process(float* L, float* R, int n, const MidiEventList&, const Pro
         L[i] = clamp(ol * g, -ceil, ceil);
         R[i] = clamp(orr * g, -ceil, ceil);
     }
-    m_gr.store(minGr);
+    const float gained = inDb + p.get(pInputGain);   // the level the ceiling applies to
+    meter.post(gained, peakDb(L, R, n), minGr, inDb, std::min(gained + minGr, p.get(pCeiling)));
 }
 
 // ============================================================ Gate
@@ -148,6 +152,8 @@ void Gate::process(float* L, float* R, int n, const MidiEventList&, const Proces
     int hold = (int)(p.get(pHold) * 0.001 * m_sr);
     float att = 1.f - std::exp(-1.f / (float)(m_sr * p.get(pAttack) * 0.001f)),
           rel = 1.f - std::exp(-1.f / (float)(m_sr * p.get(pRelease) * 0.001f));
+    const float inDb = peakDb(L, R, n);
+    float minGain = 1;
     for (int i = 0; i < n; ++i) {
         float det = sc ? sidechainSample(ctx, i, 0) : std::max(std::fabs(L[i]), std::fabs(R[i]));
         float db = gainToDb(m_env.process(det));
@@ -160,9 +166,12 @@ void Gate::process(float* L, float* R, int n, const MidiEventList&, const Proces
         }
         float target = m_open ? 1.f : range;
         m_gain += (target - m_gain) * (target > m_gain ? att : rel);
+        minGain = std::min(minGain, m_gain);
         L[i] *= m_gain;
         R[i] *= m_gain;
     }
+    const float envDb = gainToDb(m_env.env);
+    meter.post(inDb, peakDb(L, R, n), gainToDb(minGain), envDb, envDb + gainToDb(m_gain));
 }
 
 // ============================================================ Expander
@@ -180,19 +189,17 @@ void Expander::process(float* L, float* R, int n, const MidiEventList&, const Pr
     auto& p = m_params;
     float th = p.get(pThreshold), ratio = p.get(pRatio), knee = p.get(pKnee), range = p.get(pRange);
     m_env.set(m_sr, p.get(pAttack), p.get(pRelease));
+    const float inDb = peakDb(L, R, n);
+    float minGr = 0, db = DynamicsMeter::kFloor, gr = 0;
     for (int i = 0; i < n; ++i) {
-        float db = gainToDb(m_env.process(std::max(std::fabs(L[i]), std::fabs(R[i]))));
-        float under = th - db;
-        float gr = 0;
-        if (under > 0) {
-            gr = -under * (ratio - 1.f);
-            if (knee > 0 && under < knee) gr *= under / knee;
-        }
-        gr = std::max(gr, range);
+        db = gainToDb(m_env.process(std::max(std::fabs(L[i]), std::fabs(R[i]))));
+        gr = gainDb(th - db, ratio, knee, range);
+        minGr = std::min(minGr, gr);
         float g = dbToGain(gr);
         L[i] *= g;
         R[i] *= g;
     }
+    meter.post(inDb, peakDb(L, R, n), minGr, db, db + gr);
 }
 
 // ============================================================ Clipper
@@ -213,7 +220,7 @@ void Clipper::reset() {
     m_aaL.reset();
     m_aaR.reset();
 }
-static inline float clipSample(float x, float th, float soft) {
+float Clipper::shape(float x, float th, float soft) {
     float a = std::fabs(x);
     if (soft <= 0.001f) return clamp(x, -th, th);
     float kneeStart = th * (1.f - soft);
@@ -226,22 +233,26 @@ void Clipper::process(float* L, float* R, int n, const MidiEventList&, const Pro
     auto& p = m_params;
     float th = dbToGain(p.get(pThreshold)), soft = p.get(pSoftness), ig = dbToGain(p.get(pInput)), og = dbToGain(p.get(pOutput));
     bool os = p.getBool(pOversample);
+    const float inDb = peakDb(L, R, n);
     for (int i = 0; i < n; ++i) {
         float l = L[i] * ig, r = R[i] * ig;
         if (os) {   // naive 2x: process sample and zero-stuffed midpoint through AA filter
-            float l1 = m_aaL.process(clipSample(l, th, soft));
-            float l2 = m_aaL.process(clipSample(l, th, soft));
-            float r1 = m_aaR.process(clipSample(r, th, soft));
-            float r2 = m_aaR.process(clipSample(r, th, soft));
+            float l1 = m_aaL.process(shape(l, th, soft));
+            float l2 = m_aaL.process(shape(l, th, soft));
+            float r1 = m_aaR.process(shape(r, th, soft));
+            float r2 = m_aaR.process(shape(r, th, soft));
             l = (l1 + l2) * 0.5f;
             r = (r1 + r2) * 0.5f;
         } else {
-            l = clipSample(l, th, soft);
-            r = clipSample(r, th, soft);
+            l = shape(l, th, soft);
+            r = shape(r, th, soft);
         }
         L[i] = l * og;
         R[i] = r * og;
     }
+    // the clip curve leaves the output gain out, so the dot and the clip depth do too
+    const float outDb = peakDb(L, R, n), gained = inDb + p.get(pInput), clipped = outDb - p.get(pOutput);
+    meter.post(gained, outDb, std::min(0.f, clipped - gained), inDb, clipped);
 }
 
 // ============================================================ Transient processor
@@ -262,15 +273,21 @@ void TransientProcessor::process(float* L, float* R, int n, const MidiEventList&
     float spd = p.get(pSpeed);
     m_fast.set(m_sr, spd, 30);
     m_slow.set(m_sr, spd * 8, 150);
+    const float inDb = peakDb(L, R, n);
+    float gMin = 1, gMax = 1;
     for (int i = 0; i < n; ++i) {
         float x = std::max(std::fabs(L[i]), std::fabs(R[i]));
         float f = m_fast.process(x), s = m_slow.process(x);
         float diff = gainToDb(f + 1e-6f) - gainToDb(s + 1e-6f);   // >0 during transient
         float g = diff > 0 ? dbToGain(diff * att * 1.5f) : dbToGain(-diff * sus * 0.5f);
         g = clamp(g, 0.05f, 8.f);
+        gMin = std::min(gMin, g);
+        gMax = std::max(gMax, g);
         L[i] *= g * og;
         R[i] *= g * og;
     }
+    const float up = gainToDb(gMax), down = gainToDb(gMin);
+    meter.post(inDb, peakDb(L, R, n), up > -down ? up : down, DynamicsMeter::kFloor, DynamicsMeter::kFloor);
 }
 
 // ============================================================ Parametric EQ

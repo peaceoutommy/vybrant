@@ -27,14 +27,36 @@ double syncDivisionSeconds(int choice, double bpm);
 extern const std::vector<std::string> kSyncChoices;
 
 // ---------------- Dynamics ----------------
+// What the dynamics editors draw, posted by process() once per block, in dB: the peaks since the editor last took them (it
+// swaps them back to the floor), and where the detector sits on the transfer curve now (x = level in, y = level out)
+struct DynamicsMeter {
+    static constexpr float kFloor = -96.f;   // gainToDb(silence)
+    std::atomic<float> in{kFloor}, out{kFloor}, gr{0}, x{kFloor}, y{kFloor};
+    void post(float inDb, float outDb, float grDb, float xDb, float yDb) {
+        constexpr auto rlx = std::memory_order_relaxed;
+        if (inDb > in.load(rlx)) in.store(inDb, rlx);
+        if (outDb > out.load(rlx)) out.store(outDb, rlx);
+        if (std::fabs(grDb) > std::fabs(gr.load(rlx))) gr.store(grDb, rlx);   // the deepest change (a transient boost counts too)
+        x.store(xDb, rlx);
+        y.store(yDb, rlx);
+    }
+};
+
 MT_EFFECT(Compressor, "native.compressor", "Compressor")
 public:
 enum P : uint32_t { pThreshold = 1, pRatio, pAttack, pRelease, pKnee, pMakeup, pSidechain, pMix, pDetector, pAutoMakeup };
-float gainReduction() const { return m_gr.load(); }
+// the static curve: gain change (dB) for a detector level 'over' dB above the threshold
+static float gainDb(float over, float ratio, float knee) {
+    if (knee > 0 && over > -knee / 2 && over < knee / 2) {
+        float x = over + knee / 2;
+        return (1.f / ratio - 1.f) * x * x / (2.f * knee);
+    }
+    return over > 0 ? over * (1.f / ratio - 1.f) : 0.f;
+}
+DynamicsMeter meter;
 
 private:
 dsp::EnvelopeFollower m_env;
-std::atomic<float> m_gr{0};
 
 public:
 bool wantsSidechain() const override { return true; }
@@ -47,13 +69,12 @@ void onPrepare() override;
 public:
 enum P : uint32_t { pCeiling = 1, pRelease, pLookahead, pInputGain };
 int latencySamples() const override { return m_latency; }
-float gainReduction() const { return m_gr.load(); }
+DynamicsMeter meter;
 
 private:
 dsp::DelayLine m_dl, m_dr;
 float m_env = 0;
 int m_latency = 0;
-std::atomic<float> m_gr{0};
 std::vector<float> m_peakWin;
 size_t m_peakPos = 0;
 }
@@ -63,6 +84,7 @@ MT_EFFECT(Gate, "native.gate", "Gate")
 public:
 enum P : uint32_t { pThreshold = 1, pAttack, pHold, pRelease, pRange, pSidechain, pHysteresis };
 bool wantsSidechain() const override { return true; }
+DynamicsMeter meter;
 
 private:
 dsp::EnvelopeFollower m_env;
@@ -75,6 +97,16 @@ bool m_open = false;
 MT_EFFECT(Expander, "native.expander", "Expander")
 public:
 enum P : uint32_t { pThreshold = 1, pRatio, pAttack, pRelease, pKnee, pRange };
+// the static curve: gain change (dB) for a detector level 'under' dB below the threshold
+static float gainDb(float under, float ratio, float knee, float range) {
+    float gr = 0;
+    if (under > 0) {
+        gr = -under * (ratio - 1.f);
+        if (knee > 0 && under < knee) gr *= under / knee;
+    }
+    return std::max(gr, range);
+}
+DynamicsMeter meter;
 
 private:
 dsp::EnvelopeFollower m_env;
@@ -87,6 +119,8 @@ void onPrepare() override;
 
 public:
 enum P : uint32_t { pThreshold = 1, pSoftness, pInput, pOutput, pOversample };
+static float shape(float x, float th, float soft);   // the clip curve, linear gain in and out
+DynamicsMeter meter;
 
 private:
 dsp::Biquad m_aaL, m_aaR;
@@ -96,6 +130,7 @@ dsp::Biquad m_aaL, m_aaR;
 MT_EFFECT(TransientProcessor, "native.transient", "Transient Processor")
 public:
 enum P : uint32_t { pAttack = 1, pSustain, pSpeed, pOutput };
+DynamicsMeter meter;
 
 private:
 dsp::EnvelopeFollower m_fast, m_slow;
