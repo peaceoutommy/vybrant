@@ -1,6 +1,7 @@
-import { useRef } from 'react';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { useRef, type CSSProperties } from 'react';
+import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
 import { Footer, Nav } from './Nav';
+import { Stage } from './Stage';
 
 const features = [
   { title: 'Patterns and playlist', text: 'Step sequencer, piano roll and a playlist that arranges patterns, audio and automation.' },
@@ -17,6 +18,20 @@ const steps = [
   { title: 'Paste it into Vybrant', text: 'Vybrant checks it on your machine. No connection needed after that.' },
 ];
 
+// The demo song's drums, as the channel rack shows them
+const pattern = [
+  { name: 'Kick', color: '#ec7262', steps: 'x...x...x...x...' },
+  { name: 'Clap', color: '#e3a33c', steps: '....x.......x...' },
+  { name: 'Hat', color: '#7fd37f', steps: 'x.x.x.x.x.x.x.x.' },
+  { name: 'Snare', color: '#6aa8ec', steps: '.......x......x.' },
+];
+
+// A waveform for the price card: a few sines under a swell
+const wave = Array.from({ length: 151 }, (_, i) => {
+  const y = 30 + Math.sin(i * 0.83) * Math.sin(i * 0.19) * 26 * Math.sin((i / 150) * Math.PI);
+  return `${i ? 'L' : 'M'}${i * 4} ${y.toFixed(1)}`;
+}).join('');
+
 // Reveal as it scrolls into view, once
 const reveal = {
   initial: { opacity: 0, y: 24 },
@@ -29,11 +44,13 @@ export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: shot, offset: ['start end', 'center center'] });
   const tilt = useTransform(scrollYProgress, [0, 1], [14, 0]);   // the screenshot lies back, then stands up as it arrives
+  const reduce = useReducedMotion();
 
   return (
     <>
       <div className="glow" aria-hidden />
       <Nav />
+      <Playhead />
       <main>
         <section className="hero container">
           <motion.p className="label" {...reveal}>
@@ -61,23 +78,20 @@ export function Landing() {
           </motion.p>
         </section>
 
-        <div className="container shot-wrap" ref={shot}>
-          <motion.div
-            className="shot"
-            style={{ rotateX: tilt }}
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <img src="/vybrant.webp" alt="Vybrant's playlist with patterns arranged over eight bars" width={1600} height={640} />
-          </motion.div>
-        </div>
+        <Stage />
 
         <section id="features" className="section container">
-          <motion.p className="label" {...reveal}>
-            What's inside
-          </motion.p>
-          <motion.h2 {...reveal}>Everything a track needs.</motion.h2>
+          <div className="section-head">
+            <div>
+              <motion.p className="label" {...reveal}>
+                What's inside
+              </motion.p>
+              <motion.h2 {...reveal}>Everything a track needs.</motion.h2>
+            </div>
+            <motion.div {...reveal} transition={{ ...reveal.transition, delay: 0.12 }}>
+              <Sequencer />
+            </motion.div>
+          </div>
           <ul className="features">
             {features.map((f, i) => (
               <motion.li key={f.title} {...reveal} transition={{ ...reveal.transition, delay: (i % 2) * 0.08 }}>
@@ -90,6 +104,16 @@ export function Landing() {
             ))}
           </ul>
         </section>
+
+        <div className="container shot-wrap" ref={shot}>
+          <p className="frame-labels" aria-hidden>
+            <span>Fig.02 — Playlist</span>
+            <span>001:1:000 → 009:1:000</span>
+          </p>
+          <motion.div className="shot" style={{ rotateX: reduce ? 0 : tilt }} {...reveal}>
+            <img loading="lazy" src="/vybrant.webp" alt="Vybrant's playlist with patterns arranged over eight bars" width={1600} height={640} />
+          </motion.div>
+        </div>
 
         <section id="license" className="section container">
           <motion.p className="label" {...reveal}>
@@ -110,6 +134,22 @@ export function Landing() {
         <section id="pricing" className="section container">
           <motion.div className="price-card" {...reveal}>
             <p className="label">Pricing</p>
+            <svg className="wave" viewBox="0 0 600 60" preserveAspectRatio="none" aria-hidden>
+              <defs>
+                <linearGradient id="wave-ink" x1="0" x2="1">
+                  <stop offset="0" stopColor="#bfeedd" />
+                  <stop offset="0.5" stopColor="#d6c4f6" />
+                  <stop offset="1" stopColor="#a7b5f6" />
+                </linearGradient>
+              </defs>
+              <motion.path
+                d={wave}
+                initial={{ pathLength: 0 }}
+                whileInView={{ pathLength: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 1.8, ease: [0.22, 1, 0.36, 1] }}
+              />
+            </svg>
             <p className="price">
               Free<span>€0</span>
             </p>
@@ -126,5 +166,42 @@ export function Landing() {
       </main>
       <Footer />
     </>
+  );
+}
+
+// Step lights run along at 140 BPM, pure CSS (styles.css: .seq)
+function Sequencer() {
+  return (
+    <div className="seq" aria-hidden>
+      <p className="seq-head">
+        <span>Pattern 1</span>
+        <span>140.0 BPM · 4/4</span>
+      </p>
+      {pattern.map((t) => (
+        <div key={t.name} className="seq-row" style={{ '--c': t.color } as CSSProperties}>
+          <span>{t.name}</span>
+          {[...t.steps].map((s, i) => (
+            <i key={i} className={s === 'x' ? 'on' : undefined} style={{ '--i': i } as CSSProperties} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A song position counter in the corner: the page is 32 bars long and scrolling moves the playhead
+function Playhead() {
+  const { scrollYProgress } = useScroll();
+  const position = useTransform(scrollYProgress, (p) => {
+    const t = Math.round(p * 32 * 4 * 960);   // ticks, 960 per beat
+    return `${String(Math.floor(t / 3840) + 1).padStart(3, '0')}:${(Math.floor(t / 960) % 4) + 1}:${String(t % 960).padStart(3, '0')}`;
+  });
+  return (
+    <div className="playhead" aria-hidden>
+      <span className="rec" />
+      <motion.span>{position}</motion.span>
+      <span>140.0 BPM</span>
+      <motion.i style={{ scaleX: scrollYProgress }} />
+    </div>
   );
 }
