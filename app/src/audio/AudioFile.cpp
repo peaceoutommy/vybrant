@@ -3,7 +3,7 @@
 #include "core/Log.h"
 #include <sndfile.h>
 #include <samplerate.h>
-#include <rubberband/RubberBandStretcher.h>
+#include <signalsmith-stretch/signalsmith-stretch.h>
 #include <lame/lame.h>
 #include <QFileInfo>
 #include <QThreadPool>
@@ -138,62 +138,42 @@ double AudioFile::bpmFromName(const QString& path) {
     double v = m.hasMatch() ? m.captured(1).replace(',', '.').toDouble() : 0.0;
     return v >= 40 && v <= 300 ? v : 0.0;
 }
+// Signalsmith Stretch (MIT, app/third_party): the whole clip in one pass at an exact output length. The block / interval
+// sizes trade time resolution (short: crisp hits) against frequency resolution (long: smooth sustained sounds).
 std::shared_ptr<AudioAsset> AudioFile::stretch(const AudioAsset& in, double timeRatio, double pitchSemitones, int mode) {
-    using namespace RubberBand;
-    // threading off: renders already run on a pool thread, and the threaded R2 engine (drums / pads) hands back a stereo
-    // render short while its workers are still busy
-    RubberBandStretcher::Options opts = RubberBandStretcher::OptionProcessOffline | RubberBandStretcher::OptionPitchHighQuality |
-        RubberBandStretcher::OptionThreadingNever;
-    switch (mode) {
-    case StretchDrums:   // R2: phase reset on hits keeps attacks sharp
-        opts |= RubberBandStretcher::OptionEngineFaster | RubberBandStretcher::OptionTransientsCrisp |
-            RubberBandStretcher::OptionDetectorPercussive | RubberBandStretcher::OptionWindowShort;
-        break;
-    case StretchPads:   // R2: no phase resets, long window, smoothing - soft and smeared, no flamming on sustained sounds
-        opts |= RubberBandStretcher::OptionEngineFaster | RubberBandStretcher::OptionTransientsSmooth |
-            RubberBandStretcher::OptionWindowLong | RubberBandStretcher::OptionSmoothingOn;
-        break;
-    case StretchVocals: opts |= RubberBandStretcher::OptionEngineFiner | RubberBandStretcher::OptionFormantPreserved; break;
-    default: opts |= RubberBandStretcher::OptionEngineFiner; break;
-    }
     auto out = std::make_shared<AudioAsset>();
     out->path = in.path;
     out->sampleRate = in.sampleRate;
     out->originalSampleRate = in.originalSampleRate;
     out->channels = in.channels;
-    RubberBandStretcher rb((size_t)in.sampleRate, in.channels, opts, timeRatio, std::pow(2.0, pitchSemitones / 12.0));
-    rb.setExpectedInputDuration((size_t)in.frames);
-    const float* chans[2] = {in.L(), in.R()};
-    rb.study(chans, (size_t)in.frames, true);
-    size_t pos = 0;
-    const size_t block = 8192;
-    std::vector<float> ol, orr;
-    std::vector<float> tmpL(block), tmpR(block);
-    while (pos < (size_t)in.frames) {
-        size_t n = std::min(block, (size_t)in.frames - pos);
-        const float* c[2] = {chans[0] + pos, chans[1] + pos};
-        rb.process(c, n, pos + n >= (size_t)in.frames);
-        pos += n;
-        int avail;
-        while ((avail = rb.available()) > 0) {
-            size_t take = std::min((size_t)avail, block);
-            float* o[2] = {tmpL.data(), tmpR.data()};
-            size_t got = rb.retrieve(o, take);
-            ol.insert(ol.end(), tmpL.begin(), tmpL.begin() + got);
-            if (in.channels > 1) orr.insert(orr.end(), tmpR.begin(), tmpR.begin() + got);
-        }
+    const int ch = in.channels > 1 ? 2 : 1;
+    const float sr = (float)in.sampleRate;
+    signalsmith::stretch::SignalsmithStretch<float> st(0x5eed);   // a fixed seed: the same clip always renders the same
+    switch (mode) {
+    case StretchDrums: st.configure(ch, int(sr * 0.06f), int(sr * 0.015f)); break;   // short blocks: hits stay sharp
+    case StretchPads: st.configure(ch, int(sr * 0.2f), int(sr * 0.05f)); break;   // long blocks: smooth, no flamming on held notes
+    default: st.presetDefault(ch, sr); break;
     }
-    int avail;
-    while ((avail = rb.available()) > 0) {
-        size_t take = std::min((size_t)avail, block);
-        float* o[2] = {tmpL.data(), tmpR.data()};
-        size_t got = rb.retrieve(o, take);
-        ol.insert(ol.end(), tmpL.begin(), tmpL.begin() + got);
-        if (in.channels > 1) orr.insert(orr.end(), tmpR.begin(), tmpR.begin() + got);
+    st.setTransposeSemitones((float)pitchSemitones, 8000 / sr);   // above ~8 kHz the timbre is kept rather than transposed
+    if (mode == StretchVocals) st.setFormantFactor(1, true);   // formants stay put while the pitch moves
+    const int64_t want = std::max<int64_t>(1, std::llround(in.frames * timeRatio));
+    // a clip shorter than the stretcher's look-ahead is padded with silence, and the extra output cut off again
+    int64_t inLen = std::max<int64_t>(in.frames, st.outputSeekLength(float(in.frames) / want) + 1);
+    std::vector<float> padL, padR;
+    const float* src[2] = {in.L(), in.R()};
+    if (inLen > in.frames) {
+        padL.assign(in.L(), in.L() + in.frames), padL.resize(inLen);
+        padR.assign(in.R(), in.R() + in.frames), padR.resize(inLen);
+        src[0] = padL.data(), src[1] = padR.data();
     }
-    out->left = std::move(ol);
-    out->right = std::move(orr);
-    out->frames = (int64_t)out->left.size();
+    const int64_t outLen = inLen == in.frames ? want : std::llround(inLen * timeRatio);
+    out->left.resize(outLen);
+    if (ch > 1) out->right.resize(outLen);
+    float* dst[2] = {out->left.data(), ch > 1 ? out->right.data() : nullptr};
+    st.exact(src, (int)inLen, dst, (int)outLen);
+    out->left.resize(want);
+    if (ch > 1) out->right.resize(want);
+    out->frames = want;
     out->buildPeaks();
     return out;
 }

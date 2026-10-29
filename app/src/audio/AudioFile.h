@@ -36,7 +36,7 @@ struct AudioAsset {
 using AudioAssetPtr = std::shared_ptr<const AudioAsset>;
 
 // How a sample changes pitch / length (after FL Studio's time-stretch modes). Resample links them like a turntable; the
-// stretch modes keep them independent (Rubber Band, offline) with settings tuned for the material.
+// stretch modes keep them independent (Signalsmith Stretch, offline) with settings tuned for the material.
 enum StretchMode : int { StretchResample = 0, StretchGeneral, StretchDrums, StretchPads, StretchVocals };
 inline const std::vector<std::string>& stretchModeNames() {
     static const std::vector<std::string> n = {"Resample", "Stretch", "Stretch: drums", "Stretch: pads", "Stretch: vocals"};
@@ -49,7 +49,7 @@ struct AudioFile {
     static bool write(const QString& path, const float* interleaved, int channels, int64_t frames, double sampleRate, int bitDepth,
         const QString& format /*wav|aiff|flac|ogg|mp3*/, QString* error = nullptr);
     static std::shared_ptr<AudioAsset> resample(const AudioAsset& in, double targetRate);
-    // Rubber Band offline; mode is one of the stretch modes (not StretchResample)
+    // Time-stretch and pitch-shift offline (Signalsmith Stretch); mode is one of the stretch modes (not StretchResample)
     static std::shared_ptr<AudioAsset> stretch(const AudioAsset& in, double timeRatio, double pitchSemitones, int mode = StretchGeneral);
     static double bpmFromName(const QString& path);   // "loop 83 bpm.wav" -> 83; 0 when the name carries no tempo
     static bool probe(const QString& path, double* sr, int* channels, int64_t* frames);

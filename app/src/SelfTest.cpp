@@ -1659,11 +1659,10 @@ int runSelfTest(App& app) {
         qputenv("XDG_DATA_HOME", tmp.path().toUtf8() + "/home/.local/share");
         const QString fake = tmp.path() + "/Vybrant-v9-x86_64.AppImage", share = tmp.path() + "/home/.local/share";
         QFile f(fake);
-        f.open(QIODevice::WriteOnly);
-        f.write("not really an AppImage");
+        const bool made = f.open(QIODevice::WriteOnly) && f.write("not really an AppImage") > 0;
         f.close();
         QFile desk(share + "/applications/vybrant.desktop");
-        const bool ok = appimage::install(fake) && appimage::installed() && desk.open(QIODevice::ReadOnly) &&
+        const bool ok = made && appimage::install(fake) && appimage::installed() && desk.open(QIODevice::ReadOnly) &&
             desk.readAll().contains("Exec=\"" + (tmp.path() + "/home/Applications/Vybrant.AppImage").toUtf8() + "\" %f") &&
             QFileInfo(appimage::installedPath()).isExecutable() && QFile::exists(share + "/icons/hicolor/512x512/apps/vybrant.png") &&
             QFile::exists(share + "/mime/packages/vybrant.xml");
