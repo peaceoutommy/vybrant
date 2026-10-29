@@ -1,5 +1,5 @@
 {
-  "name": "vybrant-license-server",
+  "name": "vybrant-api",
   "private": true,
   "description": "Accounts (Clerk) and license signing for Vybrant",
   "scripts": {

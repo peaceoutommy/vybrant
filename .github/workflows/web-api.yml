@@ -1,0 +1,22 @@
+name: Website and API
+
+# The website (web/) and the license API (api/): runs when either changes. A pass on main deploys the API (deploy-api.yml).
+on:
+  push:
+    branches: [main]
+    paths: ['web/**', 'api/**', '.github/workflows/web-api.yml']
+  pull_request:
+    paths: ['web/**', 'api/**', '.github/workflows/web-api.yml']
+
+jobs:
+  web-api:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: License API (build + signing test)
+        run: cd api && npm ci && npm test
+      - name: Website (typecheck + build)
+        run: cd web && npm ci && npm run build

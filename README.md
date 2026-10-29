@@ -71,7 +71,7 @@ python3 tests/sync_test.py            # JACK transport and MIDI clock in, agains
 QT_QPA_PLATFORM=xcb ./bin/vybrant --embed-test   # plugin editors embed, in-process and from a plugin process (X11)
 ```
 
-All but the embed test run in CI (`.github/workflows/ci.yml`); the self test also runs on Windows there. The UI test uses a private config directory and socket, so it is
+All but the embed test run in CI (`.github/workflows/ci.yml`, when the app changes); the self test also runs on Windows there. The UI test uses a private config directory and socket, so it is
 safe to run while the app is open. Sources are formatted with `clang-format` (`.clang-format` in the root):
 
 ```bash
@@ -185,14 +185,14 @@ Vybrant asks for a license key at startup (Help > License... changes it later). 
 (Clerk: Google or email) and generate one license per account. A key is a small JSON payload (account id, name, email) plus
 an Ed25519 signature; Vybrant verifies it offline against the public key in `src/License.cpp`.
 
-- `server/`: NestJS API. `GET/POST /api/license` behind the Clerk session token; the license is kept in the user's Clerk
+- `api/`: NestJS API. `GET/POST /api/license` behind the Clerk session token; the license is kept in the user's Clerk
   private metadata (no database). `npm run keygen` makes a signing key pair, `npm test` checks the signing.
 - `web/`: React + Motion landing page and the account page that generates and shows the license.
 
 Setup: create a Clerk application with Google enabled, then
 
 ```bash
-cd server && cp .env.example .env    # CLERK_SECRET_KEY, WEB_ORIGIN, LICENSE_PRIVATE_KEY (npm run keygen)
+cd api && cp .env.example .env    # CLERK_SECRET_KEY, WEB_ORIGIN, LICENSE_PRIVATE_KEY (npm run keygen)
 npm install && npm run dev            # :3000
 cd ../web && cp .env.example .env.local   # VITE_CLERK_PUBLISHABLE_KEY
 npm install && npm run dev            # :5173, proxies /api to :3000
@@ -200,9 +200,9 @@ npm install && npm run dev            # :5173, proxies /api to :3000
 
 ### Deploying the license API
 
-`server/` runs on any VPS with Docker: `compose.yaml` builds the API and puts Caddy in front of it, which serves it over HTTPS
+`api/` runs on any VPS with Docker: `compose.yaml` builds the API and puts Caddy in front of it, which serves it over HTTPS
 and renews the certificate itself. Point a DNS record for the API's domain (e.g. `api.vybrant.audio`) at the VPS and open
-ports 80 and 443, then copy `server/` there (without `node_modules`, `dist` and your local `.env`) and:
+ports 80 and 443, then copy `api/` there (without `node_modules`, `dist` and your local `.env`) and:
 
 ```bash
 cp .env.example .env    # production values, see below
@@ -213,7 +213,7 @@ docker compose up -d --build
 - `CLERK_SECRET_KEY`: the production instance's `sk_live_...`; `WEB_ORIGIN`: the website's exact origin (`https://...`).
 - `API_DOMAIN`: the API's domain. Build the website with `VITE_API_URL=https://<API_DOMAIN>` and the `pk_live_...` key.
 
-Logs: `docker compose logs -f api`. After that first manual start, every CI run that passes on `main` deploys it
+Logs: `docker compose logs -f api`. After that first manual start, every "Website and API" run (`.github/workflows/web-api.yml`) that passes on `main` deploys it
 (`.github/workflows/deploy-api.yml`: copy to `~/vybrant-api`, rebuild, check it answers over HTTPS; unchanged, nothing restarts). One-time
 setup: a deploy key whose public half is in the VPS user's `~/.ssh/authorized_keys` (that user runs `docker` without
 `sudo`, and the VPS has `rsync`), then in the repository's Settings > Secrets and variables > Actions:

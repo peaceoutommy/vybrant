@@ -1,9 +1,12 @@
 name: CI
 
+# The app (Linux and Windows): runs when its code, tests or build files change. web/ and api/ have their own workflow.
 on:
   push:
     branches: [main]
+    paths: ['src/**', 'tests/**', 'resources/**', 'packaging/**', 'Vybrant.pro', 'CMakeLists.txt', '.clang-format', '.github/workflows/ci.yml']
   pull_request:
+    paths: ['src/**', 'tests/**', 'resources/**', 'packaging/**', 'Vybrant.pro', 'CMakeLists.txt', '.clang-format', '.github/workflows/ci.yml']
 
 jobs:
   build-and-test:
@@ -79,18 +82,6 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QT_FORCE_STDERR_LOGGING: 1
         run: gdb -q -batch -ex run -ex bt --args ./build/Vybrant.exe --selftest
-
-  web:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - name: License server (build + signing test)
-        run: cd server && npm ci && npm test
-      - name: Website (typecheck + build)
-        run: cd web && npm ci && npm run build
 
   format-check:
     # Pinned to the clang-format the code is formatted with: versions differ in their output
