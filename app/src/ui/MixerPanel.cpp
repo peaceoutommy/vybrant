@@ -38,6 +38,7 @@ EffectSlotList::EffectSlotList(App& app, Id trackId, QWidget* parent)
     , m_track(trackId) {
     setAcceptDrops(true);
     setMouseTracking(true);
+    setCursor(Qt::PointingHandCursor);
     setMinimumHeight(3 * 18);
     setMaximumHeight(10 * 18 + 2);
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
@@ -257,6 +258,7 @@ MixerStrip::MixerStrip(App& app, Id trackId, QWidget* parent)
     , m_app(app)
     , m_track(trackId) {
     setFixedWidth(96);
+    setCursor(Qt::PointingHandCursor);
     auto* lay = new QVBoxLayout(this);
     lay->setContentsMargins(3, 3, 3, 3);
     lay->setSpacing(3);

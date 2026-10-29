@@ -1089,23 +1089,25 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == NoDrag) {
         int edge = 0;
         Clip* c = L.area.contains(e->pos()) ? clipAt(e->pos(), &edge) : nullptr;
-        if (m_tool == Draw || m_tool == Select) {
-            if (L.headers.contains(e->pos())) {
-                int idx = trackAtY(e->pos().y());
-                setCursor(idx >= 0 && e->pos().y() - trackTop(idx) >= trackH(idx) - 5 ? Qt::SizeVerCursor : Qt::ArrowCursor);
-            } else {
-                int hh = c ? clipHandleAt(*c, e->pos()) : 0;
-                if (hh != m_hoverHandle || (c ? c->id : 0) != m_hoverHandleClip) {
-                    m_hoverHandle = hh;
-                    m_hoverHandleClip = c ? c->id : 0;
-                    invalidate();
-                }
-                setCursor(c ? (hh ? QCursor(Qt::ArrowCursor)
-                                      : edge != 0 ? QCursor(Qt::SizeHorCursor)
-                                                  : QCursor(Qt::SizeAllCursor))
-                            : toolCursorFor(m_tool));
+        if (L.headers.contains(e->pos())) {
+            int idx = trackAtY(e->pos().y()), ly = idx >= 0 ? e->pos().y() - trackTop(idx) : 0, x = e->pos().x();
+            bool button = idx >= 0 && trackH(idx) >= 40 && ly >= 22 && ly <= 36 && x >= 10 && x < 113;   // M S L and the route
+            setCursor(idx >= 0 && ly >= trackH(idx) - 5 ? Qt::SizeVerCursor : button ? Qt::PointingHandCursor : Qt::ArrowCursor);
+        } else if (L.ruler.contains(e->pos()) || tempoToggleRect(L).contains(e->pos()) ||
+            (L.tempo.contains(e->pos()) && tempoPointAt(e->pos()) >= 0))
+            setCursor(Qt::PointingHandCursor);
+        else if (m_tool == Draw || m_tool == Select) {
+            int hh = c ? clipHandleAt(*c, e->pos()) : 0;
+            if (hh != m_hoverHandle || (c ? c->id : 0) != m_hoverHandleClip) {
+                m_hoverHandle = hh;
+                m_hoverHandleClip = c ? c->id : 0;
+                invalidate();
             }
-        }
+            setCursor(c ? (hh ? QCursor(Qt::PointingHandCursor)
+                                  : edge != 0 ? QCursor(Qt::SizeHorCursor)
+                                              : QCursor(Qt::SizeAllCursor))
+                        : toolCursorFor(m_tool));
+        } else setCursor(toolCursorFor(m_tool));
         if (m_tool == Draw) update();
         return;
     }

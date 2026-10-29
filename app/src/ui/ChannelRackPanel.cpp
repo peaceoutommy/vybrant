@@ -521,6 +521,7 @@ void RackView::mouseMoveEvent(QMouseEvent* e) {
     }
     if (!m_dragging) {
         HitInfo h = hitTest(e->pos());
+        setCursor(h.hit == None ? Qt::ArrowCursor : h.hit == Grip ? Qt::OpenHandCursor : Qt::PointingHandCursor);
         if (h.hit == StepCell) {
             auto& proj = m_app.project();
             if (h.row >= 0) {

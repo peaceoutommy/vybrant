@@ -317,6 +317,7 @@ public:
         , m_ds(ds) {
         setMinimumSize(4 * 70, 4 * 56);
         setAcceptDrops(true);
+        setCursor(Qt::PointingHandCursor);
     }
     int selected = 0;
     std::function<void(int)> onSelect;

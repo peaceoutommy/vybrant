@@ -109,6 +109,7 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     theme::styled(m_position,
         "QLabel { background:@surface@; color:@accent@; border:1px solid @border@; border-radius:@radius@; padding:1px 9px; font-family: 'Geist Mono', monospace; font-size: 12pt; }");
     m_position->setFixedHeight(28);
+    m_position->setCursor(Qt::PointingHandCursor);
     m_position->setToolTip("Song position in bars : beats : ticks - click to jump to a bar");
     lay->addWidget(m_position);
     m_timeSec = theme::dimLabel("0:00.0", this, "font-family: 'Geist Mono', monospace; font-size:8pt;");

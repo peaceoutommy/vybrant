@@ -10,6 +10,11 @@
 #include <QMap>
 #include <QWidget>
 #include <QAbstractButton>
+#include <QComboBox>
+#include <QHeaderView>
+#include <QMouseEvent>
+#include <QSlider>
+#include <QTabBar>
 #include <cmath>
 #include <map>
 #include <tuple>
@@ -382,8 +387,34 @@ public:
 private:
     QWidget* m_host;
 };
+// Qt's own clickables (buttons, combo boxes, tabs, sliders) and the rows of every list / tree show the hand; a widget
+// that sets its own cursor keeps it, and Qt drops the cursor of a disabled widget by itself
+class ClickCursors : public QObject {
+public:
+    using QObject::QObject;
+    bool eventFilter(QObject* o, QEvent* e) override {
+        if (e->type() == QEvent::Polish) {
+            auto* w = qobject_cast<QWidget*>(o);
+            if (auto* v = qobject_cast<QAbstractItemView*>(w); v && !qobject_cast<QHeaderView*>(v)) v->viewport()->setMouseTracking(true);
+            else if (w && !w->testAttribute(Qt::WA_SetCursor) &&
+                (qobject_cast<QAbstractButton*>(w) || qobject_cast<QComboBox*>(w) || qobject_cast<QTabBar*>(w) ||
+                    qobject_cast<QSlider*>(w)))
+                w->setCursor(Qt::PointingHandCursor);
+        } else if (e->type() == QEvent::MouseMove) {
+            auto* vp = qobject_cast<QWidget*>(o);
+            auto* v = vp ? qobject_cast<QAbstractItemView*>(vp->parentWidget()) : nullptr;
+            auto* me = static_cast<QMouseEvent*>(e);
+            if (v && v->viewport() == vp && !qobject_cast<QHeaderView*>(v) && me->buttons() == Qt::NoButton) {
+                if (v->indexAt(me->position().toPoint()).isValid()) vp->setCursor(Qt::PointingHandCursor);
+                else vp->unsetCursor();
+            }
+        }
+        return false;
+    }
+};
 }   // namespace
 void roundedFrame(QWidget* host) { new RoundedFrameOverlay(host); }
+void installClickCursors() { qApp->installEventFilter(new ClickCursors(qApp)); }
 
 QString noteName(int midi) {
     static const char* names[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};

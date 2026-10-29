@@ -15,6 +15,7 @@
 #include "ui/Theme.h"
 #include "ui/ProcessorPicker.h"
 #include "License.h"
+#include "core/ProcessUsage.h"
 #include "AppImage.h"
 #include <QSlider>
 #include <QPushButton>
@@ -1715,6 +1716,16 @@ int runSelfTest(App& app) {
                 .arg(broken.join(", "))
                 .toUtf8()
                 .constData());
+    }
+    {   // Qt's own buttons get the hand once polished, a button that picked its own cursor keeps it; the usage readout reads the OS
+        QPushButton plain, own;
+        own.setCursor(Qt::SizeVerCursor);
+        plain.ensurePolished();
+        own.ensurePolished();
+        ProcessUsage u = processUsage();
+        CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && u.residentBytes > 1e6 &&
+                u.cpuSeconds > 0,
+            "buttons show the hand cursor, and the process's CPU time and memory are read");
     }
     {   // the Parametric EQ's curve: dragging a band's handle moves that band and switches it on
         Id t1 = app.project().mixerTracks[1].id;

@@ -84,6 +84,7 @@ int main(int argc, char** argv) {
     QGuiApplication::setDesktopFileName("vybrant");
     mt::theme::setPalette(mt::theme::loadSavedTheme());
     app.setStyleSheet(mt::theme::stylesheet());
+    mt::theme::installClickCursors();
     if (argc >= 4 && std::strcmp(argv[1], "--plugin-bridge") == 0)
         return mt::pluginBridgeMain(argv[2], argv[3]);   // a plugin's own process
     mt::App daw;

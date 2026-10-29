@@ -117,6 +117,7 @@ public:
         if (caption) info += "  |  " + caption();
         p.drawText(4, 12, info);
     }
+    void enterEvent(QEnterEvent*) override { setCursor(setStart ? Qt::PointingHandCursor : Qt::ArrowCursor); }   // click sets the start
     void mousePressEvent(QMouseEvent* e) override {
         if (setStart && e->button() == Qt::LeftButton) {
             setStart(clamp((float)e->pos().x() / width(), 0.f, 1.f));

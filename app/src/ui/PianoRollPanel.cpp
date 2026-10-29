@@ -916,8 +916,10 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == NoDrag) {
         bool edge = false;
         Note* n = L.grid.contains(e->pos()) ? noteAt(e->pos(), &edge) : nullptr;
-        if (m_tool == Draw || m_tool == Select)
+        if (L.keys.contains(e->pos()) || L.ruler.contains(e->pos()) || L.vel.contains(e->pos())) setCursor(Qt::PointingHandCursor);
+        else if (m_tool == Draw || m_tool == Select)
             setCursor(n && edge ? QCursor(Qt::SizeHorCursor) : (n ? QCursor(Qt::SizeAllCursor) : toolCursorFor(m_tool)));
+        else setCursor(toolCursorFor(m_tool));
         if (m_tool == Draw) update();
         return;
     }
