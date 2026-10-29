@@ -213,8 +213,8 @@ docker compose up -d --build
 - `CLERK_SECRET_KEY`: the production instance's `sk_live_...`; `WEB_ORIGIN`: the website's exact origin (`https://...`).
 - `API_DOMAIN`: the API's domain. Build the website with `VITE_API_URL=https://<API_DOMAIN>` and the `pk_live_...` key.
 
-Logs: `docker compose logs -f api`. After that first manual start, every push to `main` that changes `server/` deploys
-itself (`.github/workflows/deploy-api.yml`: test, copy to `~/vybrant-api`, rebuild, check it answers over HTTPS). One-time
+Logs: `docker compose logs -f api`. After that first manual start, every CI run that passes on `main` deploys it
+(`.github/workflows/deploy-api.yml`: copy to `~/vybrant-api`, rebuild, check it answers over HTTPS; unchanged, nothing restarts). One-time
 setup: a deploy key whose public half is in the VPS user's `~/.ssh/authorized_keys` (that user runs `docker` without
 `sudo`, and the VPS has `rsync`), then in the repository's Settings > Secrets and variables > Actions:
 

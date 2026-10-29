@@ -1,29 +1,30 @@
 name: Deploy API
 
-# Every push to main that touches server/ tests the license API, copies it to the VPS (~/vybrant-api) and rebuilds it there
-# with Docker Compose. The VPS keeps its own .env (made once by hand, see README): secrets never leave it or reach CI.
+# After CI passes on main, the license API is copied to the VPS (~/vybrant-api) and rebuilt there with Docker Compose; when
+# server/ did not change, nothing is recreated. The VPS keeps its own .env (made once by hand, see README): secrets never
+# leave it or reach CI.
 # Repository secrets: VPS_SSH_KEY (a deploy key's private half), VPS_KNOWN_HOSTS (`ssh-keyscan <host>`), VPS_TARGET
 # (user@host). Repository variable: API_DOMAIN, for the check after the deploy.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths: ['server/**', '.github/workflows/deploy-api.yml']
   workflow_dispatch:
 
 concurrency: deploy-api   # one deploy at a time; a newer push waits for the running one
 
 jobs:
   deploy:
+    # only pushes to this repository: a fork's pull request from a branch named main must never deploy with these secrets
+    if: >-
+      github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
         with:
-          node-version: 24
-
-      - name: Test
-        run: cd server && npm ci && npm test
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}   # exactly the commit CI passed
 
       - name: Copy to the VPS and rebuild
         env:
