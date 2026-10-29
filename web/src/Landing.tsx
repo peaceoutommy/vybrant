@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties } from 'react';
-import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
-import { Footer, Nav, Ruler } from './Nav';
+import { motion, useScroll, useTransform } from 'motion/react';
+import { Footer, Nav } from './Nav';
 import { Stage } from './Stage';
 
 const features = [
@@ -44,16 +44,13 @@ export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: shot, offset: ['start end', 'center center'] });
   const tilt = useTransform(scrollYProgress, [0, 1], [14, 0]);   // the screenshot lies back, then stands up as it arrives
-  const reduce = useReducedMotion();
 
   return (
     <>
       <div className="glow" aria-hidden />
       <Nav />
-      <Playhead />
       <main>
         <section className="hero container">
-          <Ruler />
           <motion.p className="label" {...reveal}>
             Digital audio workstation · Linux · Windows
           </motion.p>
@@ -111,7 +108,7 @@ export function Landing() {
             <span>Fig.02 — Playlist</span>
             <span>001:1:000 → 009:1:000</span>
           </p>
-          <motion.div className="shot" style={{ rotateX: reduce ? 0 : tilt }} {...reveal}>
+          <motion.div className="shot" style={{ rotateX: tilt }} {...reveal}>
             <img loading="lazy" src="/vybrant.webp" alt="Vybrant's playlist with patterns arranged over eight bars" width={1600} height={640} />
           </motion.div>
         </div>
@@ -186,23 +183,6 @@ function Sequencer() {
           ))}
         </div>
       ))}
-    </div>
-  );
-}
-
-// A song position counter in the corner: the page is 32 bars long and scrolling moves the playhead
-function Playhead() {
-  const { scrollYProgress } = useScroll();
-  const position = useTransform(scrollYProgress, (p) => {
-    const t = Math.round(p * 32 * 4 * 960);   // ticks, 960 per beat
-    return `${String(Math.floor(t / 3840) + 1).padStart(3, '0')}:${(Math.floor(t / 960) % 4) + 1}:${String(t % 960).padStart(3, '0')}`;
-  });
-  return (
-    <div className="playhead" aria-hidden>
-      <span className="rec" />
-      <motion.span>{position}</motion.span>
-      <span>140.0 BPM</span>
-      <motion.i style={{ scaleX: scrollYProgress }} />
     </div>
   );
 }

@@ -29,7 +29,7 @@ const appearance = {
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ClerkProvider publishableKey={key} afterSignOutUrl="/" signInFallbackRedirectUrl="/account" appearance={appearance}>
-      <MotionConfig reducedMotion="user">
+      <MotionConfig reducedMotion="never">
         {location.pathname.startsWith('/account') ? <Account /> : location.pathname.startsWith('/download') ? <Download /> : <Landing />}
       </MotionConfig>
     </ClerkProvider>

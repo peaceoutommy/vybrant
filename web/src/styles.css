@@ -26,7 +26,6 @@ a { color: inherit; text-decoration: none; }
 h1, h2, h3, p, ul, ol { margin: 0; }
 ul, ol { padding: 0; list-style: none; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
-@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
 
 .container { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 24px; }
 @media (max-width: 600px) { .container { padding: 0 16px; } }
@@ -333,18 +332,6 @@ ul, ol { padding: 0; list-style: none; }
 
 .steps { margin-top: 56px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .steps li { position: relative; padding: 28px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
-.steps li::after {
-  content: '';
-  position: absolute;
-  top: -1px;
-  right: -1px;
-  width: 44px;
-  height: 22px;
-  background: var(--bg);
-  border-left: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-@media (min-width: 821px) { .steps li:nth-child(2) { margin-top: 40px; } .steps li:nth-child(3) { margin-top: 80px; } }
 .step-number { display: block; font-weight: 300; font-size: 44px; letter-spacing: -0.04em; color: var(--faint); margin-bottom: 36px; }
 .steps h3 { font-size: 18px; font-weight: 500; margin-bottom: 6px; }
 .steps p { color: var(--dim); font-size: 15px; }
@@ -369,55 +356,6 @@ ul, ol { padding: 0; list-style: none; }
 .price span { display: block; margin-top: 10px; font: 400 13px/1 var(--mono); letter-spacing: 0; color: var(--dim); }
 .price-card ul { margin-bottom: 30px; display: grid; gap: 8px; }
 .price-card .btn { width: 100%; }
-
-/* The song position, bottom right: scrolling moves the playhead */
-.playhead {
-  position: fixed;
-  z-index: 9;
-  right: 20px;
-  bottom: 18px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px 10px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(5, 7, 10, 0.72);
-  backdrop-filter: blur(10px);
-  font: 400 10.5px/1 var(--mono);
-  letter-spacing: 0.08em;
-  font-variant-numeric: tabular-nums;
-  color: var(--faint);
-  pointer-events: none;
-}
-.playhead span:nth-child(2) { color: var(--text); }
-.playhead .rec { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: beat 0.4286s steps(1) infinite; }
-.playhead i { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--accent); transform-origin: left; }
-@keyframes beat { 50% { opacity: 0.25; } }
-@media (max-width: 900px) { .playhead { display: none; } }
-@media (min-width: 901px) { .playhead ~ .footer { padding-bottom: 88px; } }   /* the last line clears the counter */
-
-/* A timeline ruler over the hero; the playhead crosses its 16 bars at 140 BPM */
-.ruler {
-  position: relative;
-  align-self: stretch;
-  display: grid;
-  grid-template-columns: repeat(16, 1fr);
-  height: 24px;
-  margin-bottom: 44px;
-  overflow: hidden;
-  border-bottom: 1px solid var(--line);
-  background: repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 1.5625%) bottom / 100% 5px no-repeat;
-  font: 400 9.5px/1 var(--mono);
-  color: var(--faint);
-  text-align: left;
-}
-.ruler span { padding: 3px 0 0 5px; border-left: 1px solid rgba(255, 255, 255, 0.2); }
-.ruler i { position: absolute; inset: 0; border-left: 1px solid var(--accent); animation: sweep 27.43s linear infinite; }
-.ruler i::before { content: ''; position: absolute; top: 0; left: -4px; border: 4px solid transparent; border-top: 5px solid var(--accent); }
-@keyframes sweep { to { transform: translateX(100%); } }
-@media (max-width: 600px) { .ruler { margin-bottom: 36px; } }
 
 .footer {
   margin-top: 140px;
@@ -473,8 +411,3 @@ ul, ol { padding: 0; list-style: none; }
 }
 .error { margin-bottom: 20px; color: #e8806d; }
 @media (max-width: 600px) { .panel { padding: 24px; } .panel-title { font-size: 36px; } }
-
-/* Last, so it wins over every CSS loop above */
-@media (prefers-reduced-motion: reduce) {
-  .ring, .cube, .cube-wrap, .window::before, .seq i, .playhead .rec, .ruler i { animation: none; }
-}

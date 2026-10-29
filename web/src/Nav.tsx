@@ -9,18 +9,6 @@ export function Footer() {
   );
 }
 
-// A timeline ruler for the top of a hero (styles.css: .ruler)
-export function Ruler() {
-  return (
-    <div className="ruler" aria-hidden>
-      {Array.from({ length: 16 }, (_, i) => (
-        <span key={i}>{i + 1}</span>
-      ))}
-      <i />
-    </div>
-  );
-}
-
 export function Nav() {
   return (
     <header className="nav">

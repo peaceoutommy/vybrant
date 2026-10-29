@@ -1,5 +1,5 @@
 import { useRef, useState, type CSSProperties, type PointerEvent } from 'react';
-import { motion, useInView, useMotionValue, useReducedMotion, useScroll, useSpring, useTransform } from 'motion/react';
+import { motion, useInView, useMotionValue, useScroll, useSpring, useTransform } from 'motion/react';
 
 // Crops of the app itself (`vybrant --demo --screenshot`), each view in another of its theme presets
 const cards = [
@@ -18,7 +18,6 @@ const cut = (n: number) => ({ hidden: { scaleX: 0 }, show: { scaleX: 1, transiti
 // The stepped frame: a pastel window with blocks cut into its edges, a ring of app views and a cube with the mark
 export function Stage() {
   const ref = useRef<HTMLElement>(null);
-  const reduce = useReducedMotion();
   const inView = useInView(ref);
   const seen = useInView(ref, { once: true, amount: 0.3 });   // the section, not the window: a fully clipped window never counts as in view
   const [playing, setPlaying] = useState(true);
@@ -40,7 +39,7 @@ export function Stage() {
   const rest = () => (px.set(0), py.set(0));
 
   return (
-    <section ref={ref} className="stage container" aria-label="Views of Vybrant" onPointerMove={reduce ? undefined : point} onPointerLeave={rest}>
+    <section ref={ref} className="stage container" aria-label="Views of Vybrant" onPointerMove={point} onPointerLeave={rest}>
       <p className="frame-labels" aria-hidden>
         <span>Fig.01 — Inside the studio</span>
         <span>VYB.DAW</span>
@@ -51,10 +50,10 @@ export function Stage() {
           className="window"
           initial="hidden"
           animate={seen ? 'show' : 'hidden'}
-          variants={{ hidden: { clipPath: `inset(0 0 ${reduce ? 0 : 100}% 0)` }, show: { clipPath: 'inset(0 0 0% 0)', transition: { duration: 1.1, ease } } }}
+          variants={{ hidden: { clipPath: 'inset(0 0 100% 0)' }, show: { clipPath: 'inset(0 0 0% 0)', transition: { duration: 1.1, ease } } }}
         >
           <div className="ring-view">
-            <motion.div className="ring-tilt" style={reduce ? undefined : { rotateX: tilt, rotateY: turn }}>
+            <motion.div className="ring-tilt" style={{ rotateX: tilt, rotateY: turn }}>
               <ul className={`ring${playing && inView ? '' : ' paused'}`}>
                 {ring.map((c, i) => (
                   <li key={i} style={{ '--i': i } as CSSProperties} aria-hidden={i >= cards.length || undefined}>
@@ -72,19 +71,16 @@ export function Stage() {
           {[1, 2, 3, 4, 5, 6, 7].map((n) => (
             <motion.span key={n} className={`cut cut-${n}`} aria-hidden variants={cut(n)}>
               {n === 1 && 'Pattern 1 · 4/4'}
-              {n === 4 && '001:1:000 · 140.0 BPM'}
             </motion.span>
           ))}
 
-          {!reduce && (
-            <button className="transport" onClick={() => setPlaying(!playing)} aria-label={playing ? 'Stop the carousel' : 'Play the carousel'}>
-              <span aria-hidden>{playing ? '■' : '▶'}</span> {playing ? 'Stop' : 'Play'}
-            </button>
-          )}
+          <button className="transport" onClick={() => setPlaying(!playing)} aria-label={playing ? 'Stop the carousel' : 'Play the carousel'}>
+            <span aria-hidden>{playing ? '■' : '▶'}</span> {playing ? 'Stop' : 'Play'}
+          </button>
         </motion.div>
 
         <div className="cube-wrap" aria-hidden>
-          <motion.div className="cube-tilt" style={reduce ? undefined : { rotateX: cubeX, rotateY: cubeY, y: lift }}>
+          <motion.div className="cube-tilt" style={{ rotateX: cubeX, rotateY: cubeY, y: lift }}>
             <div className={`cube${playing && inView ? '' : ' paused'}`}>
               {faces.map((f) => (
                 <span key={f} className={`face ${f}`} />
@@ -98,7 +94,6 @@ export function Stage() {
         ))}
       </div>
       <p className="frame-labels" aria-hidden>
-        <span>ヴァイブラント</span>
         <span>Mixer / Piano roll / Channel rack / Synth / Playlist</span>
       </p>
     </section>
