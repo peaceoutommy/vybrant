@@ -1,6 +1,6 @@
 name: Release
 
-# A tag like v0.1.0 builds an AppImage and a portable Windows zip and publishes them as a GitHub release. "Run workflow" on
+# A tag like v0.1.0 builds an AppImage, a Windows installer and a portable Windows zip and publishes them as a GitHub release. "Run workflow" on
 # the Actions tab builds both without releasing them (they're attached to the run as artifacts).
 on:
   push:
@@ -104,10 +104,20 @@ jobs:
           packaging/windows-dist.sh build/Vybrant.exe "$MINGW_PREFIX" "$dir"
           zip -qr "$dir.zip" "$dir"
 
+      - name: Build the installer (Inno Setup, from the same folder)
+        shell: pwsh
+        run: |
+          choco install innosetup --no-progress -y
+          $v = "${{ github.ref_name }}".TrimStart('v')
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$v" "/DDistDir=$PWD\Vybrant-${{ github.ref_name }}-windows-x64" "/DOutputDir=$PWD" packaging\vybrant.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - uses: actions/upload-artifact@v4
         with:
           name: windows
-          path: app/Vybrant-*-windows-x64.zip
+          path: |
+            app/Vybrant-*-windows-x64.zip
+            app/Vybrant-*-windows-x64-setup.exe
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')

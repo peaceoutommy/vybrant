@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Footer, Nav } from './Nav';
 
-// The release workflow (.github/workflows/release.yml) publishes the AppImage and the Windows zip here on every v* tag
+// The release workflow (.github/workflows/release.yml) publishes the AppImage and the Windows installer here on every v* tag
 const REPO = 'peaceoutommy/vybrant';
 const RELEASES = `https://github.com/${REPO}/releases`;
 
@@ -31,7 +31,7 @@ function useLatestRelease() {
           const a = r.assets.find((a: { name: string }) => name.test(a.name));
           return a && { size: a.size, url: a.browser_download_url };
         };
-        const linux = build(/x86_64\.AppImage$/), windows = build(/windows-x64\.zip$/);
+        const linux = build(/x86_64\.AppImage$/), windows = build(/windows-x64-setup\.exe$/) ?? build(/windows-x64\.zip$/);
         if (!linux && !windows) return setState('none');
         setRelease({ version: r.tag_name.replace(/^v/, ''), date: r.published_at, notes: r.html_url, linux, windows });
         setState('ready');
@@ -44,7 +44,7 @@ function useLatestRelease() {
 const onLinux = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);
 const onWindows = /windows/i.test(navigator.userAgent);
 const os: Os = onWindows ? 'windows' : 'linux';   // whose download comes first
-const kind: Record<Os, string> = { linux: 'AppImage for 64-bit Linux', windows: 'Portable zip for 64-bit Windows' };
+const kind: Record<Os, string> = { linux: 'AppImage for 64-bit Linux', windows: 'Installer for 64-bit Windows' };
 
 const reveal = {
   initial: { opacity: 0, y: 20 },
@@ -114,8 +114,8 @@ export function Download() {
             {os === 'windows' ? (
               <li>
                 <span className="step-number">01</span>
-                <h3>Unzip it</h3>
-                <p>No installer: unzip the folder anywhere and start Vybrant.exe inside it.</p>
+                <h3>Run the installer</h3>
+                <p>It adds Vybrant to the Start menu and opens .mtp projects in it. No admin rights needed.</p>
                 <p className="small muted">If Windows SmartScreen stops it, choose More info, then Run anyway.</p>
               </li>
             ) : (
@@ -129,7 +129,10 @@ export function Download() {
                     {copied ? 'Copied' : 'Copy'}
                   </button>
                 </div>
-                <p className="small muted">Or: right-click the file, Properties, and allow running it as a program.</p>
+                <p className="small muted">
+                  Or: right-click the file, Properties, and allow running it as a program. On its first start it offers to add itself
+                  to your applications menu.
+                </p>
               </li>
             )}
             <li>
@@ -143,8 +146,8 @@ export function Download() {
               <span className="step-number">03</span>
               <h3>Updating</h3>
               <p>
-                Download the new {os === 'windows' ? 'zip and replace the old folder' : 'AppImage and replace the old one'}. Your
-                license and settings stay.
+                {os === 'windows' ? 'Run the new installer: it replaces the old version.' : 'Start the new AppImage: it offers to replace the installed one.'}{' '}
+                Your license, settings and projects stay.
               </p>
             </li>
           </ol>

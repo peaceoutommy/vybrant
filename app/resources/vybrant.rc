@@ -1,0 +1,2 @@
+// The icon Windows shows for Vybrant.exe (Explorer, Start menu, taskbar, installer shortcuts); vybrant.ico is made from vybrant.png
+IDI_ICON1 ICON "vybrant.ico"

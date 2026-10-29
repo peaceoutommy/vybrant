@@ -12,9 +12,12 @@ automation, audio/MIDI recording and offline rendering. Original UI, original DS
 
 Each release on GitHub has an AppImage: make it executable and run it (`chmod +x Vybrant-*.AppImage`). It runs on
 distributions with glibc 2.39 or newer (Ubuntu 24.04+, Fedora 40+, Arch) and uses the system's JACK library
-(`pipewire-jack` or `jack2`) for audio.
+(`pipewire-jack` or `jack2`) for audio. On its first start it offers to install itself: a copy in `~/Applications`, a
+launcher and icon in the applications menu, and `.mtp` files opening in it (Help > Remove from applications menu undoes it).
 
-For Windows 10/11 (64-bit) there is a portable zip: unzip it anywhere and start `Vybrant.exe`. The Windows build hosts
+For Windows 10/11 (64-bit) there is an installer (`Vybrant-*-windows-x64-setup.exe`, made with Inno Setup from
+`app/packaging/vybrant.iss`: Start menu, uninstaller, `.mtp` files; no admin rights needed) and a portable zip to unzip
+anywhere. Neither is code-signed yet, so SmartScreen warns and Smart App Control blocks them. The Windows build hosts
 VST3, VST2 and CLAP plugins in the app; LV2, JACK transport sync and running plugins in their own process are Linux-only for now.
 
 ## Building
