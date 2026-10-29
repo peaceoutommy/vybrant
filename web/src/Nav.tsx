@@ -4,7 +4,6 @@ export function Footer() {
   return (
     <footer className="footer container">
       <span>© {new Date().getFullYear()} Vybrant</span>
-      <span className="mono">Free software under GPL-3.0-or-later</span>
     </footer>
   );
 }
