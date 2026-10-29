@@ -1596,6 +1596,13 @@ int runSelfTest(App& app) {
         }
     }
 #endif
+    {   // projects saved straight into Documents/Vybrant/Projects get a folder of their own; anywhere else the chosen place is kept
+        const QString root = App::projectsDir();
+        CHECK(QDir(root).exists() && App::projectFolderPath(root + "/Song.mtp") == root + "/Song/Song.mtp" &&
+                App::projectFolderPath(root + "/Song/Song v2.mtp") == root + "/Song/Song v2.mtp" &&
+                App::projectFolderPath(tmp.path() + "/Song.mtp") == tmp.path() + "/Song.mtp",
+            "a project saved into the Projects folder gets its own folder; one saved elsewhere stays where it was put");
+    }
     {   // a license made by the server (api/src/license.ts, signed with a test key) checks out here, and only unchanged
         const QByteArray pub = QByteArray::fromHex("c7d5ddbdb4d3285224433778bb38133fccef47eecfb7f2c018e0b61bf4c60018");
         const QString key = "eyJ2IjoxLCJzdWIiOiJ1c2VyX3NlbGZ0ZXN0IiwibmFtZSI6IlNlbGYgVGVzdCIsImVtYWlsIjoic2VsZnRlc3RAZXhhbXBsZS5jb20ifQ."

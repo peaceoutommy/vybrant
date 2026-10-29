@@ -29,6 +29,7 @@
 #include <QAbstractSpinBox>
 #include <QApplication>
 #include <QFileInfo>
+#include <QDir>
 #include <QPixmap>
 #include <QScreen>
 #include <QWindow>
@@ -837,7 +838,7 @@ void MainWindow::buildMenus() {
         "help.about", "About Vybrant", "Help", QKeySequence(),
         [this] {
             QMessageBox::about(this, "About Vybrant",
-                "<b>Vybrant</b> - a Linux-native digital audio workstation.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire). MIDI: ALSA sequencer.");
+                "<b>Vybrant</b> - a digital audio workstation for Linux and Windows.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire on Linux, WASAPI/DirectSound/MME on Windows). MIDI: ALSA sequencer / WinMM.");
         },
         this));
 }
@@ -986,7 +987,7 @@ bool MainWindow::maybeSave() {
 bool MainWindow::doOpen(const QString& pathIn) {
     if (!maybeSave()) return false;
     QString path = pathIn;
-    if (path.isEmpty()) path = QFileDialog::getOpenFileName(this, "Open project", QString(), "Vybrant project (*.mtp)");
+    if (path.isEmpty()) path = QFileDialog::getOpenFileName(this, "Open project", App::projectsDir(), "Vybrant project (*.mtp)");
     if (path.isEmpty()) return false;
     return m_app.openProject(path);
 }
@@ -995,10 +996,18 @@ bool MainWindow::doSave() {
     return m_app.saveProject();
 }
 bool MainWindow::doSaveAs() {
-    QString path = QFileDialog::getSaveFileName(this, "Save project", m_app.projectTitle() + ".mtp", "Vybrant project (*.mtp)");
+    const QString cur = m_app.model().filePath();   // a saved song's "Save as" starts in its own folder
+    const QString start = (cur.isEmpty() ? App::projectsDir() : QFileInfo(cur).absolutePath()) + "/" + m_app.projectTitle() + ".mtp";
+    QString path = QFileDialog::getSaveFileName(this, "Save project", start, "Vybrant project (*.mtp)");
     if (path.isEmpty()) return false;
     if (!path.endsWith(".mtp")) path += ".mtp";
-    bool ok = m_app.saveProjectAs(path);
+    const QString target = App::projectFolderPath(path);   // the dialog asked about the file it showed, not this one
+    if (target != path && QFileInfo::exists(target) &&
+        QMessageBox::question(this, "Save project",
+            "A project named " + QFileInfo(target).completeBaseName() + " already exists. Replace it?") != QMessageBox::Yes)
+        return false;
+    QDir().mkpath(QFileInfo(target).absolutePath());
+    bool ok = m_app.saveProjectAs(target);
     updateTitle();
     return ok;
 }

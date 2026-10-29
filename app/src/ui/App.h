@@ -61,6 +61,8 @@ public:
     void replaceSampleFile(Id sourceId, Id channelId, const QString& newPath);   // the sample editor's Apply (one undo step)
     int searchMissingIn(const QString& dir);
     QString projectTitle() const;
+    static QString projectsDir();   // Documents/Vybrant/Projects, made on first use: where Open and Save start
+    static QString projectFolderPath(const QString& chosen);   // a project saved straight into projectsDir() gets its own folder
     // Autosave / backups (FL-style): every N minutes a numbered copy goes to <project folder>/Backup, keeping the newest M
     struct AutosaveSettings {
         int intervalMinutes = 5;

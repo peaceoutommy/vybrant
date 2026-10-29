@@ -1821,6 +1821,18 @@ void App::onRecordedMidi(const MidiEvent& e, double tick) {
     m_recNoteIds.insert(n.id);
     m_model.notify(ChangePatterns);
 }
+QString App::projectsDir() {
+    const QString d = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation) + "/Vybrant/Projects";
+    QDir().mkpath(d);
+    return d;
+}
+// Projects/Song.mtp becomes Projects/Song/Song.mtp, so the song's Recordings, Frozen, Consolidated and Backup folders (made next
+// to the file) stay with it. Saved anywhere else, the place the user picked is kept.
+QString App::projectFolderPath(const QString& chosen) {
+    const QFileInfo fi(chosen);
+    if (QDir(fi.absolutePath()) != QDir(projectsDir())) return chosen;
+    return fi.absolutePath() + "/" + fi.completeBaseName() + "/" + fi.fileName();
+}
 void App::setPluginBridged(Id pluginInstanceId, bool on) {
     m_engine->syncStateToProject(project());   // the new processor starts from the current state
     m_model.edit<PluginInstanceData>(pluginInstanceId, on ? "Run plugin in its own process" : "Run plugin in the app",
