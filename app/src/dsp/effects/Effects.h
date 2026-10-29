@@ -103,6 +103,21 @@ dsp::EnvelopeFollower m_fast, m_slow;
 ;
 
 // ---------------- EQ / Filtering ----------------
+// The signal at one point of an effect, for its editor's live spectrum: process() writes mono samples into a ring, the UI
+// reads the latest ones and runs the FFT itself. Relaxed atomics: a read racing a write sees a stale sample, nothing worse.
+struct AnalysisTap {
+    static constexpr int kSize = 8192;   // power of two; the UI reads at most half of it
+    std::atomic<float> ring[kSize];
+    std::atomic<uint32_t> written{0};
+    std::atomic<float> sampleRate{44100};
+    void push(const float* L, const float* R, int n, double sr) {
+        uint32_t w = written.load(std::memory_order_relaxed);
+        for (int i = 0; i < n; ++i) ring[(w + i) & (kSize - 1)].store((L[i] + R[i]) * 0.5f, std::memory_order_relaxed);
+        written.store(w + (uint32_t)n, std::memory_order_release);
+        sampleRate.store((float)sr, std::memory_order_relaxed);
+    }
+};
+
 MT_EFFECT(ParametricEQ, "native.parametriceq", "Parametric EQ")
 protected:
 void onPrepare() override;
@@ -112,6 +127,7 @@ static constexpr int kBands = 6;
 enum P : uint32_t { pBandBase = 10 /* + band*5: enabled, type, freq, gain, q */, pOutput = 1 };
 static uint32_t bp(int band, int which) { return pBandBase + band * 5 + which; }
 float magnitudeDb(float hz) const;
+AnalysisTap tapIn, tapOut;
 
 private:
 dsp::Biquad m_l[kBands], m_r[kBands];
@@ -123,6 +139,7 @@ void updateBand(int b);
 MT_EFFECT(ShelvingEQ, "native.shelvingeq", "Shelving EQ")
 public:
 enum P : uint32_t { pLowFreq = 1, pLowGain, pHighFreq, pHighGain, pMidFreq, pMidGain, pMidQ };
+AnalysisTap tapIn, tapOut;
 
 private:
 dsp::Biquad m_ll, m_lr, m_hl, m_hr, m_ml, m_mr;
@@ -137,6 +154,8 @@ public:
     QString displayName() const override { return m_name; }
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
+    dsp::Biquad::Type type() const { return m_type; }
+    AnalysisTap tapIn, tapOut;
 
 private:
     dsp::Biquad::Type m_type;

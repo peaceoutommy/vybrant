@@ -322,6 +322,7 @@ void ParametricEQ::process(float* L, float* R, int n, const MidiEventList&, cons
         if (on[b]) updateBand(b);
     }
     float og = dbToGain(p.get(pOutput));
+    tapIn.push(L, R, n, m_sr);
     for (int i = 0; i < n; ++i) {
         float l = L[i], r = R[i];
         for (int b = 0; b < kBands; ++b)
@@ -332,6 +333,7 @@ void ParametricEQ::process(float* L, float* R, int n, const MidiEventList&, cons
         L[i] = l * og;
         R[i] = r * og;
     }
+    tapOut.push(L, R, n, m_sr);
 }
 float ParametricEQ::magnitudeDb(float hz) const {
     // Evaluate |H(e^jw)| of the cascade for the UI curve
@@ -387,10 +389,12 @@ void ShelvingEQ::process(float* L, float* R, int n, const MidiEventList&, const 
     m_mr.b2 = m_ml.b2;
     m_mr.a1 = m_ml.a1;
     m_mr.a2 = m_ml.a2;
+    tapIn.push(L, R, n, m_sr);
     for (int i = 0; i < n; ++i) {
         L[i] = m_hl.process(m_ml.process(m_ll.process(L[i])));
         R[i] = m_hr.process(m_mr.process(m_lr.process(R[i])));
     }
+    tapOut.push(L, R, n, m_sr);
 }
 
 // ============================================================ Filters
@@ -423,6 +427,7 @@ void FilterEffect::process(float* L, float* R, int n, const MidiEventList&, cons
         m_r[s].a1 = m_l[s].a1;
         m_r[s].a2 = m_l[s].a2;
     }
+    tapIn.push(L, R, n, m_sr);
     for (int i = 0; i < n; ++i) {
         float l = L[i], r = R[i];
         for (int s = 0; s < stages; ++s) {
@@ -434,6 +439,7 @@ void FilterEffect::process(float* L, float* R, int n, const MidiEventList&, cons
         L[i] = l;
         R[i] = r;
     }
+    tapOut.push(L, R, n, m_sr);
 }
 
 // ============================================================ Delay
