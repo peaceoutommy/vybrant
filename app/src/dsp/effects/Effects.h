@@ -112,8 +112,6 @@ static constexpr int kBands = 6;
 enum P : uint32_t { pBandBase = 10 /* + band*5: enabled, type, freq, gain, q */, pOutput = 1 };
 static uint32_t bp(int band, int which) { return pBandBase + band * 5 + which; }
 float magnitudeDb(float hz) const;
-bool hasCustomEditor() const override { return true; }
-QWidget* createEditor(QWidget* parent) override;
 
 private:
 dsp::Biquad m_l[kBands], m_r[kBands];
@@ -378,8 +376,6 @@ static constexpr int kFft = 2048;
 enum P : uint32_t { pDecay = 1, pRange, pSmooth };
 // UI reads the latest magnitude spectrum (dB) - kFft/2 bins
 void readSpectrum(std::vector<float>& out) const;
-bool hasCustomEditor() const override { return true; }
-QWidget* createEditor(QWidget* parent) override;
 ~SpectrumAnalyzer() override;
 
 private:
@@ -401,8 +397,6 @@ struct Levels {
     float peakL, peakR, rmsL, rmsR, holdL, holdR;
 };
 Levels levels() const { return {m_pkL.load(), m_pkR.load(), m_rmsL.load(), m_rmsR.load(), m_holdL.load(), m_holdR.load()}; }
-bool hasCustomEditor() const override { return true; }
-QWidget* createEditor(QWidget* parent) override;
 
 private:
 std::atomic<float> m_pkL{0}, m_pkR{0}, m_rmsL{0}, m_rmsR{0}, m_holdL{0}, m_holdR{0};

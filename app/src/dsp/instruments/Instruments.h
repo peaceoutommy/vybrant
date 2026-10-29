@@ -101,8 +101,6 @@ public:
     void reset() override;
     QJsonObject saveState() const override;
     void restoreState(const QJsonObject& s) override;
-    bool hasCustomEditor() const override { return true; }
-    QWidget* createEditor(QWidget* parent) override;
     void setSample(AudioAssetPtr a, const QString& path) {
         m_sample.set(a);
         m_path = path;
@@ -176,8 +174,6 @@ public:
     void reset() override;
     QJsonObject saveState() const override;
     void restoreState(const QJsonObject& s) override;
-    bool hasCustomEditor() const override { return true; }
-    QWidget* createEditor(QWidget* parent) override;
     void setPadSample(int pad, AudioAssetPtr a, const QString& path) {
         m_pads[pad].sample.set(a);
         m_pads[pad].path = path;

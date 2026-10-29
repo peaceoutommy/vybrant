@@ -714,34 +714,26 @@ private:
     MeterEffect* m_m;
 };
 
-static QWidget* factory(IProcessor* p, QWidget* parent) {
-    if (auto* s = dynamic_cast<Sampler*>(p)) return makeSamplerEditor(s, parent);
-    if (auto* d = dynamic_cast<DrumSampler*>(p)) return makeDrumEditor(d, parent);
-    if (auto* e = dynamic_cast<ParametricEQ*>(p)) return makeEqEditor(e, parent);
-    if (auto* s = dynamic_cast<SpectrumAnalyzer*>(p)) {
-        auto* w = new QWidget(parent);
-        auto* l = new QVBoxLayout(w);
-        l->addWidget(new SpectrumView(s, w));
-        l->addWidget(new GenericParamPanel(*App::instance(), ownerOf(p), p, nullptr, 4, w));
-        return w;
-    }
-    if (auto* m = dynamic_cast<MeterEffect*>(p)) {
-        auto* w = new QWidget(parent);
-        auto* l = new QVBoxLayout(w);
-        l->addWidget(new MeterView(m, w));
-        l->addWidget(new GenericParamPanel(*App::instance(), ownerOf(p), p, nullptr, 4, w));
-        return w;
-    }
-    return nullptr;
+static QWidget* withParams(QWidget* view, IProcessor* p, QWidget* w) {   // a picture above the generic knobs
+    auto* l = new QVBoxLayout(w);
+    view->setParent(w);
+    l->addWidget(view);
+    l->addWidget(new GenericParamPanel(*App::instance(), ownerOf(p), p, nullptr, 4, w));
+    return w;
 }
-struct EditorFactoryInstaller {
-    EditorFactoryInstaller() { nativeEditorFactory() = &factory; }
-} s_installer;
-
-QWidget* Sampler::createEditor(QWidget* parent) { return nativeEditorFactory() ? nativeEditorFactory()(this, parent) : nullptr; }
-QWidget* DrumSampler::createEditor(QWidget* parent) { return nativeEditorFactory() ? nativeEditorFactory()(this, parent) : nullptr; }
-QWidget* ParametricEQ::createEditor(QWidget* parent) { return nativeEditorFactory() ? nativeEditorFactory()(this, parent) : nullptr; }
-QWidget* SpectrumAnalyzer::createEditor(QWidget* parent) { return nativeEditorFactory() ? nativeEditorFactory()(this, parent) : nullptr; }
-QWidget* MeterEffect::createEditor(QWidget* parent) { return nativeEditorFactory() ? nativeEditorFactory()(this, parent) : nullptr; }
+static NativeEditorRegistration s_sampler(
+    {"native.sampler"}, [](IProcessor* p, QWidget* parent) { return makeSamplerEditor(static_cast<Sampler*>(p), parent); });
+static NativeEditorRegistration s_drums(
+    {"native.drumsampler"}, [](IProcessor* p, QWidget* parent) { return makeDrumEditor(static_cast<DrumSampler*>(p), parent); });
+static NativeEditorRegistration s_eq(
+    {"native.parametriceq"}, [](IProcessor* p, QWidget* parent) { return makeEqEditor(static_cast<ParametricEQ*>(p), parent); });
+static NativeEditorRegistration s_spectrum({"native.spectrum"}, [](IProcessor* p, QWidget* parent) {
+    auto* w = new QWidget(parent);
+    return withParams(new SpectrumView(static_cast<SpectrumAnalyzer*>(p), w), p, w);
+});
+static NativeEditorRegistration s_meter({"native.meter"}, [](IProcessor* p, QWidget* parent) {
+    auto* w = new QWidget(parent);
+    return withParams(new MeterView(static_cast<MeterEffect*>(p), w), p, w);
+});
 
 }   // namespace mt

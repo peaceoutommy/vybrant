@@ -6,6 +6,7 @@
 #include <QString>
 #include <cstdint>
 #include <atomic>
+#include <map>
 
 class QWidget;
 
@@ -110,6 +111,8 @@ public:
 class NativeProcessor : public IProcessor {
 public:
     ParameterSet& params() override { return m_params; }
+    bool hasCustomEditor() const override;   // one is registered for key() (nativeEditors below)
+    QWidget* createEditor(QWidget* parent) override;
     void prepare(double sr, int maxBlock) override {
         m_sr = sr;
         m_maxBlock = maxBlock;
@@ -123,8 +126,14 @@ protected:
     ParameterSet m_params;
 };
 
-// The UI installs a factory that builds custom editors for native processors (keeps DSP free of UI code).
-using NativeEditorFactory = QWidget* (*)(IProcessor*, QWidget*);
-NativeEditorFactory& nativeEditorFactory();
+// Custom editors for native processors, by processor key. The UI registers them (keeps DSP free of UI code): each editor
+// file adds itself with a static NativeEditorRegistration; a processor with none gets the generic parameter panel.
+using NativeEditorMaker = QWidget* (*)(IProcessor*, QWidget*);
+std::map<QString, NativeEditorMaker>& nativeEditors();
+struct NativeEditorRegistration {
+    NativeEditorRegistration(std::initializer_list<const char*> keys, NativeEditorMaker make) {
+        for (const char* k : keys) nativeEditors()[k] = make;
+    }
+};
 
 }   // namespace mt

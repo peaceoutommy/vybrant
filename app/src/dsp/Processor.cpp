@@ -18,9 +18,14 @@ void IProcessor::restoreState(const QJsonObject& s) {
     for (auto it = p.begin(); it != p.end(); ++it) params().set(it.key().toUInt(), (float)it.value().toDouble());
 }
 
-NativeEditorFactory& nativeEditorFactory() {
-    static NativeEditorFactory f = nullptr;
-    return f;
+std::map<QString, NativeEditorMaker>& nativeEditors() {
+    static std::map<QString, NativeEditorMaker> m;
+    return m;
+}
+bool NativeProcessor::hasCustomEditor() const { return nativeEditors().count(key()) > 0; }
+QWidget* NativeProcessor::createEditor(QWidget* parent) {
+    auto it = nativeEditors().find(key());
+    return it == nativeEditors().end() ? nullptr : it->second(this, parent);
 }
 
 QString IProcessor::formatValue(uint32_t id) const {

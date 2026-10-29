@@ -1597,6 +1597,29 @@ int runSelfTest(App& app) {
         }
     }
 #endif
+    {   // every native processor with a registered editor builds it, sized and drawable; the others report none (generic knobs)
+        QStringList broken;
+        int custom = 0;
+        for (auto& info : NativeRegistry::instance().all()) {
+            auto proc = NativeRegistry::instance().create(info.key);
+            if (!proc) continue;
+            proc->prepare(44100, 512);
+            const bool registered = nativeEditors().count(info.key) > 0;
+            custom += registered;
+            std::unique_ptr<QWidget> ed(proc->createEditor(nullptr));
+            if (registered != proc->hasCustomEditor() || registered != (ed != nullptr)) broken << info.key;
+            else if (ed) {
+                ed->resize(ed->sizeHint().expandedTo(QSize(300, 200)));
+                if (ed->grab().isNull()) broken << info.key;
+            }
+        }
+        CHECK(broken.isEmpty() && custom >= 5,
+            QString("native editors build for every registered processor (%1 custom; broken: %2)")
+                .arg(custom)
+                .arg(broken.join(", "))
+                .toUtf8()
+                .constData());
+    }
     {   // projects saved straight into Documents/Vybrant/Projects get a folder of their own; anywhere else the chosen place is kept
         const QString root = App::projectsDir();
         CHECK(QDir(root).exists() && App::projectFolderPath(root + "/Song.mtp") == root + "/Song/Song.mtp" &&
