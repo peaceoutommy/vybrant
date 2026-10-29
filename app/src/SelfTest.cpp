@@ -1621,6 +1621,58 @@ int runSelfTest(App& app) {
                 .toUtf8()
                 .constData());
     }
+    {   // the delay and modulation editors are played on their display: a delay's first echo is dragged later and louder (time
+        // and mix), a tremolo's wave wider and taller (rate and depth)
+        const Id t1 = app.project().mixerTracks[1].id;
+        auto mouse = [](QWidget* w, QEvent::Type type, QPointF at, Qt::MouseButtons held) {
+            QMouseEvent e(type, at, w->mapToGlobal(at), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton, held, Qt::NoModifier);
+            QCoreApplication::sendEvent(w, &e);
+        };
+        auto drag = [&](QWidget* w, QPointF from, QPointF to) {
+            mouse(w, QEvent::MouseButtonPress, from, Qt::LeftButton);
+            mouse(w, QEvent::MouseMove, to, Qt::LeftButton);
+            mouse(w, QEvent::MouseButtonRelease, to, Qt::NoButton);
+        };
+        const Id dly = app.addEffect(t1, "native.delay"), trem = app.addEffect(t1, "native.tremolo");
+        app.engine().rebuild(app.project());
+        IProcessor *d = app.processor(dly), *tr = app.processor(trem);
+        bool delayOk = false, tremOk = false;
+        if (d && tr) {
+            d->params().set(Delay::pSync, 0);   // free time: a sideways drag sets milliseconds
+            std::unique_ptr<QWidget> ed(d->createEditor(nullptr));
+            ed->resize(ed->sizeHint());
+            ed->show();
+            QWidget* view = ed->findChild<QWidget*>("timeDisplay");
+            const double y = view->height() * 0.3;   // in the left lane, above the centre line
+            auto echoFrom = [&](int from) {   // hover along the lane until the pointer is over an echo
+                for (int x = from; x < view->width(); ++x) {
+                    mouse(view, QEvent::MouseMove, QPointF(x, y), Qt::NoButton);
+                    if (view->cursor().shape() == Qt::SizeAllCursor) return x + 10.0;
+                }
+                return -1.0;
+            };
+            const float time = d->params().get(Delay::pTime), mix = d->params().get(Delay::pMix), fb = d->params().get(Delay::pFeedback);
+            const double x1 = echoFrom(30);
+            if (x1 > 0) drag(view, QPointF(x1, y), QPointF(x1 + 40, y - 30));
+            const double x2 = x1 > 0 ? echoFrom((int)x1 + 52) : -1;   // the second echo: its height is the feedback
+            if (x2 > 0) drag(view, QPointF(x2, y), QPointF(x2, y - 20));
+            delayOk = x2 > 0 && d->params().get(Delay::pTime) > time + 20 && d->params().get(Delay::pMix) > mix + 0.05f &&
+                d->params().get(Delay::pFeedback) > fb + 0.05f;
+
+            std::unique_ptr<QWidget> ed2(tr->createEditor(nullptr));
+            ed2->resize(ed2->sizeHint());
+            ed2->show();
+            QWidget* lfo = ed2->findChild<QWidget*>("timeDisplay");
+            const float rate = tr->params().get(Tremolo::pRate), depth = tr->params().get(Tremolo::pDepth);
+            drag(lfo, QPointF(lfo->width() * 0.2, lfo->height() * 0.35), QPointF(lfo->width() * 0.3, lfo->height() * 0.2));
+            tremOk = tr->params().get(Tremolo::pRate) < rate * 0.9f && tr->params().get(Tremolo::pDepth) > depth + 0.1f;
+        }
+        app.removeEffect(t1, trem);
+        app.removeEffect(t1, dly);
+        app.engine().rebuild(app.project());
+        CHECK(delayOk, "dragging a delay's first echo later and higher sets time and mix; raising the second echo raises the feedback");
+        CHECK(tremOk, "dragging a tremolo's wave wider and taller sets a slower rate and more depth");
+    }
     {   // projects saved straight into Documents/Vybrant/Projects get a folder of their own; anywhere else the chosen place is kept
         const QString root = App::projectsDir();
         CHECK(QDir(root).exists() && App::projectFolderPath(root + "/Song.mtp") == root + "/Song/Song.mtp" &&
