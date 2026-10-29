@@ -12,7 +12,7 @@ const cards = [
 const ring = [...cards, ...cards];   // twice round, so the ring has no gap
 const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
 const ease = [0.76, 0, 0.24, 1] as const;
-// Cuts take their cue from the window: one on the window's right edge starts zero-wide there and never counts as in view itself
+// Cuts take their cue from the window (one on its right edge starts zero-wide there and never counts as in view itself)
 const cut = (n: number) => ({ hidden: { scaleX: 0 }, show: { scaleX: 1, transition: { duration: 0.7, delay: 0.5 + n * 0.06, ease } } });
 
 // The stepped frame: a pastel window with blocks cut into its edges, a ring of app views and a cube with the mark
@@ -20,6 +20,7 @@ export function Stage() {
   const ref = useRef<HTMLElement>(null);
   const reduce = useReducedMotion();
   const inView = useInView(ref);
+  const seen = useInView(ref, { once: true, amount: 0.3 });   // the section, not the window: a fully clipped window never counts as in view
   const [playing, setPlaying] = useState(true);
 
   const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end start'] });
@@ -49,8 +50,7 @@ export function Stage() {
         <motion.div
           className="window"
           initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: '-60px' }}
+          animate={seen ? 'show' : 'hidden'}
           variants={{ hidden: { clipPath: `inset(0 0 ${reduce ? 0 : 100}% 0)` }, show: { clipPath: 'inset(0 0 0% 0)', transition: { duration: 1.1, ease } } }}
         >
           <div className="ring-view">

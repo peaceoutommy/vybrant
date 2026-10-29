@@ -1,6 +1,6 @@
 import { useRef, type CSSProperties } from 'react';
 import { motion, useReducedMotion, useScroll, useTransform } from 'motion/react';
-import { Footer, Nav } from './Nav';
+import { Footer, Nav, Ruler } from './Nav';
 import { Stage } from './Stage';
 
 const features = [
@@ -53,6 +53,7 @@ export function Landing() {
       <Playhead />
       <main>
         <section className="hero container">
+          <Ruler />
           <motion.p className="label" {...reveal}>
             Digital audio workstation · Linux · Windows
           </motion.p>

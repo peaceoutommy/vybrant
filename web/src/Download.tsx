@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
-import { Footer, Nav } from './Nav';
+import { Footer, Nav, Ruler } from './Nav';
 
 // The release workflow (.github/workflows/release.yml) publishes the AppImage and the Windows installer here on every v* tag
 const REPO = 'peaceoutommy/vybrant';
@@ -68,6 +68,7 @@ export function Download() {
       <Nav />
       <main>
         <section className="hero container">
+          <Ruler />
           <motion.p className="label" {...reveal}>
             Download
           </motion.p>
