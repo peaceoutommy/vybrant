@@ -179,6 +179,21 @@ struct NotchFilter : FilterEffect {
 };
 
 // ---------------- Time-based ----------------
+// Seconds since the last input transient: the delay and reverb editors run a cursor from it along their time axis. Fed at the
+// top of process() on the audio thread, read by the UI.
+struct HitClock {
+    std::atomic<float> since{1e9f};
+    float env = 0;
+    void feed(const float* L, const float* R, int n, double sr) {
+        float pk = 0;
+        for (int i = 0; i < n; ++i) pk = std::max(pk, std::max(std::abs(L[i]), std::abs(R[i])));
+        float s = since.load(std::memory_order_relaxed) + (float)(n / sr);
+        if (pk > 0.02f && pk > env * 1.6f) s = 0;
+        env = std::max(pk, env * std::exp(-(float)(n / (sr * 0.15))));
+        since.store(s, std::memory_order_relaxed);
+    }
+};
+
 MT_EFFECT(Delay, "native.delay", "Delay")
 protected:
 void onPrepare() override;
@@ -186,8 +201,10 @@ void onPrepare() override;
 public:
 enum P : uint32_t { pTime = 1, pSync, pFeedback, pLowCut, pHighCut, pMix, pStereoOffset, pModRate, pModDepth };
 int tailSamples() const override { return (int)(m_sr * 4); }
+float sinceHit() const { return m_hit.since.load(std::memory_order_relaxed); }
 
 private:
+HitClock m_hit;
 dsp::DelayLine m_l, m_r;
 dsp::Biquad m_lcL, m_lcR, m_hcL, m_hcR;
 dsp::LFO m_lfo;
@@ -202,8 +219,10 @@ void onPrepare() override;
 public:
 enum P : uint32_t { pTime = 1, pSync, pFeedback, pLowCut, pHighCut, pMix, pWidth };
 int tailSamples() const override { return (int)(m_sr * 4); }
+float sinceHit() const { return m_hit.since.load(std::memory_order_relaxed); }
 
 private:
+HitClock m_hit;
 dsp::DelayLine m_l, m_r;
 dsp::Biquad m_lcL, m_lcR, m_hcL, m_hcR;
 Smoother m_timeS;
@@ -217,8 +236,10 @@ void onPrepare() override;
 public:
 enum P : uint32_t { pSize = 1, pDamping, pWidth, pPreDelay, pMix, pLowCut, pHighCut, pDecay };
 int tailSamples() const override { return (int)(m_sr * 6); }
+float sinceHit() const { return m_hit.since.load(std::memory_order_relaxed); }
 
 private:
+HitClock m_hit;
 static constexpr int kCombs = 8, kAllpass = 4;
 struct Comb {
     std::vector<float> buf;
@@ -241,8 +262,10 @@ void onPrepare() override;
 public:
 enum P : uint32_t { pTime = 1, pSync, pFeedback, pTaps, pSpread, pDamp, pMix, pDecayShape };
 int tailSamples() const override { return (int)(m_sr * 4); }
+float sinceHit() const { return m_hit.since.load(std::memory_order_relaxed); }
 
 private:
+HitClock m_hit;
 dsp::DelayLine m_l, m_r;
 dsp::Biquad m_dampL, m_dampR;
 }
@@ -255,10 +278,12 @@ void onPrepare() override;
 
 public:
 enum P : uint32_t { pRate = 1, pDepth, pDelay, pVoices, pMix, pFeedback, pWidth };
+float lfoPhase(int voice) const { return m_uiPhase[voice].load(std::memory_order_relaxed); }   // 0..1, for the editor
 
 private:
 dsp::DelayLine m_l, m_r;
 dsp::LFO m_lfo[4];
+std::atomic<float> m_uiPhase[4] = {};
 }
 ;
 
@@ -268,10 +293,12 @@ void onPrepare() override;
 
 public:
 enum P : uint32_t { pRate = 1, pDepth, pDelay, pFeedback, pMix, pPhase, pSync };
+float lfoPhase() const { return m_uiPhase.load(std::memory_order_relaxed); }   // 0..1, for the editor
 
 private:
 dsp::DelayLine m_l, m_r;
 dsp::LFO m_lfo;
+std::atomic<float> m_uiPhase{0};
 float m_fbL = 0, m_fbR = 0;
 }
 ;
@@ -279,10 +306,12 @@ float m_fbL = 0, m_fbR = 0;
 MT_EFFECT(Phaser, "native.phaser", "Phaser")
 public:
 enum P : uint32_t { pRate = 1, pDepth, pStages, pFeedback, pCenter, pMix, pSpread, pSync };
+float lfoPhase() const { return m_uiPhase.load(std::memory_order_relaxed); }   // 0..1, for the editor
 
 private:
 dsp::Biquad m_apL[12], m_apR[12];
 dsp::LFO m_lfo;
+std::atomic<float> m_uiPhase{0};
 float m_fbL = 0, m_fbR = 0;
 }
 ;
@@ -290,9 +319,12 @@ float m_fbL = 0, m_fbR = 0;
 MT_EFFECT(Tremolo, "native.tremolo", "Tremolo")
 public:
 enum P : uint32_t { pRate = 1, pDepth, pShape, pSync, pStereoPhase, pSmooth };
+float lfoPhase() const { return m_uiPhase.load(std::memory_order_relaxed); }   // 0..1, for the editor
+float lfoHeld() const { return m_uiHeld.load(std::memory_order_relaxed); }   // the S&H shape's current value
 
 private:
 dsp::LFO m_lfo;
+std::atomic<float> m_uiPhase{0}, m_uiHeld{0};
 double m_phaseR = 0;
 }
 ;
@@ -303,10 +335,13 @@ void onPrepare() override;
 
 public:
 enum P : uint32_t { pRate = 1, pDepth, pShape, pSync, pStereoPhase };
+float lfoPhase() const { return m_uiPhase.load(std::memory_order_relaxed); }   // 0..1, for the editor
+float lfoHeld() const { return m_uiHeld.load(std::memory_order_relaxed); }   // the S&H shape's current value
 
 private:
 dsp::DelayLine m_l, m_r;
 dsp::LFO m_lfo;
+std::atomic<float> m_uiPhase{0}, m_uiHeld{0};
 }
 ;
 
