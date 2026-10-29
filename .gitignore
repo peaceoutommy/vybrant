@@ -15,3 +15,5 @@ compile_commands.json
 Recordings/
 
 launch.json
+# Claude Code agent worktrees (local scratch checkouts)
+.claude/worktrees/
