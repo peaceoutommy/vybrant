@@ -207,6 +207,9 @@ private:
         m_hot = -1;
         update();
     }
+    // A press on a dot stays here: passed on, the menu bar takes it for a title-bar drag and the release never comes back
+    void mousePressEvent(QMouseEvent* e) override { e->setAccepted(at(e->pos()) >= 0); }
+    void mouseDoubleClickEvent(QMouseEvent* e) override { e->setAccepted(at(e->pos()) >= 0); }
     void mouseReleaseEvent(QMouseEvent* e) override {
         switch (at(e->pos())) {
         case 0: m_window->showMinimized(); break;
