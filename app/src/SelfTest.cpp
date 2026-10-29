@@ -14,6 +14,7 @@
 #include "ui/Theme.h"
 #include "ui/ProcessorPicker.h"
 #include "License.h"
+#include "AppImage.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1603,6 +1604,28 @@ int runSelfTest(App& app) {
                 App::projectFolderPath(tmp.path() + "/Song.mtp") == tmp.path() + "/Song.mtp",
             "a project saved into the Projects folder gets its own folder; one saved elsewhere stays where it was put");
     }
+#ifndef _WIN32
+    {   // an AppImage installs itself: a copy in ~/Applications, a launcher pointing at it, the icon and the .mtp type; and goes again
+        const QByteArray home = qgetenv("HOME"), data = qgetenv("XDG_DATA_HOME");
+        qputenv("HOME", tmp.path().toUtf8() + "/home");
+        qputenv("XDG_DATA_HOME", tmp.path().toUtf8() + "/home/.local/share");
+        const QString fake = tmp.path() + "/Vybrant-v9-x86_64.AppImage", share = tmp.path() + "/home/.local/share";
+        QFile f(fake);
+        f.open(QIODevice::WriteOnly);
+        f.write("not really an AppImage");
+        f.close();
+        QFile desk(share + "/applications/vybrant.desktop");
+        const bool ok = appimage::install(fake) && appimage::installed() && desk.open(QIODevice::ReadOnly) &&
+            desk.readAll().contains("Exec=\"" + (tmp.path() + "/home/Applications/Vybrant.AppImage").toUtf8() + "\" %f") &&
+            QFileInfo(appimage::installedPath()).isExecutable() && QFile::exists(share + "/icons/hicolor/512x512/apps/vybrant.png") &&
+            QFile::exists(share + "/mime/packages/vybrant.xml");
+        appimage::uninstall();
+        CHECK(ok && !appimage::installed() && !QFile::exists(appimage::installedPath()) && !QFile::exists(desk.fileName()),
+            "an AppImage installs itself into the applications menu (copy, launcher, icon, .mtp type) and removes itself again");
+        qputenv("HOME", home);
+        data.isNull() ? qunsetenv("XDG_DATA_HOME") : qputenv("XDG_DATA_HOME", data);
+    }
+#endif
     {   // a license made by the server (api/src/license.ts, signed with a test key) checks out here, and only unchanged
         const QByteArray pub = QByteArray::fromHex("c7d5ddbdb4d3285224433778bb38133fccef47eecfb7f2c018e0b61bf4c60018");
         const QString key = "eyJ2IjoxLCJzdWIiOiJ1c2VyX3NlbGZ0ZXN0IiwibmFtZSI6IlNlbGYgVGVzdCIsImVtYWlsIjoic2VsZnRlc3RAZXhhbXBsZS5jb20ifQ."

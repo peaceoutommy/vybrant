@@ -34,6 +34,7 @@
 #include <QScreen>
 #include <QWindow>
 #include "License.h"
+#include "AppImage.h"
 #include <QActionGroup>
 #include <QCursor>
 #include <QVariantAnimation>
@@ -834,6 +835,16 @@ void MainWindow::buildMenus() {
             d->exec();
         },
         this));
+    // AppImage only: add this copy to the applications menu (it asks on the first start), or take it out again
+    auto* menuEntry = help->addAction(QString(), [this] {
+        QString err;
+        if (appimage::installed()) appimage::uninstall();
+        else if (!appimage::install(appimage::running(), &err)) QMessageBox::warning(this, "Install Vybrant", err);
+    });
+    connect(help, &QMenu::aboutToShow, this, [menuEntry] {
+        menuEntry->setText(appimage::installed() ? "Remove from applications menu" : "Add to applications menu");
+        menuEntry->setVisible(appimage::installed() || !appimage::running().isEmpty());
+    });
     help->addAction(reg.add(
         "help.about", "About Vybrant", "Help", QKeySequence(),
         [this] {

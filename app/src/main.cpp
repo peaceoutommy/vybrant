@@ -17,6 +17,7 @@
 #include <QIcon>
 #include <cstring>
 #include "License.h"
+#include "AppImage.h"
 #include <cstdio>
 namespace mt {
 int runSelfTest(App& app);
@@ -106,6 +107,7 @@ int main(int argc, char** argv) {
     if (QGuiApplication::platformName() != "offscreen" && !mt::license::ensure()) return 0;
     mt::MainWindow win(daw);
     win.show();
+    QTimer::singleShot(0, &win, [&win] { mt::appimage::offer(&win); });   // an AppImage's first start: install it like an app?
     mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/vybrant.sock)
     QString openFile, screenshot, renderPath, panel;
     bool quitAfter = false;
