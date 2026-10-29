@@ -738,6 +738,20 @@ void PlaylistView::paintEvent(QPaintEvent*) {
             }
         }
     }
+    if (m_tool == Slice && m_drag == NoDrag && underMouse() && L.area.contains(m_hoverPos)) {   // where a click splits the clip
+        const Clip* c = clipAt(m_hoverPos);
+        Tick t = snap(xToTick(m_hoverPos.x()));
+        if (int tr = trackAtY(m_hoverPos.y()); c && tr >= 0 && t > c->start && t < c->start + m_app.project().clipLength(*c)) {
+            int x = tickToX(t), top = trackTop(tr) + 1, bottom = trackTop(tr) + trackH(tr) - 2;
+            p.save();
+            p.setClipRect(L.area);
+            p.setPen(QPen(theme::withAlpha(theme::bg(), 160), 3));   // a dark edge, so the line shows on light clips too
+            p.drawLine(x, top, x, bottom);
+            p.setPen(QPen(theme::text(), 1));
+            p.drawLine(x, top, x, bottom);
+            p.restore();
+        }
+    }
     p.setPen(theme::border());
     p.setBrush(Qt::NoBrush);
     p.drawRect(rect().adjusted(0, 0, -1, -1));
@@ -1108,7 +1122,7 @@ void PlaylistView::mouseMoveEvent(QMouseEvent* e) {
                                               : QCursor(Qt::SizeAllCursor))
                         : toolCursorFor(m_tool));
         } else setCursor(toolCursorFor(m_tool));
-        if (m_tool == Draw) update();
+        if (m_tool == Draw || m_tool == Slice) update();
         return;
     }
     if (m_drag == Pan) {

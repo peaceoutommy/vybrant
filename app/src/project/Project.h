@@ -410,9 +410,9 @@ struct Project {
         return len;
     }
     Tick clipLength(const Clip& c) const {
-        if (c.type == ClipType::Pattern && c.length <= 0) {
+        if (c.type == ClipType::Pattern && c.length <= 0) {   // automatic: the pattern's own length, never another clip's stretch
             const Pattern* p = pattern(c.sourceId);
-            return p ? patternLength(*p) : PPQ * 4;
+            return p ? p->effectiveLength(transport.timeSig) : PPQ * 4;
         }
         return c.length;
     }
