@@ -2,6 +2,7 @@
 #include "ui/App.h"
 #include "project/ProjectSerializer.h"
 #include "dsp/NativeRegistry.h"
+#include "dsp/Fft.h"
 #include "dsp/effects/Effects.h"
 #include "dsp/instruments/Instruments.h"
 #include "audio/RenderEngine.h"
@@ -1598,6 +1599,29 @@ int runSelfTest(App& app) {
         }
     }
 #endif
+    {   // our FFT matches a direct DFT, and a sine lands in its own bin
+        const int n = 64;
+        std::vector<float> x(n);
+        for (int i = 0; i < n; ++i) x[i] = std::sin(0.37f * i * i) + 0.5f * std::cos(2.f * i);   // nothing periodic
+        std::vector<std::complex<float>> got(n / 2 + 1);
+        dsp::Fft(n).forwardReal(x.data(), got.data());
+        double err = 0;
+        for (int k = 0; k <= n / 2; ++k) {
+            std::complex<double> want;
+            for (int i = 0; i < n; ++i) want += (double)x[i] * std::polar(1.0, -2 * M_PI * k * i / n);
+            err = std::max(err, std::abs(want - std::complex<double>(got[k])));
+        }
+        const int N = 2048, bin = 100;
+        std::vector<float> s(N);
+        for (int i = 0; i < N; ++i) s[i] = std::sin(2 * M_PI * bin * i / N);
+        std::vector<std::complex<float>> spec(N / 2 + 1);
+        dsp::Fft(N).forwardReal(s.data(), spec.data());
+        int peak = 0;
+        for (int k = 1; k <= N / 2; ++k)
+            if (std::abs(spec[k]) > std::abs(spec[peak])) peak = k;
+        CHECK(err < 1e-3 && peak == bin && std::abs(std::abs(spec[bin]) - N / 2.0) < 0.01 * N,
+            QString("FFT matches a direct DFT (max error %1) and puts a sine in its bin").arg(err).toUtf8().constData());
+    }
     {   // every native processor with a registered editor builds it, sized and drawable; the others report none (generic knobs)
         QStringList broken;
         int custom = 0;
@@ -1661,11 +1685,10 @@ int runSelfTest(App& app) {
         qputenv("XDG_DATA_HOME", tmp.path().toUtf8() + "/home/.local/share");
         const QString fake = tmp.path() + "/Vybrant-v9-x86_64.AppImage", share = tmp.path() + "/home/.local/share";
         QFile f(fake);
-        f.open(QIODevice::WriteOnly);
-        f.write("not really an AppImage");
+        const bool made = f.open(QIODevice::WriteOnly) && f.write("not really an AppImage") > 0;
         f.close();
         QFile desk(share + "/applications/vybrant.desktop");
-        const bool ok = appimage::install(fake) && appimage::installed() && desk.open(QIODevice::ReadOnly) &&
+        const bool ok = made && appimage::install(fake) && appimage::installed() && desk.open(QIODevice::ReadOnly) &&
             desk.readAll().contains("Exec=\"" + (tmp.path() + "/home/Applications/Vybrant.AppImage").toUtf8() + "\" %f") &&
             QFileInfo(appimage::installedPath()).isExecutable() && QFile::exists(share + "/icons/hicolor/512x512/apps/vybrant.png") &&
             QFile::exists(share + "/mime/packages/vybrant.xml");

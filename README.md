@@ -30,9 +30,9 @@ Dependencies (all available from common distro repositories):
 | Audio I/O | PortAudio (ALSA / JACK / PipeWire host APIs) |
 | MIDI | ALSA sequencer (`libasound`) |
 | Audio files | libsndfile, libsamplerate |
-| Time stretch / pitch | Rubber Band |
+| Time stretch / pitch | Signalsmith Stretch (MIT, in `app/third_party`) |
 | MP3 export | LAME |
-| Spectrum analyzer | FFTW3 (single precision) |
+| Spectrum analyzer | own FFT (`app/src/dsp/Fft.cpp`) |
 | Plugin GUIs | libX11 |
 | LV2 hosting | lilv (+ LV2 headers) |
 | License check | OpenSSL `libcrypto` (Ed25519) |
@@ -146,7 +146,7 @@ main path. Delays are recomputed whenever an effect is added, removed, bypassed 
   ghost notes, note repeat; Ctrl+wheel zoom, Shift+wheel scroll, middle-drag pan.
 * **Playlist**: click places the selected pattern; slice tool (4) splits, mute tool (5); drag the ruler for the
   loop region; double-click ruler adds markers (right-click); audio clips: fades (handles / dialog), crossfade,
-  reverse, normalize, gain, time stretch & pitch (Rubber Band), fit to tempo, transient slicing.
+  reverse, normalize, gain, time stretch & pitch (Signalsmith Stretch), fit to tempo, transient slicing.
 * **Tempo and time signature changes**: the tempo lane under the playlist ruler - double-click adds a tempo point, drag
   moves it (sideways) or changes its BPM (up/down), right-click deletes it or ramps it to the next point. Right-click
   the ruler to insert a time signature change at a bar. With tempo points the BPM box shows and edits the tempo at
@@ -237,4 +237,4 @@ the check can be removed from the source; it guards the official builds.
 
 ## License
 
-GPL-3.0-or-later, see [LICENSE](LICENSE). The bundled Geist fonts (`app/resources/fonts`) are under the SIL Open Font License, see `app/resources/fonts/OFL.txt`. (It links Rubber Band and FFTW, which are GPL.)
+GPL-3.0-or-later, see [LICENSE](LICENSE). The bundled Geist fonts (`app/resources/fonts`) are under the SIL Open Font License, see `app/resources/fonts/OFL.txt`.

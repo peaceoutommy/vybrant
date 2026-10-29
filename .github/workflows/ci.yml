@@ -23,7 +23,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential pkg-config qmake6 qt6-base-dev libgl1-mesa-dev \
             portaudio19-dev libasound2-dev libsndfile1-dev libsamplerate0-dev \
-            librubberband-dev libmp3lame-dev libfftw3-dev libx11-dev libjack-jackd2-dev liblilv-dev lv2-dev libssl-dev python3
+            libmp3lame-dev libx11-dev libjack-jackd2-dev liblilv-dev lv2-dev libssl-dev python3
 
       - name: Build
         run: |
@@ -66,8 +66,8 @@ jobs:
           install: >-
             zip mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf
             mingw-w64-ucrt-x86_64-qt6-base mingw-w64-ucrt-x86_64-portaudio mingw-w64-ucrt-x86_64-libsndfile
-            mingw-w64-ucrt-x86_64-libsamplerate mingw-w64-ucrt-x86_64-rubberband mingw-w64-ucrt-x86_64-lame
-            mingw-w64-ucrt-x86_64-fftw mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-gdb
+            mingw-w64-ucrt-x86_64-libsamplerate mingw-w64-ucrt-x86_64-lame
+            mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-gdb
 
       - name: Build
         run: |
