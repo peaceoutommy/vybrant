@@ -35,6 +35,7 @@
 #include <QTimer>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLayout>
 #include <QKeyEvent>
 #include <QJsonDocument>
 #include <QTemporaryDir>
@@ -45,6 +46,7 @@
 #include <cstring>
 
 namespace mt {
+QWidget* dynamicsHandle(QWidget* editor, int i, QPoint& pos);   // ui/editors/DynamicsEditors.cpp
 
 static int g_fail = 0;
 #ifdef _WIN32   // what the test CLAP plugin's editor window needs
@@ -1618,6 +1620,68 @@ int runSelfTest(App& app) {
             QString("native editors build for every registered processor (%1 custom; broken: %2)")
                 .arg(custom)
                 .arg(broken.join(", "))
+                .toUtf8()
+                .constData());
+    }
+    {   // the dynamics displays drag like knobs: every handle changes its parameters and undo puts them back; dragged away and
+        // back it lands on the values it started from, so each drag is the inverse of where its handle is drawn
+        Id t1 = app.project().mixerTracks[1].id;
+        auto values = [](IProcessor* p) {
+            std::vector<float> v;
+            for (int i = 0; i < p->params().count(); ++i) v.push_back(p->params().desc(i).toNormalized(p->params().getAt(i)));
+            return v;
+        };
+        auto near = [](const std::vector<float>& a, const std::vector<float>& b) {
+            for (size_t i = 0; i < a.size(); ++i)
+                if (std::fabs(a[i] - b[i]) > 0.02f) return false;
+            return true;
+        };
+        auto drag = [](QWidget* view, std::initializer_list<QPoint> path) {
+            const QPoint from = *path.begin(), to = *(path.end() - 1);
+            QMouseEvent press(QEvent::MouseButtonPress, from, view->mapToGlobal(from), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(view, &press);
+            for (const QPoint& p : path) {
+                QMouseEvent move(QEvent::MouseMove, p, view->mapToGlobal(p), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+                QCoreApplication::sendEvent(view, &move);
+            }
+            QMouseEvent rel(QEvent::MouseButtonRelease, to, view->mapToGlobal(to), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(view, &rel);
+        };
+        QStringList stuck;
+        int handles = 0;
+        for (const char* key :
+            {"native.compressor", "native.limiter", "native.gate", "native.expander", "native.clipper", "native.transient"}) {
+            Id slot = app.addEffect(t1, key);
+            app.engine().rebuild(app.project());
+            IProcessor* fx = app.processor(slot);
+            std::unique_ptr<QWidget> ed(fx ? fx->createEditor(nullptr) : nullptr);
+            if (!ed) stuck << key;
+            else {
+                ed->resize(ed->sizeHint());
+                ed->layout()->activate();
+            }
+            QPoint at;
+            for (int i = 0; QWidget* view = ed ? dynamicsHandle(ed.get(), i, at) : nullptr; ++i, ++handles) {
+                const QPoint away = at + QPoint(12, -18);
+                const auto before = values(fx);
+                const size_t undo0 = app.model().undoStack().count();
+                drag(view, {at, away});
+                const bool changed = values(fx) != before, undone = app.model().undoStack().count() > undo0;
+                while (app.model().undoStack().count() > undo0) app.model().undoStack().undo();
+                const bool restored = near(values(fx), before);
+                drag(view, {at, away, at});
+                const bool back = near(values(fx), before);
+                while (app.model().undoStack().count() > undo0) app.model().undoStack().undo();
+                if (!changed || !undone || !restored || !back) stuck << QString("%1 handle %2").arg(key).arg(i);
+            }
+            ed.reset();
+            app.removeEffect(t1, slot);
+        }
+        app.engine().rebuild(app.project());
+        CHECK(stuck.isEmpty() && handles == 11,
+            QString("every dynamics display handle drags, undoes and inverts its position (%1 handles; stuck: %2)")
+                .arg(handles)
+                .arg(stuck.join(", "))
                 .toUtf8()
                 .constData());
     }
