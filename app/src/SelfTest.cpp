@@ -1726,10 +1726,8 @@ int runSelfTest(App& app) {
         own.setCursor(Qt::SizeVerCursor);
         plain.ensurePolished();
         own.ensurePolished();
-        ProcessUsage u = processUsage();
-        CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && u.residentBytes > 1e6 &&
-                u.cpuSeconds > 0,
-            "buttons show the hand cursor, and the process's CPU time and memory are read");
+        CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && residentBytes() > 1e6,
+            "buttons show the hand cursor, and the process's memory is read");
     }
     {   // the Parametric EQ's curve: dragging a band's handle moves that band and switches it on
         Id t1 = app.project().mixerTracks[1].id;

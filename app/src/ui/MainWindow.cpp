@@ -11,7 +11,6 @@
 #include "ui/dialogs/Dialogs.h"
 #include "ui/Theme.h"
 #include "core/Log.h"
-#include "core/ProcessUsage.h"
 #include <QMenuBar>
 #include <QToolBar>
 #include <QStatusBar>
@@ -40,8 +39,6 @@
 #include <QCursor>
 #include <QVariantAnimation>
 #include <QElapsedTimer>
-#include <QLocale>
-#include <QThread>
 #include "ui/Anim.h"
 #include <cstdio>
 #include <QDebug>
@@ -911,21 +908,6 @@ void MainWindow::setupWindowChrome() {
     m_titleLabel->setAlignment(Qt::AlignCenter);
     m_titleLabel->setAttribute(Qt::WA_TransparentForMouseEvents);
     m_windowButtons = new WindowButtons(this, mb);   // placed by placeTitle (QMenuBar never lays out a corner widget here)
-    m_usage = theme::dimLabel(QString(), mb, "font-family: 'Geist Mono', monospace; font-size:7.5pt;");
-    m_usage->setToolTip("Vybrant's CPU use (a share of all cores) and the memory it holds");
-    auto* usage = new QTimer(this);
-    QElapsedTimer clock;
-    clock.start();
-    connect(usage, &QTimer::timeout, this, [this, clock, last = processUsage().cpuSeconds]() mutable {
-        ProcessUsage u = processUsage();
-        double cpu = (u.cpuSeconds - last) / std::max(0.001, clock.restart() / 1000.0) / QThread::idealThreadCount();
-        last = u.cpuSeconds;
-        m_usage->setText(QString("CPU %1%  RAM %2")
-                .arg(std::lround(cpu * 100), 2)
-                .arg(QLocale::c().formattedDataSize((qint64)u.residentBytes, 1, QLocale::DataSizeTraditionalFormat)));
-        placeTitle();
-    });
-    usage->start(1000);
 }
 void MainWindow::placeTitle() {
     auto* mb = menuBar();
@@ -933,9 +915,7 @@ void MainWindow::placeTitle() {
     int left = 0;
     for (QAction* a : mb->actions()) left = std::max(left, mb->actionGeometry(a).right() + 12);
     m_windowButtons->move(mb->width() - m_windowButtons->width() - 6, (mb->height() - m_windowButtons->height()) / 2);
-    m_usage->adjustSize();
-    m_usage->move(m_windowButtons->x() - m_usage->width() - 12, (mb->height() - m_usage->height()) / 2);
-    int right = m_usage->x() - 12;
+    int right = m_windowButtons->x() - 12;
     QFontMetrics fm(m_titleLabel->font());
     int w = std::min(fm.horizontalAdvance(windowTitle()) + 8, std::max(0, right - left));
     int x = std::clamp(mb->width() / 2 - w / 2, left, std::max(left, right - w));

@@ -1,5 +1,6 @@
 #include "ui/TransportBar.h"
 #include "ui/Theme.h"
+#include "core/ProcessUsage.h"
 #include <QHBoxLayout>
 #include <QInputDialog>
 #include <QMenu>
@@ -8,6 +9,7 @@
 #include <QApplication>
 #include <QEvent>
 #include <QPainter>
+#include <QLocale>
 
 namespace mt {
 
@@ -161,7 +163,9 @@ TransportBar::TransportBar(App& app, QWidget* parent)
     m_midiLed->setToolTip("Lights up when MIDI input arrives");
     row2->addWidget(m_midiLed);
     m_stats = theme::dimLabel(QString(), this, "font-family: 'Geist Mono', monospace; font-size:7.5pt;");
-    m_stats->setToolTip("Audio engine: callback CPU load, dropouts (xruns), sample rate / buffer size, output latency, delay compensation");
+    m_stats->setToolTip(
+        "CPU: the audio engine's load, RAM: the memory Vybrant holds, then dropouts (xruns), sample rate / buffer size, output "
+        "latency, delay compensation");
     row2->addWidget(m_stats);
     qApp->installEventFilter(this);
     m_position->installEventFilter(this);
@@ -263,13 +267,14 @@ void TransportBar::uiTick() {
         return;
     } else if (m_stats->styleSheet().contains("e2665c"))
         theme::styled(m_stats, "color:@textDim@; font-family: 'Geist Mono', monospace; font-size:7.5pt;");
-    m_stats->setText(QString("%1% \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6")
+    m_stats->setText(QString("CPU %1% \u00b7 RAM %7 \u00b7 %2 xr \u00b7 %3k/%4 \u00b7 %5 ms \u00b7 pdc %6")
             .arg((int)(e.cpuLoad() * 100), 2)
             .arg(e.xruns())
             .arg(e.sampleRate() / 1000.0, 0, 'g', 3)
             .arg(m_app.devices().config().bufferSize)
             .arg(lat, 0, 'f', 1)
-            .arg(e.totalLatencySamples()));
+            .arg(e.totalLatencySamples())
+            .arg(QLocale::c().formattedDataSize((qint64)residentBytes(), 1, QLocale::DataSizeTraditionalFormat)));
     int act = m_app.midi().activityCounter();
     m_midiLed->setStyleSheet(act != m_lastMidiActivity ? "color:#5fc074; font-weight:bold; font-size:7.5pt;"
                                                        : "color:#3a4048; font-weight:bold; font-size:7.5pt;");

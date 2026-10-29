@@ -127,7 +127,6 @@ private:
     QByteArray m_defaultState;
     QLabel* m_titleLabel = nullptr;
     QWidget* m_windowButtons = nullptr;
-    QLabel* m_usage = nullptr;   // CPU and memory, top right
     void setupWindowChrome();
     void placeTitle();   // centred in the menu bar, clear of the menus and the window buttons
     Qt::Edges edgesAt(const QPoint& p) const;
