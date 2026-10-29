@@ -444,6 +444,17 @@ void DrumSampler::restoreState(const QJsonObject& s) {
 }
 
 // ============================================================ Synth
+// The voice a synth editor follows live (the newest one sounding), and how many are sounding
+template <class V, size_t N> static const V* newestVoice(const std::array<V, N>& voices, int& sounding) {
+    const V* best = nullptr;
+    sounding = 0;
+    for (auto& v : voices)
+        if (v.active) {
+            ++sounding;
+            if (!best || v.age > best->age) best = &v;
+        }
+    return best;
+}
 static const std::vector<std::string> kWaves = {"Sine", "Saw", "Square", "Triangle", "Noise", "Pulse"};
 Synth::Synth() {
     auto& p = m_params;
@@ -622,6 +633,7 @@ void Synth::process(float* L, float* R, int n, const MidiEventList& midi, const 
                 vr += s;
             }
             float fc = cutoff * std::pow(2.f, fenvAmt * fe * 6.f + lfo * lfoFilt * 3.f + keytrack * (v.note - 60) / 12.f);
+            v.fc = fc;
             v.fl.set(m_sr, fc, reso);
             v.fr.set(m_sr, fc, reso);
             vl = v.fl.process(vl, ftype);
@@ -637,6 +649,13 @@ void Synth::process(float* L, float* R, int n, const MidiEventList& midi, const 
         L[i] += sl * level * 0.5f;
         R[i] += sr * level * 0.5f;
     }
+    int sounding;
+    const Voice* nv = newestVoice(m_voices, sounding);
+    ampTap.write(nv ? &nv->amp : nullptr);
+    filterTap.write(nv ? &nv->fenv : nullptr);
+    liveCutoff.store(nv ? nv->fc : 0.f, std::memory_order_relaxed);
+    liveLfo.store((float)m_lfo.phase, std::memory_order_relaxed);
+    liveVoices.store(sounding, std::memory_order_relaxed);
 }
 
 // ============================================================ WavetableSynth
@@ -796,6 +815,7 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
             }
             f *= std::pow(2.f, m_bend / 12.f) * (float)mult;
             float wpos = clamp(pos + posEnv * fe + posLfo * lfo * 0.5f, 0.f, 1.f);
+            v.wpos = wpos;
             float vl = 0, vr = 0;
             for (int u = 0; u < unison; ++u) {
                 float d = unison > 1 ? ((float)u / (unison - 1) - 0.5f) * 2.f : 0.f;
@@ -810,6 +830,7 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
             vl *= norm;
             vr *= norm;
             float fc = cutoff * std::pow(2.f, fenvAmt * fe * 6.f);
+            v.fc = fc;
             v.fl.set(m_sr, fc, reso);
             v.fr.set(m_sr, fc, reso);
             vl = v.fl.process(vl, ftype);
@@ -820,6 +841,14 @@ void WavetableSynth::process(float* L, float* R, int n, const MidiEventList& mid
         L[i] += sl * level * 0.5f;
         R[i] += sr * level * 0.5f;
     }
+    int sounding;
+    const Voice* nv = newestVoice(m_voices, sounding);
+    ampTap.write(nv ? &nv->amp : nullptr);
+    filterTap.write(nv ? &nv->fenv : nullptr);
+    livePos.store(nv ? nv->wpos : 0.f, std::memory_order_relaxed);
+    liveCutoff.store(nv ? nv->fc : 0.f, std::memory_order_relaxed);
+    liveLfo.store((float)m_lfo.phase, std::memory_order_relaxed);
+    liveVoices.store(sounding, std::memory_order_relaxed);
 }
 
 // ============================================================ FMSynth
@@ -991,6 +1020,11 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
         L[i] += s * level * 0.5f;
         R[i] += s * level * 0.5f;
     }
+    int sounding;
+    const Voice* nv = newestVoice(m_voices, sounding);
+    ampTap.write(nv ? &nv->amp : nullptr);
+    for (int o = 0; o < 4; ++o) opTap[o].write(nv ? &nv->env[o] : nullptr);
+    liveVoices.store(sounding, std::memory_order_relaxed);
 }
 
 // ============================================================ ToneGenerator
@@ -1035,6 +1069,8 @@ void ToneGenerator::process(float* L, float* R, int n, const MidiEventList& midi
         L[i] += s;
         R[i] += s;
     }
+    envTap.write(&m_env);
+    liveFreq.store(m_held > 0 ? m_freqOverride : p.get(pFreq), std::memory_order_relaxed);
 }
 
 // ============================================================ MidiOutInstrument

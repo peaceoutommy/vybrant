@@ -61,6 +61,18 @@ protected:
     float m_modWheel = 0.f;
 };
 
+// What a synth editor shows live: one envelope of the newest voice, written once per block by process() and read by the
+// editor's timer (relaxed atomics: no locks on the audio thread)
+struct EnvTap {
+    std::atomic<int> stage{0};   // dsp::ADSR::Stage
+    std::atomic<float> value{0}, from{0};   // level now, and the level the release started from
+    void write(const dsp::ADSR* e) {
+        stage.store(e ? e->stage : 0, std::memory_order_relaxed);
+        value.store(e ? e->value : 0.f, std::memory_order_relaxed);
+        from.store(e ? e->releaseFrom : 0.f, std::memory_order_relaxed);
+    }
+};
+
 // ---------------- Sampler ----------------
 class Sampler : public InstrumentBase {
 public:
@@ -261,6 +273,10 @@ public:
     QString displayName() const override { return "Synth"; }
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
+    // live view for the editor (newest voice, once per block): envelopes, modulated cutoff (Hz), LFO phase, voices sounding
+    EnvTap ampTap, filterTap;
+    std::atomic<float> liveCutoff{0}, liveLfo{0};
+    std::atomic<int> liveVoices{0};
 
 private:
     struct Voice {
@@ -271,6 +287,7 @@ private:
         dsp::Oscillator noise;
         dsp::ADSR amp, fenv;
         dsp::SVF fl, fr;
+        float fc = 0;   // cutoff it was filtered at last (for the editor)
         float freq = 440;
         float glideFrom = 440;
         float glideT = 1;
@@ -324,6 +341,10 @@ public:
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
     const float* table(int bank, int idx) const { return m_tables[bank][idx].data(); }
+    // live view for the editor (newest voice, once per block): envelopes, modulated position and cutoff, LFO phase, voices
+    EnvTap ampTap, filterTap;
+    std::atomic<float> livePos{0}, liveCutoff{0}, liveLfo{0};
+    std::atomic<int> liveVoices{0};
 
 private:
     struct Voice {
@@ -333,6 +354,7 @@ private:
         double phase[8] = {0};
         dsp::ADSR amp, fenv;
         dsp::SVF fl, fr;
+        float wpos = 0, fc = 0;   // table position and cutoff it played at last (for the editor)
         float freq = 440;
         float glideFrom = 440;
         float glideT = 1;
@@ -370,6 +392,9 @@ public:
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
     void reset() override;
     static uint32_t opParam(int op, int which) { return pOpBase + op * 8 + which; }
+    // live view for the editor (newest voice, once per block): its amp and operator envelopes, voices sounding
+    EnvTap ampTap, opTap[4];
+    std::atomic<int> liveVoices{0};
 
 private:
     struct Voice {
@@ -396,6 +421,8 @@ public:
     QString key() const override { return "native.tonegen"; }
     QString displayName() const override { return "Tone Generator"; }
     void process(float* L, float* R, int n, const MidiEventList& midi, const ProcessContext& ctx) override;
+    EnvTap envTap;   // live view for the editor (once per block): the envelope and the pitch playing (Hz)
+    std::atomic<float> liveFreq{0};
 
 private:
     dsp::Oscillator m_osc;
