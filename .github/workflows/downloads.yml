@@ -1,6 +1,6 @@
 name: Downloads
 
-# Copies a release's AppImage and Windows installer to the Cloudflare R2 bucket behind downloads.vybrant.studio and points
+# Copies a release's AppImage and Windows installer to the Cloudflare R2 bucket behind download.vybrant.studio and points
 # latest.json at them; the website's download buttons link there, since a private repository's release files aren't public.
 # Runs after every release; "Run workflow" on the Actions tab copies an existing one (a tag like v0.1.2).
 # Needs secrets R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and the variable R2_BUCKET.

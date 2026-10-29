@@ -3,7 +3,7 @@ import type { BuildOs } from './platform';
 
 // The release workflow copies every release's AppImage and Windows installer to this bucket (Cloudflare R2) and points
 // latest.json at them (.github/workflows/downloads.yml): the repository is private, so its own release files aren't public
-export const DOWNLOADS = 'https://downloads.vybrant.studio';
+export const DOWNLOADS = 'https://download.vybrant.studio';
 
 export interface Build {
   size: number;
