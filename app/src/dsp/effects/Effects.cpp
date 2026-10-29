@@ -466,6 +466,7 @@ void Delay::reset() {
 }
 void Delay::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext& ctx) {
     auto& p = m_params;
+    m_hit.feed(L, R, n, m_sr);
     double t = syncDivisionSeconds(p.getInt(pSync), ctx.bpm);
     if (t <= 0) t = p.get(pTime) * 0.001;
     t = std::min(t, 4.0);
@@ -518,6 +519,7 @@ void PingPongDelay::reset() {
 }
 void PingPongDelay::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext& ctx) {
     auto& p = m_params;
+    m_hit.feed(L, R, n, m_sr);
     double t = syncDivisionSeconds(p.getInt(pSync), ctx.bpm);
     if (t <= 0) t = p.get(pTime) * 0.001;
     t = std::min(t, 4.0);
@@ -588,6 +590,7 @@ void Reverb::reset() {
 }
 void Reverb::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
     auto& p = m_params;
+    m_hit.feed(L, R, n, m_sr);
     float size = p.get(pSize), damp = p.get(pDamping) * 0.6f, width = p.get(pWidth), mix = p.get(pMix);
     float pre = p.get(pPreDelay) * 0.001f * (float)m_sr + 1.f;
     // feedback derived from decay time so 'Decay' is meaningful: g = 10^(-3 * loopTime / RT60)
@@ -662,6 +665,7 @@ void Echo::reset() {
 }
 void Echo::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext& ctx) {
     auto& p = m_params;
+    m_hit.feed(L, R, n, m_sr);
     double t = syncDivisionSeconds(p.getInt(pSync), ctx.bpm);
     if (t <= 0) t = p.get(pTime) * 0.001;
     t = std::min(t, 1.0);
@@ -731,6 +735,7 @@ void Chorus::process(float* L, float* R, int n, const MidiEventList&, const Proc
         L[i] = L[i] * (1 - mix * 0.5f) + wl * mix;
         R[i] = R[i] * (1 - mix * 0.5f) + wr * mix;
     }
+    for (int v = 0; v < 4; ++v) m_uiPhase[v].store((float)m_lfo[v].phase, std::memory_order_relaxed);
 }
 
 // ============================================================ Flanger
@@ -771,6 +776,7 @@ void Flanger::process(float* L, float* R, int n, const MidiEventList&, const Pro
         L[i] = L[i] * (1 - mix * 0.5f) + dl * mix;
         R[i] = R[i] * (1 - mix * 0.5f) + dr * mix;
     }
+    m_uiPhase.store((float)m_lfo.phase, std::memory_order_relaxed);
 }
 
 // ============================================================ Phaser
@@ -820,6 +826,7 @@ void Phaser::process(float* L, float* R, int n, const MidiEventList&, const Proc
         L[i] = L[i] * (1 - mix * 0.5f) + xl * mix * 0.5f;
         R[i] = R[i] * (1 - mix * 0.5f) + xr * mix * 0.5f;
     }
+    m_uiPhase.store((float)m_lfo.phase, std::memory_order_relaxed);
 }
 
 // ============================================================ Tremolo
@@ -855,6 +862,8 @@ void Tremolo::process(float* L, float* R, int n, const MidiEventList&, const Pro
         L[i] *= 1.f - depth * (0.5f - m * 0.5f);
         R[i] *= 1.f - depth * (0.5f - m2 * 0.5f);
     }
+    m_uiPhase.store((float)m_lfo.phase, std::memory_order_relaxed);
+    m_uiHeld.store(m_lfo.held, std::memory_order_relaxed);
 }
 
 // ============================================================ Vibrato
@@ -892,6 +901,8 @@ void Vibrato::process(float* L, float* R, int n, const MidiEventList&, const Pro
         L[i] = m_l.read(base + m * depth);
         R[i] = m_r.read(base + m2 * depth);
     }
+    m_uiPhase.store((float)m_lfo.phase, std::memory_order_relaxed);
+    m_uiHeld.store(m_lfo.held, std::memory_order_relaxed);
 }
 
 // ============================================================ Saturation
