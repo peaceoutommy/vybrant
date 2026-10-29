@@ -92,7 +92,7 @@ ul, ol { padding: 0; list-style: none; }
 
 /* Hero */
 .hero { padding-top: 120px; text-align: center; display: flex; flex-direction: column; align-items: center; }
-/* The mark on a big glass cube in the background (Cube.tsx): off to the side, dim, turning slowly behind the text */
+/* A big wireframe cube in the background (Cube.tsx): off to the side, dim, turning slowly behind the text */
 .hero { position: relative; isolation: isolate; }
 main { overflow-x: clip; }   /* the cube reaches past the window's edge: no sideways scroll */
 .cube-wrap {
@@ -106,18 +106,14 @@ main { overflow-x: clip; }   /* the cube reaches past the window's edge: no side
   pointer-events: none;
   animation: bob 9s ease-in-out infinite alternate;
 }
-.cube-dim { width: 100%; height: 100%; perspective: 1600px; opacity: 0.2; }   /* dimmed here: the wrapper's opacity is the fade-in */
-@media (max-width: 700px) { .cube-wrap { top: -20px; right: -30vw; } .cube-dim { opacity: 0.14; } }   /* a corner of it, clear of the text */
+.cube-dim { width: 100%; height: 100%; perspective: 1600px; opacity: 0.32; }   /* dimmed here: the wrapper's opacity is the fade-in */
+@media (max-width: 700px) { .cube-wrap { top: -20px; right: -30vw; } .cube-dim { opacity: 0.22; } }   /* a corner of it, clear of the text */
 .cube-tilt, .cube { width: 100%; height: 100%; transform-style: preserve-3d; }
 .cube { animation: tumble 90s linear infinite; }
-.face {
+.face {   /* just the edges: an open wireframe, back edges included */
   position: absolute;
   inset: 0;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: calc(var(--s) * 0.05);
-  background: url(/logo.png) center / 60% no-repeat, linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.02));
-  box-shadow: inset 0 0 24px rgba(170, 178, 196, 0.18);
-  backface-visibility: hidden;   /* only the faces turned to you: the back ones' marks would show through the glass */
+  border: 1.5px solid rgba(255, 255, 255, 0.85);
 }
 .face.front { transform: translateZ(calc(var(--s) / 2)); }
 .face.back { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
