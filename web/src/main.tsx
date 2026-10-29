@@ -5,6 +5,7 @@ import { MotionConfig } from 'motion/react';
 import { Landing } from './Landing';
 import { Account } from './Account';
 import { Download } from './Download';
+import { CookieNotice } from './CookieNotice';
 import './styles.css';
 
 const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -31,6 +32,7 @@ createRoot(document.getElementById('root')!).render(
     <ClerkProvider publishableKey={key} afterSignOutUrl="/" signInFallbackRedirectUrl="/account" appearance={appearance}>
       <MotionConfig reducedMotion="never">
         {location.pathname.startsWith('/account') ? <Account /> : location.pathname.startsWith('/download') ? <Download /> : <Landing />}
+        <CookieNotice />
       </MotionConfig>
     </ClerkProvider>
   </StrictMode>,

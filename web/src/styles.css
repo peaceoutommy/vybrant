@@ -92,43 +92,6 @@ ul, ol { padding: 0; list-style: none; }
 
 /* Hero */
 .hero { padding-top: 120px; text-align: center; display: flex; flex-direction: column; align-items: center; }
-/* A big wireframe cube with the mark on its faces, in the background (Cube.tsx): off to the side, dim, turning slowly behind the text */
-.hero { position: relative; isolation: isolate; }
-main { overflow-x: clip; }   /* the cube reaches past the window's edge: no sideways scroll */
-.cube-wrap {
-  --s: clamp(200px, 30vw, 440px);
-  position: absolute;
-  z-index: -1;
-  top: 70px;
-  right: max(-10vw, -140px);
-  width: var(--s);
-  height: var(--s);
-  pointer-events: none;
-  animation: bob 9s ease-in-out infinite alternate;
-}
-.cube-dim { width: 100%; height: 100%; perspective: 1600px; opacity: 0.32; }   /* dimmed here: the wrapper's opacity is the fade-in */
-@media (max-width: 700px) { .cube-wrap { top: -20px; right: -30vw; } .cube-dim { opacity: 0.22; } }   /* a corner of it, clear of the text */
-.cube-tilt, .cube { width: 100%; height: 100%; transform-style: preserve-3d; }
-.cube { animation: tumble 90s linear infinite; }
-.face {   /* just the edges: an open wireframe, back edges included */
-  position: absolute;
-  inset: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.85);
-}
-.face.mark {   /* the logo on each face, only from the front: back faces' marks would mirror through the open cube */
-  border: 0;
-  background: url(/logo.png) center / 56% no-repeat;
-  backface-visibility: hidden;
-}
-.face.front { transform: translateZ(calc(var(--s) / 2)); }
-.face.back { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
-.face.right { transform: rotateY(90deg) translateZ(calc(var(--s) / 2)); }
-.face.left { transform: rotateY(-90deg) translateZ(calc(var(--s) / 2)); }
-.face.top { transform: rotateX(90deg) translateZ(calc(var(--s) / 2)); }
-.face.bottom { transform: rotateX(-90deg) translateZ(calc(var(--s) / 2)); }
-@keyframes tumble { from { transform: rotateX(-20deg) rotateY(0); } to { transform: rotateX(340deg) rotateY(720deg); } }
-@keyframes bob { from { transform: translateY(-14px); } to { transform: translateY(14px); } }
-
 .hero h1 {
   margin-top: 22px;
   font-weight: 300;
@@ -209,6 +172,51 @@ main { overflow-x: clip; }   /* the cube reaches past the window's edge: no side
 .link:hover { text-decoration-color: var(--text); }
 
 /* Download */
+/* Download page: which OS's instructions, drawings of the installer's screens, the update note */
+.section-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+.os-switch { display: flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; }
+.os-switch button { height: 34px; padding: 0 18px; border: 0; border-radius: 999px; background: none; color: var(--dim); font: inherit; font-size: 14px; cursor: pointer; }
+.os-switch button.on { background: var(--text); color: var(--bg); }
+.os-switch button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+.screen { margin: -4px -4px 26px; border: 1px solid var(--line); border-radius: 10px; background: #0b0e13; overflow: hidden; font-size: 12.5px; }
+.screen-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); color: var(--dim); }
+.screen-bar i { width: 10px; height: 10px; border-radius: 2px; border: 1px solid var(--faint); }   /* the close button */
+.screen-body { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; height: 168px; padding: 14px 14px 16px; }   /* one height: the steps line up */
+.screen-text { color: var(--dim); line-height: 1.4; }
+.screen-mono { font: 400 12px/1.5 var(--mono); color: var(--text); }
+.screen-field { width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 6px; font: 400 12px/1.4 var(--mono); color: var(--faint); }
+.steps .copy { margin-top: 16px; }
+.screen-btn { align-self: flex-end; margin-top: auto; padding: 5px 14px; border: 1px solid var(--line); border-radius: 6px; color: var(--dim); }
+.screen-btn + .screen-btn { margin-top: 0; }
+.screen-btn.on { border-color: var(--text); color: var(--text); box-shadow: 0 0 0 3px rgba(238, 241, 245, 0.08); }
+.screen-radio, .screen-check { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+.screen-radio::before, .screen-check::before { content: ''; width: 11px; height: 11px; border: 1px solid var(--faint); border-radius: 50%; }
+.screen-check::before { border-radius: 3px; }
+.screen-radio.on, .screen-check.on { color: var(--text); }
+.screen-radio.on::before { border-color: var(--text); background: radial-gradient(var(--text) 40%, transparent 46%); }
+.screen-check.on::before { border-color: var(--text); background: var(--text); }
+.update-note { margin-top: 20px; }
+
+/* Cookies: a one-time notice, bottom left */
+.cookie-notice {
+  position: fixed;
+  z-index: 50;
+  left: 16px;
+  bottom: 16px;
+  max-width: min(440px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 12px 12px 18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(12, 15, 20, 0.92);
+  backdrop-filter: blur(12px);
+  font-size: 14px;
+  color: var(--dim);
+}
+.cookie-notice .btn { flex-shrink: 0; }
+
 .notice { margin-top: 24px; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--line); font-size: 14px; color: var(--dim); }
 .command {
   display: flex;

@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Footer, Nav } from './Nav';
+import { buildOs, os, osName, type BuildOs } from './platform';
 
 // The release workflow (.github/workflows/release.yml) publishes the AppImage and the Windows installer here on every v* tag
 const REPO = 'peaceoutommy/vybrant';
@@ -17,7 +18,6 @@ interface Release {
   linux?: Build;
   windows?: Build;
 }
-type Os = 'linux' | 'windows';
 
 // The latest release, from GitHub's API: null while loading or when there is none (the buttons then open the releases page)
 function useLatestRelease() {
@@ -41,10 +41,23 @@ function useLatestRelease() {
   return { release, state };
 }
 
-const onLinux = /linux/i.test(navigator.userAgent) && !/android/i.test(navigator.userAgent);
-const onWindows = /windows/i.test(navigator.userAgent);
-const os: Os = onWindows ? 'windows' : 'linux';   // whose download comes first
-const kind: Record<Os, string> = { linux: 'AppImage for 64-bit Linux', windows: 'Installer for 64-bit Windows' };
+const kind: Record<BuildOs, string> = { linux: 'AppImage for 64-bit Linux', windows: 'Installer for 64-bit Windows' };
+const other: BuildOs = buildOs === 'linux' ? 'windows' : 'linux';
+const notice: Partial<Record<typeof os, string>> = {
+  mac: "Vybrant runs on Windows and Linux. There's no macOS version yet.",
+  mobile: 'Vybrant is a desktop app for Windows and Linux: download it on your computer.',
+  other: 'Vybrant runs on Windows and Linux.',
+};
+const requirements: Record<BuildOs, string[]> = {
+  windows: ['Windows 10 or 11, 64-bit', 'Any audio device (WASAPI, DirectSound or MME)', 'VST3, VST2 and CLAP plugins (64-bit)'],
+  linux: [
+    'Any 64-bit Linux (x86_64) distribution from 2024 on: Arch, CachyOS, Manjaro, Ubuntu 24.04+, Fedora 40+, Debian 13+ (glibc 2.39 or newer)',
+    'FUSE 2 for AppImages (libfuse2), shipped by most distributions',
+    'PipeWire, JACK or ALSA for audio; ALSA for MIDI',
+    'X11 or XWayland for plugin windows',
+    'VST3, VST2, CLAP and LV2 plugins (64-bit)',
+  ],
+};
 
 const reveal = {
   initial: { opacity: 0, y: 20 },
@@ -52,8 +65,63 @@ const reveal = {
   transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
 } as const;
 
-export function Download() {
-  const { release, state } = useLatestRelease();
+// A small drawing of the screen a step shows, in the site's colours (drawn, not a screenshot)
+function Screen({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <div className="screen" aria-hidden>
+      <div className="screen-bar">
+        <span>{title}</span>
+        <i />
+      </div>
+      <div className="screen-body">{children}</div>
+    </div>
+  );
+}
+
+function WindowsSteps() {
+  return (
+    <ol className="steps">
+      <li>
+        <Screen title="Windows protected your PC">
+          <p className="screen-text">Microsoft Defender SmartScreen prevented an unrecognised app from starting.</p>
+          <p className="screen-text">
+            <u>More info</u> → Vybrant-setup.exe
+          </p>
+          <span className="screen-btn on">Run anyway</span>
+        </Screen>
+        <span className="step-number">01</span>
+        <h3>Open the installer</h3>
+        <p>Double-click the file you downloaded. Vybrant isn't code-signed yet, so Windows may stop it first: choose More info, then Run anyway.</p>
+      </li>
+      <li>
+        <Screen title="Vybrant Setup">
+          <p className="screen-text">Select Setup Install Mode</p>
+          <span className="screen-radio on">Install for me only (recommended)</span>
+          <span className="screen-radio">Install for all users</span>
+          <span className="screen-btn on">Next</span>
+        </Screen>
+        <span className="step-number">02</span>
+        <h3>Install it for you</h3>
+        <p>Install for me only needs no admin rights. Then click Next through the pages; you can add a desktop icon on the way.</p>
+      </li>
+      <li>
+        <Screen title="Vybrant Setup">
+          <p className="screen-text">Completing the Vybrant Setup Wizard</p>
+          <span className="screen-check on">Launch Vybrant</span>
+          <span className="screen-btn on">Finish</span>
+        </Screen>
+        <span className="step-number">03</span>
+        <h3>Launch and paste your license</h3>
+        <p>
+          Vybrant is in the Start menu from now on, and .mtp projects open in it. It asks for your license once:{' '}
+          <a href="/account" className="link">generate yours</a> with a free account.
+        </p>
+      </li>
+    </ol>
+  );
+}
+
+function LinuxSteps() {
   const [copied, setCopied] = useState(false);
   const command = 'chmod +x Vybrant-*.AppImage && ./Vybrant-*.AppImage';
   const copy = async () => {
@@ -61,6 +129,50 @@ export function Download() {
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
+  return (
+    <ol className="steps">
+      <li>
+        <Screen title="Terminal">
+          <p className="screen-mono">$ chmod +x Vybrant-*.AppImage</p>
+          <p className="screen-mono">$ ./Vybrant-*.AppImage</p>
+        </Screen>
+        <span className="step-number">01</span>
+        <h3>Make it executable</h3>
+        <p>An AppImage is the whole app in one file: allow it to run, then start it. Or right-click it, Properties, and allow running it as a program.</p>
+        <button className="btn btn-ghost btn-sm copy" onClick={copy} aria-live="polite">
+          {copied ? 'Copied' : 'Copy the command'}
+        </button>
+      </li>
+      <li>
+        <Screen title="Install Vybrant">
+          <p className="screen-text">Add Vybrant to your applications menu?</p>
+          <span className="screen-btn on">Install</span>
+          <span className="screen-btn">Not now</span>
+        </Screen>
+        <span className="step-number">02</span>
+        <h3>Add it to your apps</h3>
+        <p>On its first start it offers to install itself: a launcher in your applications menu, and .mtp projects open in it.</p>
+      </li>
+      <li>
+        <Screen title="Vybrant license">
+          <span className="screen-field">eyJ2IjoxLC...</span>
+          <span className="screen-btn">Get a license</span>
+          <span className="screen-btn on">Activate</span>
+        </Screen>
+        <span className="step-number">03</span>
+        <h3>Paste your license</h3>
+        <p>
+          Vybrant asks for it once. <a href="/account" className="link">Generate yours</a> with a free account.
+        </p>
+      </li>
+    </ol>
+  );
+}
+
+export function Download() {
+  const { release, state } = useLatestRelease();
+  const [shown, setShown] = useState<BuildOs>(buildOs);   // whose instructions: the visitor's own unless they switch
+  const mine = release?.[buildOs];
 
   return (
     <>
@@ -78,91 +190,61 @@ export function Download() {
             One download for every update. Vybrant asks for your license the first time it starts, and it's free with an
             account.
           </motion.p>
-          {!onLinux && !onWindows && (
+          {notice[os] && (
             <motion.p className="notice" {...reveal} transition={{ ...reveal.transition, delay: 0.2 }}>
-              Vybrant runs on Linux and Windows. There's no macOS version yet.
+              {notice[os]}
             </motion.p>
           )}
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
-            {([os, os === 'linux' ? 'windows' : 'linux'] as Os[]).map((o) => (
-              <a
-                key={o}
-                href={release?.[o]?.url ?? `${RELEASES}/latest`}
-                className={`btn ${o === os && (onLinux || onWindows) ? 'btn-primary' : 'btn-ghost'}`}
-              >
-                Download for {o === 'linux' ? 'Linux' : 'Windows'}
-              </a>
-            ))}
+            <a href={mine?.url ?? `${RELEASES}/latest`} className="btn btn-primary">
+              Download for {osName[buildOs]}
+            </a>
             <a href="/account" className="btn btn-ghost">
               Get your free license
             </a>
           </motion.div>
           <motion.p className="caption" {...reveal} transition={{ ...reveal.transition, delay: 0.3 }} aria-live="polite">
             {state === 'loading' && 'Looking up the latest version…'}
-            {(state === 'none' || (release && !release[os])) && kind[os]}
-            {release?.[os] &&
-              `Version ${release.version} · ${(release[os].size / 1048576).toFixed(0)} MB · ${kind[os]} · ${new Date(
+            {(state === 'none' || (release && !release[buildOs])) && kind[buildOs]}
+            {release && mine &&
+              `Version ${release.version} · ${(mine.size / 1048576).toFixed(0)} MB · ${kind[buildOs]} · ${new Date(
                 release.date,
               ).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
+            <br />
+            <a href={release?.[other]?.url ?? `${RELEASES}/latest`} className="link">
+              Also for {osName[other]}
+            </a>
           </motion.p>
         </section>
 
         <section className="section container">
-          <p className="label">Install</p>
-          <h2>Running in a minute.</h2>
-          <ol className="steps">
-            {os === 'windows' ? (
-              <li>
-                <span className="step-number">01</span>
-                <h3>Run the installer</h3>
-                <p>It adds Vybrant to the Start menu and opens .mtp projects in it. No admin rights needed.</p>
-                <p className="small muted">If Windows SmartScreen stops it, choose More info, then Run anyway.</p>
-              </li>
-            ) : (
-              <li>
-                <span className="step-number">01</span>
-                <h3>Make it executable</h3>
-                <p>An AppImage is the whole app in one file. Allow it to run, then start it:</p>
-                <div className="command">
-                  <code>{command}</code>
-                  <button className="btn btn-ghost btn-sm" onClick={copy} aria-live="polite">
-                    {copied ? 'Copied' : 'Copy'}
-                  </button>
-                </div>
-                <p className="small muted">
-                  Or: right-click the file, Properties, and allow running it as a program. On its first start it offers to add itself
-                  to your applications menu.
-                </p>
-              </li>
-            )}
-            <li>
-              <span className="step-number">02</span>
-              <h3>Paste your license</h3>
-              <p>
-                Vybrant asks for it at the first start. <a href="/account" className="link">Generate yours</a> with a free account.
-              </p>
-            </li>
-            <li>
-              <span className="step-number">03</span>
-              <h3>Updating</h3>
-              <p>
-                {os === 'windows' ? 'Run the new installer: it replaces the old version.' : 'Start the new AppImage: it offers to replace the installed one.'}{' '}
-                Your license, settings and projects stay.
-              </p>
-            </li>
-          </ol>
+          <div className="section-head">
+            <div>
+              <p className="label">Install</p>
+              <h2>Running in a minute.</h2>
+            </div>
+            <div className="os-switch" role="group" aria-label="Instructions for">
+              {(['windows', 'linux'] as BuildOs[]).map((o) => (
+                <button key={o} className={shown === o ? 'on' : undefined} aria-pressed={shown === o} onClick={() => setShown(o)}>
+                  {osName[o]}
+                </button>
+              ))}
+            </div>
+          </div>
+          {shown === 'windows' ? <WindowsSteps /> : <LinuxSteps />}
+          <p className="small muted update-note">
+            Updating: {shown === 'windows' ? 'run the new installer, it replaces the old version.' : 'start the new AppImage, it offers to replace the installed one.'}{' '}
+            Your license, settings and projects stay.
+          </p>
         </section>
 
         <section className="section container two-col">
           <div>
-            <p className="label">System requirements</p>
+            <p className="label">System requirements · {osName[shown]}</p>
             <ul className="specs mono">
-              <li>Any 64-bit Linux (x86_64) distribution from 2024 on: Arch, CachyOS, Manjaro, Ubuntu 24.04+, Fedora 40+, Debian 13+ (glibc 2.39 or newer)</li>
-              <li>FUSE 2 for AppImages (libfuse2), shipped by most distributions</li>
-              <li>PipeWire, JACK or ALSA for audio; ALSA for MIDI</li>
-              <li>X11 or XWayland for plugin windows</li>
-              <li>Windows 10 or 11, 64-bit</li>
-              <li>VST3, VST2 and CLAP plugins (64-bit); on Linux also LV2</li>
+              {requirements[shown].map((r) => (
+                <li key={r}>{r}</li>
+              ))}
             </ul>
           </div>
           <div>

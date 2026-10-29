@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { Footer, Nav } from './Nav';
-import { Cube } from './Cube';
+import { buildOs, osName } from './platform';
 
 const features = [
   { title: 'Patterns and playlist', text: 'Step sequencer, piano roll and a playlist that arranges patterns, audio and automation.' },
@@ -37,7 +37,6 @@ export function Landing() {
       <Nav />
       <main>
         <section className="hero container">
-          <Cube />
           <motion.p className="label" {...reveal}>
             Digital audio workstation · Linux · Windows
           </motion.p>
@@ -52,7 +51,7 @@ export function Landing() {
           </motion.p>
           <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
             <a href="/download" className="btn btn-primary">
-              Download
+              Download for {osName[buildOs]}
             </a>
             <a href="/account" className="btn btn-ghost">
               Get your free license
@@ -121,7 +120,7 @@ export function Landing() {
               <li>Works offline</li>
             </ul>
             <a href="/download" className="btn btn-primary">
-              Download
+              Download for {osName[buildOs]}
             </a>
           </motion.div>
         </section>
