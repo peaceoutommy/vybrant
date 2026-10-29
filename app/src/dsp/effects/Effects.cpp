@@ -1173,19 +1173,12 @@ SpectrumAnalyzer::SpectrumAnalyzer() {
     p.add(pRange, "Range", 30, 120, 90, ParamUnit::Decibel);
     p.add(pSmooth, "Smoothing", 0, 1, 0.3f);
 }
-SpectrumAnalyzer::~SpectrumAnalyzer() {
-    if (m_plan) fftwf_destroy_plan(m_plan);
-    if (m_out) fftwf_free(m_out);
-}
 void SpectrumAnalyzer::onPrepare() {
-    if (m_plan) fftwf_destroy_plan(m_plan);
-    if (m_out) fftwf_free(m_out);
     m_ring.assign(kFft, 0.f);
     m_in.assign(kFft, 0.f);
     m_window.resize(kFft);
     for (int i = 0; i < kFft; ++i) m_window[i] = 0.5f * (1.f - std::cos(kTwoPi * i / (kFft - 1)));
-    m_out = (fftwf_complex*)fftwf_malloc(sizeof(fftwf_complex) * (kFft / 2 + 1));
-    m_plan = fftwf_plan_dft_r2c_1d(kFft, m_in.data(), m_out, FFTW_ESTIMATE);
+    m_out.assign(kFft / 2 + 1, {});
     m_mag[0].assign(kFft / 2, -120.f);
     m_mag[1].assign(kFft / 2, -120.f);
     reset();
@@ -1195,7 +1188,7 @@ void SpectrumAnalyzer::reset() {
     m_sinceFft = 0;
 }
 void SpectrumAnalyzer::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext&) {
-    if (!m_plan) return;
+    if (m_out.empty()) return;
     float decay = m_params.get(pDecay);
     for (int i = 0; i < n; ++i) {
         m_ring[m_ringPos] = (L[i] + R[i]) * 0.5f;
@@ -1205,13 +1198,12 @@ void SpectrumAnalyzer::process(float* L, float* R, int n, const MidiEventList&, 
     if (m_sinceFft >= kFft / 4) {
         m_sinceFft = 0;
         for (int i = 0; i < kFft; ++i) m_in[i] = m_ring[(m_ringPos + i) % kFft] * m_window[i];
-        fftwf_execute(m_plan);
+        m_fft.forwardReal(m_in.data(), m_out.data());
         int back = 1 - m_front.load();
         auto& dst = m_mag[back];
         const auto& prev = m_mag[m_front.load()];
         for (int k = 0; k < kFft / 2; ++k) {
-            float re = m_out[k][0], im = m_out[k][1];
-            float db = 20.f * std::log10(std::sqrt(re * re + im * im) / (kFft / 4) + 1e-9f);
+            float db = 20.f * std::log10(std::abs(m_out[k]) / (kFft / 4) + 1e-9f);
             dst[k] = std::max(db, prev[k] - (1.f - decay) * 60.f);
         }
         m_front.store(back);

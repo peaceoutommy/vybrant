@@ -32,7 +32,7 @@ Dependencies (all available from common distro repositories):
 | Audio files | libsndfile, libsamplerate |
 | Time stretch / pitch | Rubber Band |
 | MP3 export | LAME |
-| Spectrum analyzer | FFTW3 (single precision) |
+| Spectrum analyzer | own FFT (`app/src/dsp/Fft.cpp`) |
 | Plugin GUIs | libX11 |
 | LV2 hosting | lilv (+ LV2 headers) |
 | License check | OpenSSL `libcrypto` (Ed25519) |

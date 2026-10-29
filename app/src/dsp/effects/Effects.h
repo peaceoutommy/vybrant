@@ -2,7 +2,7 @@
 #pragma once
 #include "dsp/Processor.h"
 #include "dsp/DspUtils.h"
-#include <fftw3.h>
+#include "dsp/Fft.h"
 
 namespace mt {
 
@@ -376,14 +376,13 @@ static constexpr int kFft = 2048;
 enum P : uint32_t { pDecay = 1, pRange, pSmooth };
 // UI reads the latest magnitude spectrum (dB) - kFft/2 bins
 void readSpectrum(std::vector<float>& out) const;
-~SpectrumAnalyzer() override;
 
 private:
 std::vector<float> m_ring;
 size_t m_ringPos = 0;
 std::vector<float> m_window, m_in;
-fftwf_complex* m_out = nullptr;
-fftwf_plan m_plan = nullptr;
+dsp::Fft m_fft{kFft};
+std::vector<std::complex<float>> m_out;   // empty until prepared
 std::vector<float> m_mag[2];
 std::atomic<int> m_front{0};
 int m_sinceFft = 0;
