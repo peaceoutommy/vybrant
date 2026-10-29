@@ -1734,6 +1734,59 @@ int runSelfTest(App& app) {
         app.removeEffect(track, slot);
         app.engine().rebuild(app.project());
     }
+    {   // the Synth editor's displays edit by mouse: an envelope point, the filter curve and a click on an oscillator's shape
+        Id ch = app.addChannel(ChannelType::Synth, "native.synth", "EditorDrag");
+        app.engine().rebuild(app.project());
+        IProcessor* proc = app.processor(ch);
+        std::unique_ptr<QWidget> ed(proc ? proc->createEditor(nullptr) : nullptr);
+        auto mouse = [](QWidget* w, QPointF from, QPointF to) {   // press, move, release
+            QMouseEvent press(QEvent::MouseButtonPress, from, w->mapToGlobal(from), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent move(QEvent::MouseMove, to, w->mapToGlobal(to), Qt::NoButton, Qt::LeftButton, Qt::NoModifier);
+            QMouseEvent release(QEvent::MouseButtonRelease, to, w->mapToGlobal(to), Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+            QCoreApplication::sendEvent(w, &press);
+            if (from != to) QCoreApplication::sendEvent(w, &move);
+            QCoreApplication::sendEvent(w, &release);
+        };
+        bool env = false, filter = false, shape = false;
+        if (ed) {
+            ed->show();
+            QCoreApplication::processEvents();
+            auto& ps = proc->params();
+            auto* amp = ed->findChild<QWidget*>("ampEnv");
+            auto* curve = ed->findChild<QWidget*>("filter");
+            auto* osc = ed->findChild<QWidget*>("OSC 1");
+            const float release = ps.get(Synth::pAR), cutoff = ps.get(Synth::pCutoff);
+            const int wave = ps.getInt(Synth::pOsc1Wave);
+            const size_t steps = app.model().undoStack().count();
+            if (amp) {   // the bottom-right corner is nearest the release point: dragging left shortens it, one undo puts it back
+                const QPointF at(amp->width() - 12, amp->height() - 10);
+                mouse(amp, at, at - QPointF(40, 0));
+                const bool shorter = ps.get(Synth::pAR) < release - 0.01f && app.model().undoStack().count() == steps + 1;
+                app.model().undoStack().undo();
+                env = shorter && std::fabs(ps.get(Synth::pAR) - release) < 1e-4f;
+            }
+            if (curve) {
+                const QPointF at(curve->width() / 2.0, curve->height() / 2.0);
+                mouse(curve, at, at + QPointF(30, 0));
+                filter = ps.get(Synth::pCutoff) > cutoff * 1.2f && std::fabs(ps.get(Synth::pReso) - 0.2f) < 1e-3f;
+            }
+            if (osc) {
+                const QPointF at(osc->width() / 2.0, osc->height() / 2.0);
+                mouse(osc, at, at);
+                shape = ps.getInt(Synth::pOsc1Wave) == wave + 1;
+            }
+        }
+        CHECK(env && filter && shape,
+            QString("Synth editor: dragging the envelope sets the release in one undo step (%1), the filter curve the cutoff (%2), a "
+                    "click the next shape (%3)")
+                .arg(env)
+                .arg(filter)
+                .arg(shape)
+                .toUtf8()
+                .constData());
+        ed.reset();
+        app.deleteChannel(ch);
+    }
     {   // projects saved straight into Documents/Vybrant/Projects get a folder of their own; anywhere else the chosen place is kept
         const QString root = App::projectsDir();
         CHECK(QDir(root).exists() && App::projectFolderPath(root + "/Song.mtp") == root + "/Song/Song.mtp" &&
