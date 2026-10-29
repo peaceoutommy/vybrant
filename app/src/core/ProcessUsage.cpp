@@ -16,7 +16,7 @@ double residentBytes() {
 #else
     long pages = 0;
     if (FILE* f = std::fopen("/proc/self/statm", "r")) {   // size resident ... (in pages)
-        if (std::fscanf(f, "%*ld %ld", &pages) != 1) pages = 0;
+        if (std::fscanf(f, "%*s %ld", &pages) != 1) pages = 0;
         std::fclose(f);
     }
     return (double)pages * sysconf(_SC_PAGESIZE);

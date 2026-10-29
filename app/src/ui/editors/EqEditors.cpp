@@ -5,6 +5,7 @@
 #include "dsp/effects/Effects.h"
 #include "dsp/Fft.h"
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
 #include <QMouseEvent>
