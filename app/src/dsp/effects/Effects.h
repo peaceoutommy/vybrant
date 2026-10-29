@@ -360,7 +360,7 @@ float lfoHeld() const { return m_uiHeld.load(std::memory_order_relaxed); }   // 
 private:
 dsp::LFO m_lfo;
 std::atomic<float> m_uiPhase{0}, m_uiHeld{0};
-double m_phaseR = 0;
+float m_gainL = 1, m_gainR = 1;   // the smoothed tremolo gain
 }
 ;
 

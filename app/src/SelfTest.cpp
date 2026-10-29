@@ -1603,6 +1603,73 @@ int runSelfTest(App& app) {
         }
     }
 #endif
+    {   // four effect / synth bugs stay fixed: Vibrato's right channel follows the Shape, Tremolo's Smooth softens a square's
+        // steps, Echo's left-panned taps carry a right-only source, FM Synth's Glide slides from the previous note
+        const int B = 512;
+        MidiEventList none;
+        ProcessContext pc;
+        std::vector<float> L(B), R(B);
+        auto run = [&](IProcessor& p, int blocks, auto fill, auto look) {
+            p.prepare(44100, B);
+            for (int b = 0, n = 0; b < blocks; ++b) {
+                for (int i = 0; i < B; ++i, ++n) fill(n, L[i], R[i]);
+                p.process(L.data(), R.data(), B, none, pc);
+                for (int i = 0; i < B; ++i) look(L[i], R[i]);
+            }
+        };
+        Vibrato vib;
+        vib.params().set(Vibrato::pShape, 3);   // square, no stereo offset: both sides must move together
+        float vibDiff = 0;
+        run(
+            vib, 40, [](int n, float& l, float& r) { l = r = std::sin(n * 0.05f); },
+            [&](float l, float r) { vibDiff = std::max(vibDiff, std::fabs(l - r)); });
+        auto tremoloJump = [&](float smooth) {   // the biggest sample-to-sample step on a steady signal
+            Tremolo tr;
+            tr.params().set(Tremolo::pShape, 3), tr.params().set(Tremolo::pDepth, 1), tr.params().set(Tremolo::pSmooth, smooth);
+            float prev = 1, jump = 0;
+            run(
+                tr, 60, [](int, float& l, float& r) { l = r = 1; },
+                [&](float l, float) {
+                    jump = std::max(jump, std::fabs(l - prev));
+                    prev = l;
+                });
+            return jump;
+        };
+        Echo echo;
+        echo.params().set(Echo::pSync, 0), echo.params().set(Echo::pTime, 50), echo.params().set(Echo::pSpread, 1),
+            echo.params().set(Echo::pMix, 1);
+        float echoLeft = 0;
+        run(
+            echo, 40, [](int n, float& l, float& r) { l = 0, r = n == 0 ? 1.f : 0.f; },
+            [&](float l, float) { echoLeft = std::max(echoLeft, std::fabs(l)); });
+        FMSynth fm;   // op 1 alone in the additive algorithm: a plain sine at the note's pitch
+        fm.params().set(FMSynth::pAlgorithm, 6), fm.params().set(FMSynth::pGlide, 0.5f);
+        for (int o = 1; o < 4; ++o) fm.params().set(FMSynth::opParam(o, 1), 0);
+        fm.prepare(44100, B);
+        std::vector<float> out;
+        for (int b = 0; b < 40; ++b) {   // note 48, then 60 from block 20: with glide the new note starts near 48's pitch
+            MidiEventList ev;
+            MidiEvent on;
+            on.data1 = b == 0 ? 48 : 60, on.velocity = 1;
+            if (b == 0 || b == 20) ev.add(on);
+            std::fill(L.begin(), L.end(), 0.f), std::fill(R.begin(), R.end(), 0.f);
+            fm.process(L.data(), R.data(), B, ev, pc);
+            if (b >= 20) out.insert(out.end(), L.begin(), L.end());
+        }
+        int crossings = 0;   // over the first 50 ms of note 60
+        for (int i = 1; i < 2205; ++i) crossings += (out[i - 1] < 0) != (out[i] < 0);
+        const double hz = crossings / 2.0 / 0.05;
+        CHECK(vibDiff < 1e-6f && tremoloJump(1) < 0.02f && tremoloJump(0) > 0.5f && echoLeft > 0.01f && hz < 200,
+            QString("Vibrato R follows the shape (%1), Tremolo Smooth softens steps (%2 vs %3), Echo carries R into L (%4), FM glides "
+                    "(starts at %5 Hz)")
+                .arg(vibDiff)
+                .arg(tremoloJump(1))
+                .arg(tremoloJump(0))
+                .arg(echoLeft)
+                .arg(hz)
+                .toUtf8()
+                .constData());
+    }
     {   // our FFT matches a direct DFT, and a sine lands in its own bin
         const int n = 64;
         std::vector<float> x(n);

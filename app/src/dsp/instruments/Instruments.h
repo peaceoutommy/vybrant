@@ -405,12 +405,14 @@ private:
         dsp::ADSR env[4];
         dsp::ADSR amp;
         float freq = 440;
+        float glideFrom = 440, glideT = 1;   // Glide: sliding from glideFrom to freq while glideT < 1
         float fb = 0;
         int64_t age = 0;
     };
     std::array<Voice, 16> m_voices;
     dsp::LFO m_lfo;
     int64_t m_counter = 0;
+    int m_lastNote = -1;
 };
 
 // ---------------- Tone / noise generator (audio generator channel) ----------------

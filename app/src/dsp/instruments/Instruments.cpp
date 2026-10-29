@@ -894,7 +894,7 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
     float fbAmt = p.get(pFeedback) * 1.5f;
     float level = p.get(pLevel);
     float lfoRate = p.get(pLfoRate), vib = p.get(pLfoDepth);
-    float bendRange = p.get(pBendRange);
+    float bendRange = p.get(pBendRange), glide = p.get(pGlide);
     float ratio[4], lvl[4], det[4];
     bool fixed[4];
     for (int o = 0; o < 4; ++o) {
@@ -907,10 +907,13 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
         eventsAt(midi, mi, i, [&](const MidiEvent& e) {
             if (e.type == MidiEvent::NoteOn) {
                 Voice* v = pickVoice(m_voices, [](const Voice& a, const Voice& b) { return a.age < b.age; });   // steal the oldest
+                v->freq = midiToHz(e.data1);
+                v->glideFrom = (glide > 0 && m_lastNote >= 0) ? midiToHz(m_lastNote) : v->freq;
+                v->glideT = glide > 0 ? 0.f : 1.f;
+                m_lastNote = e.data1;
                 v->active = true;
                 v->note = e.data1;
                 v->vel = e.velocity;
-                v->freq = midiToHz(e.data1);
                 v->age = m_counter++;
                 v->fb = 0;
                 for (int o = 0; o < 4; ++o) {
@@ -943,7 +946,12 @@ void FMSynth::process(float* L, float* R, int n, const MidiEventList& midi, cons
                 v.active = false;
                 continue;
             }
-            float base = v.freq * std::pow(2.f, (m_bend + lfo * vib * 0.5f) / 12.f);
+            float f0 = v.freq;
+            if (v.glideT < 1.f) {   // as in the other synths: an exponential slide from the previous note
+                v.glideT += 1.f / (glide * (float)m_sr);
+                f0 = v.glideFrom * std::pow(v.freq / v.glideFrom, std::min(v.glideT, 1.f));
+            }
+            float base = f0 * std::pow(2.f, (m_bend + lfo * vib * 0.5f) / 12.f);
             float out[4];
             float en[4];
             for (int o = 0; o < 4; ++o) en[o] = v.env[o].next() * lvl[o];

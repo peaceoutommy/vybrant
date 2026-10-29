@@ -328,15 +328,18 @@ struct Oscillator {
 
 struct LFO {
     double phase = 0;
-    inline float next(double rateHz, double sr, int shape) {   // 0 sine 1 tri 2 saw 3 square 4 s&h
-        float v;
+    // the shape's value at phase 0..1 (S&H: the value it holds); also used for a stereo partner at an offset phase
+    static float shapeAt(double phase, int shape, float held) {   // 0 sine 1 tri 2 saw 3 square 4 s&h
         switch (shape) {
-        case 1: v = (float)(phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4); break;
-        case 2: v = (float)(phase * 2 - 1); break;
-        case 3: v = phase < 0.5 ? 1.f : -1.f; break;
-        case 4: v = held; break;
-        default: v = std::sin((float)(phase * kTwoPi));
+        case 1: return (float)(phase < 0.5 ? phase * 4 - 1 : 3 - phase * 4);
+        case 2: return (float)(phase * 2 - 1);
+        case 3: return phase < 0.5 ? 1.f : -1.f;
+        case 4: return held;
+        default: return std::sin((float)(phase * kTwoPi));
         }
+    }
+    inline float next(double rateHz, double sr, int shape) {
+        const float v = shapeAt(phase, shape, held);
         double last = phase;
         phase += rateHz / sr;
         if (phase >= 1.0) {

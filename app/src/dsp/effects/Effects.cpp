@@ -689,8 +689,11 @@ void Echo::process(float* L, float* R, int n, const MidiEventList&, const Proces
             float g = std::pow(1.f - shape, (float)(k - 1));
             float pan = ((k % 2) ? -1.f : 1.f) * spread * (float)k / taps;
             float dl = m_l.read(ts * k), dr = m_r.read(ts * k);
-            wl += dl * g * (0.5f - pan * 0.5f) + dr * g * (0.5f + pan * 0.5f) * 0.0f;
-            wr += dr * g * (0.5f + pan * 0.5f);
+            // a panned tap moves the whole stereo echo towards its side: the far channel's share crosses over instead of
+            // being dropped (for a mono source this is the same as before)
+            const float toL = std::max(-pan, 0.f), toR = std::max(pan, 0.f);
+            wl += g * 0.5f * (dl * (1.f - toR) + dr * toL);
+            wr += g * 0.5f * (dr * (1.f - toL) + dl * toR);
         }
         wl = m_dampL.process(wl);
         wr = m_dampR.process(wr);
@@ -848,7 +851,10 @@ Tremolo::Tremolo() {
     p.add(pStereoPhase, "Stereo Phase", 0, 180, 0, ParamUnit::Degrees);
     p.add(pSmooth, "Smooth", 0, 1, 0.3f);
 }
-void Tremolo::reset() { m_lfo.phase = 0; }
+void Tremolo::reset() {
+    m_lfo.phase = 0;
+    m_gainL = m_gainR = 1;
+}
 void Tremolo::process(float* L, float* R, int n, const MidiEventList&, const ProcessContext& ctx) {
     auto& p = m_params;
     float rate = p.get(pRate);
@@ -857,19 +863,17 @@ void Tremolo::process(float* L, float* R, int n, const MidiEventList&, const Pro
     float depth = p.get(pDepth);
     int shape = p.getInt(pShape);
     float ph = p.get(pStereoPhase) / 360.f;
+    // Smooth: the gain follows the LFO through a one-pole of up to 20 ms, so square / saw / S&H steps don't click
+    const float smoothMs = p.get(pSmooth) * 20.f;
+    const float keep = smoothMs > 0 ? std::exp(-1.f / (smoothMs * 0.001f * (float)m_sr)) : 0.f;
     for (int i = 0; i < n; ++i) {
-        float m = m_lfo.next(rate, m_sr, shape);
-        double p2 = std::fmod(m_lfo.phase + ph, 1.0);
-        float m2;
-        switch (shape) {
-        case 1: m2 = (float)(p2 < 0.5 ? p2 * 4 - 1 : 3 - p2 * 4); break;
-        case 2: m2 = (float)(p2 * 2 - 1); break;
-        case 3: m2 = p2 < 0.5 ? 1.f : -1.f; break;
-        case 4: m2 = m; break;
-        default: m2 = std::sin((float)(p2 * kTwoPi));
-        }
-        L[i] *= 1.f - depth * (0.5f - m * 0.5f);
-        R[i] *= 1.f - depth * (0.5f - m2 * 0.5f);
+        const float m2 = dsp::LFO::shapeAt(std::fmod(m_lfo.phase + ph, 1.0), shape, m_lfo.held);
+        const float m = m_lfo.next(rate, m_sr, shape);
+        const float targetL = 1.f - depth * (0.5f - m * 0.5f), targetR = 1.f - depth * (0.5f - m2 * 0.5f);
+        m_gainL = targetL + keep * (m_gainL - targetL);
+        m_gainR = targetR + keep * (m_gainR - targetR);
+        L[i] *= m_gainL;
+        R[i] *= m_gainR;
     }
     m_uiPhase.store((float)m_lfo.phase, std::memory_order_relaxed);
     m_uiHeld.store(m_lfo.held, std::memory_order_relaxed);
@@ -905,8 +909,8 @@ void Vibrato::process(float* L, float* R, int n, const MidiEventList&, const Pro
     for (int i = 0; i < n; ++i) {
         m_l.push(L[i]);
         m_r.push(R[i]);
-        float m = m_lfo.next(rate, m_sr, shape);
-        float m2 = std::sin((float)((m_lfo.phase + ph) * kTwoPi));
+        const float m2 = dsp::LFO::shapeAt(std::fmod(m_lfo.phase + ph, 1.0), shape, m_lfo.held);
+        const float m = m_lfo.next(rate, m_sr, shape);
         L[i] = m_l.read(base + m * depth);
         R[i] = m_r.read(base + m2 * depth);
     }

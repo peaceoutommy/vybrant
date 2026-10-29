@@ -930,8 +930,9 @@ QWidget* makeFmEditor(FMSynth* fm, QWidget* parent) {
     };
     auto* amp = e.section(1, 0, "AMP ENVELOPE");
     e.view(amp, new EnvGraph(fm, {FMSynth::pAA, FMSynth::pAD, FMSynth::pAS, FMSynth::pAR}, &fm->ampTap, e.w), 100);
-    auto* global = e.section(1, 1, "GLOBAL");   // no Glide: FMSynth does not glide (the parameter is unused)
-    e.knobs(global, fm, {FMSynth::pFeedback, FMSynth::pLevel, FMSynth::pLfoRate, FMSynth::pLfoDepth, FMSynth::pBendRange}, 5);
+    auto* global = e.section(1, 1, "GLOBAL");
+    e.knobs(
+        global, fm, {FMSynth::pFeedback, FMSynth::pLevel, FMSynth::pLfoRate, FMSynth::pLfoDepth, FMSynth::pGlide, FMSynth::pBendRange}, 6);
     return e.done();
 }
 
