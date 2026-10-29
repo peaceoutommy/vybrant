@@ -3,7 +3,7 @@ import { motion, useMotionValue, useSpring, useTransform } from 'motion/react';
 
 const faces = ['front', 'back', 'right', 'left', 'top', 'bottom'];
 
-// A big wireframe cube in the background: it tumbles slowly and leans a little toward the pointer (styles.css: .cube)
+// A big wireframe cube with the mark on its faces, in the background: it tumbles slowly and leans a little toward the pointer (styles.css: .cube)
 export function Cube() {
   const px = useMotionValue(0), py = useMotionValue(0);   // pointer, -0.5..0.5 over the window
   const sx = useSpring(px, { stiffness: 20, damping: 14 }), sy = useSpring(py, { stiffness: 20, damping: 14 });
@@ -31,6 +31,9 @@ export function Cube() {
           <div className="cube">
             {faces.map((f) => (
               <span key={f} className={`face ${f}`} />
+            ))}
+            {faces.map((f) => (
+              <span key={`mark-${f}`} className={`face mark ${f}`} />
             ))}
           </div>
         </motion.div>

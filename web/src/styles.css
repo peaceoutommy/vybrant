@@ -92,7 +92,7 @@ ul, ol { padding: 0; list-style: none; }
 
 /* Hero */
 .hero { padding-top: 120px; text-align: center; display: flex; flex-direction: column; align-items: center; }
-/* A big wireframe cube in the background (Cube.tsx): off to the side, dim, turning slowly behind the text */
+/* A big wireframe cube with the mark on its faces, in the background (Cube.tsx): off to the side, dim, turning slowly behind the text */
 .hero { position: relative; isolation: isolate; }
 main { overflow-x: clip; }   /* the cube reaches past the window's edge: no sideways scroll */
 .cube-wrap {
@@ -114,6 +114,11 @@ main { overflow-x: clip; }   /* the cube reaches past the window's edge: no side
   position: absolute;
   inset: 0;
   border: 1.5px solid rgba(255, 255, 255, 0.85);
+}
+.face.mark {   /* the logo on each face, only from the front: back faces' marks would mirror through the open cube */
+  border: 0;
+  background: url(/logo.png) center / 56% no-repeat;
+  backface-visibility: hidden;
 }
 .face.front { transform: translateZ(calc(var(--s) / 2)); }
 .face.back { transform: rotateY(180deg) translateZ(calc(var(--s) / 2)); }
