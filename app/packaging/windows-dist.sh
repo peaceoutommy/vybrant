@@ -1,16 +1,17 @@
 #!/bin/bash
-# The portable Windows folder: Vybrant.exe, every DLL it needs from the MinGW prefix, and Qt's Windows platform plugin.
+# The portable Windows folder: Vybrant.exe, every DLL it needs from the MinGW prefix, Qt's Windows platform and TLS plugins.
 #   packaging/windows-dist.sh <Vybrant.exe> <MinGW prefix, e.g. /ucrt64> <output folder>
 # Runs in MSYS2 (CI) and on Linux against a cross prefix (OBJDUMP=llvm-objdump). Zipping the folder is up to the caller.
 set -euo pipefail
 exe=$1 prefix=$2 out=$3
 objdump=${OBJDUMP:-objdump}
 rm -rf "$out"
-mkdir -p "$out/platforms"
+mkdir -p "$out/platforms" "$out/tls"
 cp "$exe" "$out/Vybrant.exe"
-cp "$prefix/share/qt6/plugins/platforms/qwindows.dll" "$out/platforms/"   # Fusion style and PNG are built into Qt; nothing else is loaded
+cp "$prefix/share/qt6/plugins/platforms/qwindows.dll" "$out/platforms/"   # Fusion style and PNG are built into Qt
+cp "$prefix/share/qt6/plugins/tls/qschannelbackend.dll" "$out/tls/"   # HTTPS (the updater) through Windows' own TLS
 # what they import, and what that imports, from the prefix (DLLs not found there are Windows' own)
-todo=("$out/Vybrant.exe" "$out/platforms/qwindows.dll")
+todo=("$out/Vybrant.exe" "$out/platforms/qwindows.dll" "$out/tls/qschannelbackend.dll")
 while [ ${#todo[@]} -gt 0 ]; do
     f=${todo[0]}
     todo=("${todo[@]:1}")

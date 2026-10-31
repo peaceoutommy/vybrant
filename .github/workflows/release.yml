@@ -50,10 +50,13 @@ jobs:
             curl -fsSLO "https://github.com/linuxdeploy/$tool/releases/download/continuous/$tool-x86_64.AppImage"
           done
           chmod +x linuxdeploy*.AppImage
+          # libssl next to the libcrypto it bundles (the license check links it): Qt loads libssl at run time for HTTPS (the updater),
+          # and a newer system libssl doesn't load against this older libcrypto
           PATH="$PWD:$PATH" ./linuxdeploy-x86_64.AppImage --appdir AppDir \
             --executable bin/vybrant \
             --desktop-file resources/vybrant.desktop \
             --icon-file resources/vybrant.png \
+            --library /usr/lib/x86_64-linux-gnu/libssl.so.3 \
             --plugin qt --output appimage
           ls -l *.AppImage
 
