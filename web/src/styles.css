@@ -79,6 +79,7 @@ ul, ol { padding: 0; list-style: none; }
   position: sticky; top: 0; z-index: 10;
   background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px) saturate(1.2); -webkit-backdrop-filter: blur(6px) saturate(1.2);
 }
+section[id] { scroll-margin-top: 64px; }   /* a link to a section stops below the bar, not under it */
 .nav-row { display: flex; align-items: center; gap: 28px; height: 64px; padding: 0 clamp(16px, 3vw, 40px); }   /* edge to edge */
 .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; font-size: 13px; font-weight: 500; letter-spacing: 0.18em; }
 .brand img { border-radius: 7px; }
@@ -90,11 +91,13 @@ ul, ol { padding: 0; list-style: none; }
 .nav-menu span { display: block; width: 16px; height: 1.5px; background: var(--text); border-radius: 1px; transition: transform 0.3s var(--ease); }
 .nav-menu[aria-expanded='true'] span:first-child { transform: translateY(3.25px) rotate(45deg); }
 .nav-menu[aria-expanded='true'] span:last-child { transform: translateY(-3.25px) rotate(-45deg); }
-.nav-sheet {   /* the phone menu drops over the page instead of pushing it down */
-  position: absolute; top: 100%; left: 0; right: 0; display: flex; flex-direction: column; padding: 0 clamp(16px, 3vw, 40px) 8px;
-  overflow: hidden; background: #030406;   /* solid: the page under it does not read through the links */
+/* The phone menu fills the screen under the bar (absolute, not fixed: the bar's backdrop filter would trap a fixed child) */
+.nav.open { background: #030406; }
+.nav-sheet {
+  position: absolute; top: 100%; left: 0; right: 0; height: calc(100dvh - 64px); display: flex; flex-direction: column;
+  padding: 24px clamp(16px, 3vw, 40px); background: #030406;
 }
-.nav-sheet a { padding: 12px 0; font-size: 15px; color: var(--dim); }
+.nav-sheet a { padding: 14px 0; font-size: 28px; font-weight: 300; letter-spacing: -0.01em; color: var(--dim); }
 .nav-sheet a[aria-current='page'] { color: var(--text); }
 @media (max-width: 720px) {
   .nav-links, .nav-account { display: none; }

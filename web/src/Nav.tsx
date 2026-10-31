@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Show, UserButton } from '@clerk/react';
 
@@ -19,10 +19,13 @@ const here = (href: string) => (location.pathname === href ? 'page' : undefined)
 
 // A see-through bar across the top: the name on the left, the links on the right
 export function Nav() {
-  const [open, setOpen] = useState(false);   // the menu, on narrow screens
+  const [open, setOpen] = useState(false);   // the menu, on narrow screens: it covers the screen under the bar
+  useEffect(() => {
+    document.body.style.overflow = open ? 'hidden' : '';   // the page stays put under it
+  }, [open]);
 
   return (
-    <header className="nav">
+    <header className={open ? 'nav open' : 'nav'}>
       <div className="nav-row">
         <a href="/" className="brand" aria-label="Vybrant home">
           <img src="/logo.png" alt="" width={26} height={26} />
@@ -51,8 +54,8 @@ export function Nav() {
       </div>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.nav key="menu" className="nav-sheet" aria-label="Menu" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
+          <motion.nav key="menu" className="nav-sheet" aria-label="Menu" initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
             {links.map((l) => (
               <a key={l.label} href={l.href} onClick={() => setOpen(false)} aria-current={here(l.href)}>
                 {l.label}
