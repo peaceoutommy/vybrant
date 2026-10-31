@@ -9,6 +9,8 @@ QMAKE_LFLAGS += -rdynamic
 PKGCONFIG += portaudio-2.0 alsa sndfile samplerate lame jack lilv-0 libcrypto
 LIBS += -ldl -lpthread -lX11
 DEFINES += QT_NO_KEYWORDS_NOT_USED
+# qmake6 Vybrant.pro VYBRANT_VERSION=0.1.4 (the release workflow, from the tag): without it a development build, which never updates
+!isEmpty(VYBRANT_VERSION): DEFINES += VYBRANT_VERSION=\\\"$$VYBRANT_VERSION\\\"
 INCLUDEPATH += src third_party
 OBJECTS_DIR = build/obj
 MOC_DIR = build/moc

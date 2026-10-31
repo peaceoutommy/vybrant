@@ -43,9 +43,11 @@ jobs:
           for f in "$linux" "$windows"; do
             aws s3 cp "$f" "$BUCKET/$v/$f" --endpoint-url "$R2_ENDPOINT" --content-disposition attachment --only-show-errors
           done
+          # sha256: the app's updater checks the download against it before running it
           jq -n --arg v "$v" --arg date "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json publishedAt -q .publishedAt)" \
-            --arg l "$v/$linux" --argjson ls "$(stat -c%s "$linux")" --arg w "$v/$windows" --argjson ws "$(stat -c%s "$windows")" \
-            '{version: $v, date: $date, linux: {path: $l, size: $ls}, windows: {path: $w, size: $ws}}' > latest.json
+            --arg l "$v/$linux" --argjson ls "$(stat -c%s "$linux")" --arg lh "$(sha256sum "$linux" | cut -d' ' -f1)" \
+            --arg w "$v/$windows" --argjson ws "$(stat -c%s "$windows")" --arg wh "$(sha256sum "$windows" | cut -d' ' -f1)" \
+            '{version: $v, date: $date, linux: {path: $l, size: $ls, sha256: $lh}, windows: {path: $w, size: $ws, sha256: $wh}}' > latest.json
           cat latest.json
           aws s3 cp latest.json "$BUCKET/latest.json" --endpoint-url "$R2_ENDPOINT" --content-type application/json \
             --cache-control "max-age=60" --only-show-errors

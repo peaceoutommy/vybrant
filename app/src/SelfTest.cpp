@@ -17,6 +17,7 @@
 #include "License.h"
 #include "core/ProcessUsage.h"
 #include "AppImage.h"
+#include "Updater.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1728,6 +1729,16 @@ int runSelfTest(App& app) {
         own.ensurePolished();
         CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && residentBytes() > 1e6,
             "buttons show the hand cursor, and the process's memory is read");
+    }
+    {   // the updater offers only a newer release, for this platform, with the checksum its download is verified against
+        QJsonObject build{{"path", "0.1.10/Vybrant-v0.1.10-x86_64.AppImage"}, {"size", 1000}, {"sha256", "ab"}};
+        QJsonObject m{{"version", "0.1.10"}, {"linux", build}};
+        QJsonObject unsummed = m;
+        unsummed["linux"] = QJsonObject{{"path", "x"}, {"size", 1}};
+        CHECK(updater::newerBuild(m, "0.1.9", "linux") == build && updater::newerBuild(m, "0.1.10", "linux").isEmpty() &&
+                updater::newerBuild(m, "0.2.0", "linux").isEmpty() && updater::newerBuild(m, "", "linux").isEmpty() &&
+                updater::newerBuild(m, "0.1.9", "windows").isEmpty() && updater::newerBuild(unsummed, "0.1.9", "linux").isEmpty(),
+            "the updater offers only a newer release (0.1.10 after 0.1.9), for this platform, with a checksum; a dev build never");
     }
     {   // a plugin instrument that throws (yabridge does once its Wine host is gone) is bypassed like a crashed one: the render goes
         // on, and saving keeps the state it had instead of asking the plugin again

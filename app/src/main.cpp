@@ -18,6 +18,7 @@
 #include <cstring>
 #include "License.h"
 #include "AppImage.h"
+#include "Updater.h"
 #include <cstdio>
 namespace mt {
 int runSelfTest(App& app);
@@ -111,6 +112,7 @@ int main(int argc, char** argv) {
     mt::MainWindow win(daw);
     win.show();
     QTimer::singleShot(0, &win, [&win] { mt::appimage::offer(&win); });   // an AppImage's first start: install it like an app?
+    if (QGuiApplication::platformName() != "offscreen") QTimer::singleShot(4000, &win, [&win] { mt::updater::check(&win, false); });
     mt::ControlServer ctl(daw, win);   // local scripting / test socket ($XDG_RUNTIME_DIR/vybrant.sock)
     QString openFile, screenshot, renderPath, panel;
     bool quitAfter = false;

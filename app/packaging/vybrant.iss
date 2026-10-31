@@ -48,3 +48,5 @@ Root: HKA; Subkey: "Software\Classes\Vybrant.Project\shell\open\command"; ValueT
 
 [Run]
 Filename: "{app}\Vybrant.exe"; Description: "{cm:LaunchProgram,Vybrant}"; Flags: nowait postinstall skipifsilent
+; an update from inside the app runs this installer with /SILENT: start the new version again afterwards
+Filename: "{app}\Vybrant.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent

@@ -35,6 +35,7 @@
 #include <QWindow>
 #include "License.h"
 #include "AppImage.h"
+#include "Updater.h"
 #include <QActionGroup>
 #include <QCursor>
 #include <QVariantAnimation>
@@ -876,6 +877,7 @@ void MainWindow::buildMenus() {
         menuEntry->setText(appimage::installed() ? "Remove from applications menu" : "Add to applications menu");
         menuEntry->setVisible(appimage::installed() || !appimage::running().isEmpty());
     });
+    help->addAction(reg.add("help.updates", "Check for updates...", "Help", QKeySequence(), [this] { updater::check(this, true); }, this));
     help->addAction(reg.add(
         "help.about", "About Vybrant", "Help", QKeySequence(),
         [this] {
