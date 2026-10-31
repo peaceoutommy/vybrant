@@ -23,9 +23,20 @@ class Song:
         self.next = 1
         self.channels, self.patterns, self.tracks, self.clips, self.lanes, self.audio, self.mixer = [], [], [], [], [], [], []
         self.bpm = bpm
-        master = self.mixer_track("Master", master=True)
+        master = self.mixer_track("Master", master=True, effects=[("native.parametriceq", "Parametric EQ"), ("native.limiter", "Limiter")])
         self.master = master["id"]
-        self.inserts = [self.mixer_track(f"Insert {i}")["id"] for i in range(1, 9)]
+        tracks = [self.mixer_track(n, effects=fx) for n, fx, _, _ in INSERTS]
+        for t, (_, _, vol, pan) in zip(tracks, INSERTS):
+            t["volume"], t["pan"] = vol, pan
+        self.inserts = [t["id"] for t in tracks]
+        # the drums sum into a bus; chords, lead and clap send to a shared reverb
+        bus = self.mixer_track("Drum bus", effects=[("native.compressor", "Compressor"), ("native.saturation", "Saturation")])
+        verb = self.mixer_track("Reverb", effects=[("native.reverb", "Reverb"), ("native.parametriceq", "Parametric EQ")])
+        bus["volume"], verb["volume"] = 0.9, 0.6
+        for t in tracks[:4]:
+            t["output"] = bus["id"]
+        for t in (tracks[1], tracks[5], tracks[6]):
+            t["sends"].append({"target": verb["id"], "level": 0.35, "pre": False, "enabled": True, "sidechain": False})
 
     def id(self):
         self.next += 1
@@ -33,7 +44,7 @@ class Song:
 
     def mixer_track(self, name, master=False, effects=()):
         t = {"id": self.id(), "name": name, "color": "#ffd07050" if master else "#ff3a404a", "volume": 0.8, "pan": 0.0,
-             "output": 0 if master else getattr(self, "master", 0), "master": master, "customName": False,
+             "output": 0 if master else getattr(self, "master", 0), "master": master, "customName": not master,
              "effects": [{"id": self.id(), "key": k, "plugin": 0, "bypass": False, "mix": 1.0, "state": {}, "name": n}
                          for k, n in effects], "sends": []}
         self.mixer.append(t)
@@ -97,6 +108,17 @@ class Song:
                 "mixer": self.mixer, "plugins": [], "automation": self.lanes, "audioReferences": self.audio, "markers": []}
 
 
+# the mixer inserts the channels play into (Song.channel's insert index), with their effects
+INSERTS = [   # name, effects, fader, pan
+    ("Kick", [("native.transient", "Transient Processor"), ("native.compressor", "Compressor")], 0.95, 0.0),
+    ("Clap", [("native.parametriceq", "Parametric EQ")], 0.7, -0.1),
+    ("Hat", [("native.highpass", "High Pass"), ("native.stereowidth", "Stereo Width")], 0.55, 0.25),
+    ("Snare", [("native.saturation", "Saturation")], 0.6, -0.2),
+    ("Bass", [("native.saturation", "Saturation"), ("native.compressor", "Compressor")], 0.8, 0.0),
+    ("Chords", [("native.parametriceq", "Parametric EQ"), ("native.chorus", "Chorus")], 0.65, 0.0),
+    ("Lead", [("native.delay", "Delay"), ("native.compressor", "Compressor")], 0.72, 0.1),
+    ("Vocal chops", [("native.phaser", "Phaser"), ("native.pingpong", "Ping-Pong Delay")], 0.5, -0.3),
+]
 SYNTH, DRUM = 2, 1   # ChannelType
 PATTERN, AUDIO, AUTOMATION = 0, 1, 2   # ClipType
 # A minor: Am7, Fmaj7, Cmaj7, G (a bar each), as voiced on the keyboard
@@ -213,29 +235,27 @@ def magick(*args):
     subprocess.run(["magick", *args], check=True)
 
 
-# The plugin slide: these editors in a 2 x 2 grid, with settings that give their displays something to show
-EDITORS = [
-    ("parametriceq", "10=1 13=4 20=1 22=180 23=-3 30=1 32=650 33=-5 35=1 37=3500 38=4.5"),   # band b: 10 + 5b + (on, type, freq, gain, q)
-    ("compressor", ""),
-    ("reverb", ""),
-    ("delay", ""),
-]
+# Editor slides: native editors in rows, with settings that give their displays something to show
+EFFECTS = [[("parametriceq", "10=1 13=4 20=1 22=180 23=-3 30=1 32=650 33=-5 35=1 37=3500 38=4.5"),   # band b: 10 + 5b + (on, type, freq, gain, q)
+            ("compressor", "")],
+           [("reverb", ""), ("delay", "")]]
+INSTRUMENTS = [[("wavetable", ""), ("synth", "")], [("fm", "")]]
 BG = "#0f1216"   # the app window's background
 
 
-def plugins(work, env):
-    cells = []
-    for key, sets in EDITORS:
-        shot = os.path.join(work, f"{key}.png")
-        subprocess.run([BIN, "--editor-shot", "native." + key, shot, *sets.split()], env=dict(env, QT_SCALE_FACTOR="2"), check=True,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-        cell = os.path.join(work, f"{key}-cell.png")
-        magick(shot, "-resize", "1520x830", "-background", BG, "-gravity", "center", "-extent", "1580x880", cell)
-        cells.append(cell)
-    out = os.path.join(work, "plugins.png")
-    magick("(", cells[0], cells[1], "+append", ")", "(", cells[2], cells[3], "+append", ")", "-append",
-           "-background", BG, "-gravity", "center", "-extent", "3200x1800", out)
-    return out
+def editors(work, env, name, rows):
+    args = []
+    for row in rows:
+        args.append("(")
+        for key, sets in row:
+            shot = os.path.join(work, f"{key}.png")
+            subprocess.run([BIN, "--editor-shot", "native." + key, shot, *sets.split()], env=dict(env, QT_SCALE_FACTOR="2"),
+                           check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
+            cell = os.path.join(work, f"{key}-cell.png")
+            magick(shot, "-resize", "1520x830", "-background", BG, "-gravity", "center", "-extent", "1580x880", cell)
+            args.append(cell)
+        args += ["-background", BG, "+append", ")"]
+    magick(*args, "-background", BG, "-gravity", "center", "-append", "-extent", "3200x1800", os.path.join(work, name + ".png"))
 
 
 def main():
@@ -265,7 +285,8 @@ def main():
     app = Instance(project, cfg, sock)
     try:
         app.send("winsize 1600 900")
-        steps = [("playlist", ["fit"]), ("pattern", ["dock top", "select 6 roll", "action view.pianoRoll", "fit"])]
+        steps = [("playlist", ["fit"]), ("pattern", ["dock top", "select 6 roll", "action view.pianoRoll", "fit"]),
+                 ("mixer", ["action view.mixer", "mixsel 6"])]
         for name, cmds in steps:
             for c in cmds:
                 app.send(c)
@@ -273,8 +294,9 @@ def main():
             app.send(f"screenshot {os.path.join(work, name + '.png')}")
     finally:
         app.quit()
-    plugins(work, env)
-    for name in ("pattern", "playlist", "plugins"):   # 2400 px wide: sharp on a 2x screen at the page's width
+    editors(work, env, "plugins", EFFECTS)
+    editors(work, env, "instruments", INSTRUMENTS)
+    for name in ("pattern", "playlist", "mixer", "plugins", "instruments"):   # 2400 px wide: sharp on a 2x screen at the page's width
         magick(os.path.join(work, name + ".png"), "-resize", "2400x", "-quality", "82", os.path.join(OUT, f"showcase-{name}.webp"))
     print(work)
 

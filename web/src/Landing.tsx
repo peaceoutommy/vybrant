@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, useScroll, useTransform } from 'motion/react';
+import { AnimatePresence, motion, useScroll, useTransform } from 'motion/react';
 import { Footer, Nav } from './Nav';
 import { buildOs, osName } from './platform';
 import { useLatestRelease } from './release';
@@ -23,8 +23,16 @@ const steps = [
 const slides = [
   { src: '/showcase-pattern.webp', alt: 'A pattern in the channel rack and piano roll: drums, bass, chords and a lead melody' },
   { src: '/showcase-playlist.webp', alt: 'The playlist: patterns, an audio loop and automation clips arranged over 24 bars' },
-  { src: '/showcase-plugins.webp', alt: 'Built-in plugins: parametric EQ, compressor, reverb and delay' },
+  { src: '/showcase-mixer.webp', alt: 'The mixer: inserts with effects, a drum bus and a reverb return' },
+  { src: '/showcase-plugins.webp', alt: 'Built-in effects: parametric EQ, compressor, reverb and delay' },
+  { src: '/showcase-instruments.webp', alt: 'Built-in instruments: wavetable, subtractive and FM synths' },
 ];
+// The next slide comes in from the side it is on and the last one leaves the other way, through a short soft focus
+const slideMotion = {
+  enter: (dir: number) => ({ opacity: 0, x: `${dir * 6}%`, scale: 1.02, filter: 'blur(8px)' }),
+  center: { opacity: 1, x: '0%', scale: 1, filter: 'blur(0px)' },
+  exit: (dir: number) => ({ opacity: 0, x: `${dir * -6}%`, scale: 0.98, filter: 'blur(8px)' }),
+};
 
 // Reveal as it scrolls into view, once
 const reveal = {
@@ -38,13 +46,17 @@ export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: shot, offset: ['start end', 'center center'] });
   const tilt = useTransform(scrollYProgress, [0, 1], [14, 0]);   // the screenshot lies back, then stands up as it arrives
-  const [slide, setSlide] = useState(0);
+  const [[slide, dir], setShown] = useState([0, 1]);   // dir: 1 = forwards, -1 = back
   const [paused, setPaused] = useState(false);   // while the pointer is on it
+  const go = (to: number, d = to > slide ? 1 : -1) => setShown([(to + slides.length) % slides.length, d]);
   useEffect(() => {
     if (paused) return;
-    const t = setTimeout(() => setSlide((s) => (s + 1) % slides.length), 5000);
+    const t = setTimeout(() => go(slide + 1, 1), 5000);
     return () => clearTimeout(t);
   }, [slide, paused]);
+  useEffect(() => {
+    for (const s of slides) new Image().src = s.src;   // decoded before their turn: no blank frame mid-transition
+  }, []);
   const download = useLatestRelease().release?.[buildOs]?.url ?? '/download';   // the file itself; the download page until it's known
 
   return (
@@ -87,14 +99,32 @@ export function Landing() {
             transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
             <div className="slides" onPointerEnter={() => setPaused(true)} onPointerLeave={() => setPaused(false)}>
-              {slides.map((s, i) => (
-                <img key={s.src} src={s.src} alt={s.alt} width={2400} height={1350} className={i === slide ? 'on' : undefined} aria-hidden={i !== slide} />
-              ))}
+              <AnimatePresence initial={false} custom={dir}>
+                <motion.img
+                  key={slide}
+                  src={slides[slide].src}
+                  alt={slides[slide].alt}
+                  width={2400}
+                  height={1350}
+                  custom={dir}
+                  variants={slideMotion}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                />
+              </AnimatePresence>
+              <button className="slide-arrow prev" aria-label="Previous screenshot" onClick={() => go(slide - 1, -1)}>
+                <svg viewBox="0 0 24 24" aria-hidden><path d="M15 5l-7 7 7 7" /></svg>
+              </button>
+              <button className="slide-arrow next" aria-label="Next screenshot" onClick={() => go(slide + 1, 1)}>
+                <svg viewBox="0 0 24 24" aria-hidden><path d="M9 5l7 7-7 7" /></svg>
+              </button>
             </div>
           </motion.div>
           <div className="dots" role="group" aria-label="Screenshots">
             {slides.map((s, i) => (
-              <button key={s.src} aria-label={s.alt} aria-current={i === slide} className={i === slide ? 'on' : undefined} onClick={() => setSlide(i)} />
+              <button key={s.src} aria-label={s.alt} aria-current={i === slide} className={i === slide ? 'on' : undefined} onClick={() => go(i)} />
             ))}
           </div>
         </div>
