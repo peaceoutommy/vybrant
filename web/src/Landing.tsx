@@ -91,37 +91,39 @@ export function Landing() {
         </section>
 
         <div className="container shot-wrap" ref={shot}>
-          <motion.div
-            className="shot"
-            style={{ rotateX: tilt }}
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <div className="slides" onPointerEnter={() => setPaused(true)} onPointerLeave={() => setPaused(false)}>
-              <AnimatePresence initial={false} custom={dir}>
-                <motion.img
-                  key={slide}
-                  src={slides[slide].src}
-                  alt={slides[slide].alt}
-                  width={2400}
-                  height={1350}
-                  custom={dir}
-                  variants={slideMotion}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                />
-              </AnimatePresence>
-              <button className="slide-arrow prev" aria-label="Previous screenshot" onClick={() => go(slide - 1, -1)}>
-                <svg viewBox="0 0 24 24" aria-hidden><path d="M15 5l-7 7 7 7" /></svg>
-              </button>
-              <button className="slide-arrow next" aria-label="Next screenshot" onClick={() => go(slide + 1, 1)}>
-                <svg viewBox="0 0 24 24" aria-hidden><path d="M9 5l7 7-7 7" /></svg>
-              </button>
-            </div>
-          </motion.div>
+          <div className="carousel">
+            <motion.div
+              className="shot"
+              style={{ rotateX: tilt }}
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <div className="slides" onPointerEnter={() => setPaused(true)} onPointerLeave={() => setPaused(false)}>
+                <AnimatePresence initial={false} custom={dir}>
+                  <motion.img
+                    key={slide}
+                    src={slides[slide].src}
+                    alt={slides[slide].alt}
+                    width={2400}
+                    height={1350}
+                    custom={dir}
+                    variants={slideMotion}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+                  />
+                </AnimatePresence>
+              </div>
+            </motion.div>
+            <button className="slide-arrow prev" aria-label="Previous screenshot" onClick={() => go(slide - 1, -1)}>
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M15 5l-7 7 7 7" /></svg>
+            </button>
+            <button className="slide-arrow next" aria-label="Next screenshot" onClick={() => go(slide + 1, 1)}>
+              <svg viewBox="0 0 24 24" aria-hidden><path d="M9 5l7 7-7 7" /></svg>
+            </button>
+          </div>
           <div className="dots" role="group" aria-label="Screenshots">
             {slides.map((s, i) => (
               <button key={s.src} aria-label={s.alt} aria-current={i === slide} className={i === slide ? 'on' : undefined} onClick={() => go(i)} />
