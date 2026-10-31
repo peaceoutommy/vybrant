@@ -74,25 +74,24 @@ ul, ol { padding: 0; list-style: none; }
 .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.22); }
 .btn-sm { height: 36px; padding: 0 16px; font-size: 14px; }
 
-/* Nav: see-through, blurred and a shade lighter than the page, so it reads as a bar over whatever scrolls under it */
+/* Nav: see-through, a faint blurred tint over whatever scrolls under it */
 .nav {
-  position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--line);
-  background: rgba(22, 25, 31, 0.55); backdrop-filter: blur(16px) saturate(1.3); -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(22, 25, 31, 0.3); backdrop-filter: blur(12px) saturate(1.2); -webkit-backdrop-filter: blur(12px) saturate(1.2);
 }
 .nav-row { display: flex; align-items: center; gap: 28px; height: 64px; padding: 0 clamp(16px, 3vw, 40px); }   /* edge to edge */
 .brand { display: flex; align-items: center; gap: 10px; margin-right: auto; font-size: 13px; font-weight: 500; letter-spacing: 0.18em; }
 .brand img { border-radius: 7px; }
 .nav-links { display: flex; gap: 28px; font-size: 14px; color: var(--dim); }
-.nav-links a { position: relative; padding: 6px 0; transition: color 0.2s ease; }
-.nav-links a:hover, .nav-links a.on { color: var(--text); }
-.nav-dot { position: absolute; left: 50%; bottom: -2px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--accent); }
+.nav-links a { padding: 6px 0; transition: color 0.2s ease; }
+.nav-links a:hover, .nav-links a[aria-current='page'] { color: var(--text); }
 .nav-actions { display: flex; align-items: center; gap: 12px; }
 .nav-menu { display: none; width: 36px; height: 36px; padding: 0; border: 0; background: none; cursor: pointer; place-content: center; gap: 5px; }
 .nav-menu span { display: block; width: 16px; height: 1.5px; background: var(--text); border-radius: 1px; transition: transform 0.3s var(--ease); }
 .nav-menu[aria-expanded='true'] span:first-child { transform: translateY(3.25px) rotate(45deg); }
 .nav-menu[aria-expanded='true'] span:last-child { transform: translateY(-3.25px) rotate(-45deg); }
 .nav-sheet { display: flex; flex-direction: column; padding: 0 clamp(16px, 3vw, 40px) 8px; overflow: hidden; }
-.nav-sheet a { padding: 12px 0; border-top: 1px solid var(--line); font-size: 15px; color: var(--dim); }
+.nav-sheet a { padding: 12px 0; font-size: 15px; color: var(--dim); }
 .nav-sheet a[aria-current='page'] { color: var(--text); }
 @media (max-width: 720px) {
   .nav-links, .nav-account { display: none; }

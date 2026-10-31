@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AnimatePresence, motion, useMotionValueEvent, useScroll } from 'motion/react';
+import { AnimatePresence, motion } from 'motion/react';
 import { Show, UserButton } from '@clerk/react';
 
 export function Footer() {
@@ -11,25 +11,15 @@ export function Footer() {
 }
 
 const links = [
-  { label: 'Features', href: '/#features', section: 'features' },
-  { label: 'Pricing', href: '/#pricing', section: 'pricing' },
-  { label: 'Download', href: '/download', section: '' },
+  { label: 'Features', href: '/#features' },
+  { label: 'Pricing', href: '/#pricing' },
+  { label: 'Download', href: '/download' },
 ];
+const here = (href: string) => (location.pathname === href ? 'page' : undefined);
 
-// A see-through bar across the top: the name on the left, the links on the right, a dot under the section in view
+// A see-through bar across the top: the name on the left, the links on the right
 export function Nav() {
-  const { scrollY } = useScroll();
-  const [active, setActive] = useState(location.pathname === '/download' ? 'download' : '');
   const [open, setOpen] = useState(false);   // the menu, on narrow screens
-
-  useMotionValueEvent(scrollY, 'change', () => {
-    if (location.pathname !== '/') return;
-    let current = '';   // the last section whose top has passed the upper third of the window
-    for (const l of links)
-      if (l.section && (document.getElementById(l.section)?.getBoundingClientRect().top ?? Infinity) < innerHeight / 3) current = l.section;
-    setActive(current);
-  });
-  const isActive = (l: (typeof links)[number]) => (l.section ? active === l.section : active === 'download');
 
   return (
     <header className="nav">
@@ -40,9 +30,8 @@ export function Nav() {
         </a>
         <nav className="nav-links" aria-label="Sections">
           {links.map((l) => (
-            <a key={l.label} href={l.href} aria-current={isActive(l) ? 'page' : undefined} className={isActive(l) ? 'on' : undefined}>
+            <a key={l.label} href={l.href} aria-current={here(l.href)}>
               {l.label}
-              {isActive(l) && <motion.span layoutId="nav-dot" className="nav-dot" transition={{ type: 'spring', stiffness: 420, damping: 38 }} />}
             </a>
           ))}
         </nav>
@@ -65,7 +54,7 @@ export function Nav() {
           <motion.nav key="menu" className="nav-sheet" aria-label="Menu" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}>
             {links.map((l) => (
-              <a key={l.label} href={l.href} onClick={() => setOpen(false)} aria-current={isActive(l) ? 'page' : undefined}>
+              <a key={l.label} href={l.href} onClick={() => setOpen(false)} aria-current={here(l.href)}>
                 {l.label}
               </a>
             ))}
