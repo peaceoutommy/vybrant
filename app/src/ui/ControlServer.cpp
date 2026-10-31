@@ -123,6 +123,7 @@ QString ControlServer::handle(const QString& line) {
         auto& ch = m_app.project().channels;
         if (idx < 0 || idx >= (int)ch.size()) return "err no such channel";
         m_app.selectChannel(ch[idx].id);
+        if (a.size() > 2 && a[2] == "roll") m_win.pianoRoll()->showChannel(ch[idx].id);   // select <n> roll: the piano roll shows it too
         return "ok";
     }
     if (c == "channels") {
@@ -407,6 +408,11 @@ QString ControlServer::handle(const QString& line) {
         QPoint p1 = v->debugPoint(a[1].toInt(), a[2].toLongLong()) + QPoint(a.size() > 5 ? a[5].toInt() : 0, 0),
                p2 = v->debugPoint(a[3].toInt(), a[4].toLongLong());
         sendDrag(v, p1, p2);
+        return "ok";
+    }
+    if (c == "fit") {   // the playlist and piano roll zoomed to their content (web/scripts/showcase.py)
+        m_win.playlist()->view()->zoomToFit();
+        m_win.pianoRoll()->view()->zoomToFit();
         return "ok";
     }
     if (c == "plpinch" && a.size() >= 2) {   // trackpad pinch over the playlist: plpinch <value> -> "<ppt before> <ppt after>"

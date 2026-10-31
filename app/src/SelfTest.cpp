@@ -2504,10 +2504,10 @@ int runEmbedTest(App& app) {
     std::printf(g_fail ? "\n%d check(s) FAILED\n" : "\nAll checks passed\n", g_fail);
     return g_fail ? 1 : 0;
 }
-// `vybrant --editor-shot <processor key> <out.png>` (e.g. native.compressor): a native processor's editor after a few seconds
-// of test signal, so its meters, curves and scopes show something. Effects get drum hits over a tone sweeping 80 Hz - 8 kHz,
+// `vybrant --editor-shot <processor key> <out.png> [<param id>=<value> ...]` (e.g. native.compressor): a native processor's editor,
+// with those parameters set (plain values), after a few seconds of test signal, so its meters, curves and scopes show something. Effects get drum hits over a tone sweeping 80 Hz - 8 kHz,
 // instruments a repeated chord. For working on editors without opening the app; QT_QPA_PLATFORM=offscreen is enough.
-int runEditorShot(App& app, const QString& key, const QString& out) {
+int runEditorShot(App& app, const QString& key, const QString& out, const QStringList& sets) {
     auto proc = NativeRegistry::instance().create(key);
     if (!proc) {
         std::printf("no native processor %s\n", qPrintable(key));
@@ -2515,6 +2515,7 @@ int runEditorShot(App& app, const QString& key, const QString& out) {
     }
     const int sr = 44100, B = 512;
     proc->prepare(sr, B);
+    for (const QString& s : sets) proc->params().set(s.section('=', 0, 0).toUInt(), s.section('=', 1).toFloat());
     std::unique_ptr<QWidget> ed(proc->createEditor(nullptr));
     if (!ed) ed.reset(new GenericParamPanel(app, 0, proc.get(), nullptr, 6));   // no editor of its own: the generic knobs
     ed->resize(ed->sizeHint().expandedTo(QSize(320, 200)));
@@ -2527,13 +2528,15 @@ int runEditorShot(App& app, const QString& key, const QString& out) {
     ctx.blockSize = B;
     ctx.playing = true;
     double phase = 0;
+    float hiss = 0;
     for (int64_t n = 0, blk = 0; n < 3 * sr; n += B, ++blk) {
         midi.clear();
         for (int i = 0; i < B; ++i) {
             const double s = (n + i) / double(sr), beat = std::fmod(s, 0.5);
             phase += 2 * M_PI * 80 * std::pow(100.0, std::fmod(s, 3.0) / 3.0) / sr;
             const float kick = beat < 0.15 ? (float)(std::exp(-beat * 25) * std::sin(2 * M_PI * 55 * s)) : 0.f;
-            L[i] = R[i] = inst ? 0.f : 0.25f * (float)std::sin(phase) + 0.8f * kick;
+            hiss = 0.97f * hiss + 0.03f * (std::rand() / (float)RAND_MAX * 2 - 1);   // a soft noise floor: spectra look like music
+            L[i] = R[i] = inst ? 0.f : 0.25f * (float)std::sin(phase) + 0.8f * kick + 0.6f * hiss;
             if (inst && (n + i) % (sr / 2) == 0)
                 for (int note : {60, 64, 67}) {
                     MidiEvent on;

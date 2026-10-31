@@ -116,6 +116,13 @@ ul, ol { padding: 0; list-style: none; }
   box-shadow: 0 40px 120px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(0, 0, 0, 0.6), 0 -20px 80px -30px rgba(170, 178, 196, 0.25);
 }
 .shot img { display: block; width: 100%; height: auto; }
+.slides { position: relative; aspect-ratio: 16 / 9; }
+.slides img { position: absolute; inset: 0; opacity: 0; transition: opacity 0.8s ease; }   /* stacked: the current one fades in */
+.slides img.on { opacity: 1; }
+.dots { display: flex; justify-content: center; gap: 8px; margin-top: 24px; }
+.dots button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 4px; background: rgba(255, 255, 255, 0.22); cursor: pointer; transition: width 0.3s ease, background 0.3s ease; }
+.dots button.on { width: 24px; background: var(--text); }
+.dots button:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 
 /* Sections */
 .section { padding-top: 140px; }

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion, useScroll, useTransform } from 'motion/react';
 import { Footer, Nav } from './Nav';
 import { buildOs, osName } from './platform';
@@ -19,6 +19,13 @@ const steps = [
   { title: 'Paste it into Vybrant', text: 'Vybrant checks it on your machine. No connection needed after that.' },
 ];
 
+// The app as it looks, one view after another (web/scripts/showcase.py makes these from a generated song)
+const slides = [
+  { src: '/showcase-pattern.webp', alt: 'A pattern in the channel rack and piano roll: drums, bass, chords and a lead melody' },
+  { src: '/showcase-playlist.webp', alt: 'The playlist: patterns, an audio loop and automation clips arranged over 24 bars' },
+  { src: '/showcase-plugins.webp', alt: 'Built-in plugins: parametric EQ, compressor, reverb and delay' },
+];
+
 // Reveal as it scrolls into view, once
 const reveal = {
   initial: { opacity: 0, y: 24 },
@@ -31,6 +38,13 @@ export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: shot, offset: ['start end', 'center center'] });
   const tilt = useTransform(scrollYProgress, [0, 1], [14, 0]);   // the screenshot lies back, then stands up as it arrives
+  const [slide, setSlide] = useState(0);
+  const [paused, setPaused] = useState(false);   // while the pointer is on it
+  useEffect(() => {
+    if (paused) return;
+    const t = setTimeout(() => setSlide((s) => (s + 1) % slides.length), 5000);
+    return () => clearTimeout(t);
+  }, [slide, paused]);
   const download = useLatestRelease().release?.[buildOs]?.url ?? '/download';   // the file itself; the download page until it's known
 
   return (
@@ -72,8 +86,17 @@ export function Landing() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 1, delay: 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
-            <img src="/vybrant.webp" alt="Vybrant's playlist with patterns arranged over eight bars" width={1600} height={640} />
+            <div className="slides" onPointerEnter={() => setPaused(true)} onPointerLeave={() => setPaused(false)}>
+              {slides.map((s, i) => (
+                <img key={s.src} src={s.src} alt={s.alt} width={2400} height={1350} className={i === slide ? 'on' : undefined} aria-hidden={i !== slide} />
+              ))}
+            </div>
           </motion.div>
+          <div className="dots" role="group" aria-label="Screenshots">
+            {slides.map((s, i) => (
+              <button key={s.src} aria-label={s.alt} aria-current={i === slide} className={i === slide ? 'on' : undefined} onClick={() => setSlide(i)} />
+            ))}
+          </div>
         </div>
 
         <section id="features" className="section container">
