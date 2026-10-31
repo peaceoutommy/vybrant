@@ -133,7 +133,12 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" Vybrant-* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes
+        # The notes are the tag's message (git tag -a v0.1.5 -m "- Fixed ..."): the app's update dialog shows them. A tag without
+        # one (git tag v0.1.5) gets none.
+        run: |
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --jq 'select(.object.type == "tag") | .object.sha')
+          notes=$([ -n "$sha" ] && gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .message || true)
+          gh release create "$GITHUB_REF_NAME" Vybrant-* --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "$notes"
 
   downloads:
     needs: publish

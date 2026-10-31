@@ -136,7 +136,8 @@ void check(QWidget* window, bool manual) {
         const QString version = manifest["version"].toString();
         QMessageBox box(QMessageBox::Information, "Update available",
             QString("<b>Vybrant %1 is available.</b> You have %2.").arg(version, current), QMessageBox::NoButton, window);
-        box.setInformativeText(
+        const QString notes = manifest["notes"].toString().trimmed();   // the release tag's message
+        box.setInformativeText((notes.isEmpty() ? QString() : "What's new:\n" + notes + "\n\n") +
             "Updates fix bugs and crashes, so we strongly recommend installing it. Your projects, settings and license stay.");
         QPushButton* update = box.addButton(canSelfUpdate() ? "Update now" : "Download", QMessageBox::AcceptRole);
         box.addButton("Later", QMessageBox::RejectRole);

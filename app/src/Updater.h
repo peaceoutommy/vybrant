@@ -1,5 +1,5 @@
 // Updates: a release build asks download.vybrant.studio/latest.json (written by .github/workflows/downloads.yml) on start whether
-// there is a newer version, and offers it; the user picks. An installed Windows copy runs the new installer, an AppImage replaces
+// there is a newer version, and offers it with its notes (the release tag's message); the user picks. An installed Windows copy runs the new installer, an AppImage replaces
 // its own file; anything else (the portable zip, a source build) is pointed at the download page.
 #pragma once
 #include <QJsonObject>
