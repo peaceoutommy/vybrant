@@ -153,31 +153,58 @@ private:
     Bounds m_bb{200, 520}, m_sb{180, 300};
 };
 
-// Window buttons in the menu bar row (the window draws no system title bar): minimize, maximize / restore and close, as
-// coloured dots like the desktop's own; the hovered one shows what it does
+// Window buttons in the menu bar row (the window draws no system title bar): minimize, maximize / restore and close. Linux
+// gets coloured dots like the desktop's own (the hovered one shows what it does), Windows its own flat buttons in the corner.
+#ifdef Q_OS_WIN
+static constexpr bool kWinButtons = true;
+#else
+static constexpr bool kWinButtons = false;
+#endif
 class WindowButtons : public QWidget {
 public:
     WindowButtons(QWidget* window, QWidget* parent)
         : QWidget(parent)
         , m_window(window) {
         setMouseTracking(true);
-        setFixedSize(3 * kStep + 10, 22);
+        setFixedSize(kWinButtons ? 3 * kWinW : 3 * kStep + 10, 22);   // Windows: as tall as the menu bar (placeTitle)
         setStyleSheet("background: transparent;");   // the menu bar shows through, not the window colour
     }
 
 private:
-    static constexpr int kStep = 22;
+    static constexpr int kStep = 22, kWinW = 46;
     static constexpr double kR = 6;
     QWidget* m_window;
     int m_hot = -1;
     QPointF centre(int i) const { return QPointF(5 + kStep * i + kStep / 2.0, height() / 2.0); }
     int at(const QPoint& p) const {
+        if (kWinButtons) return rect().contains(p) ? std::min(2, p.x() / kWinW) : -1;
         for (int i = 0; i < 3; ++i)
             if (QLineF(centre(i), p).length() <= kR + 3) return i;
         return -1;
     }
+    void paintWindows(QPainter& p) {
+        for (int i = 0; i < 3; ++i) {
+            const bool hot = i == m_hot;
+            if (hot)
+                p.fillRect(QRect(i * kWinW, 0, kWinW, height()), i == 2 ? QColor(0xc4, 0x2b, 0x1c) : theme::withAlpha(theme::text(), 28));
+            p.setPen(QPen(hot && i == 2 ? QColor(Qt::white) : theme::text(), 1));
+            const double x = i * kWinW + kWinW / 2 + 0.5, y = height() / 2 + 0.5;   // pixel centres: crisp 1px glyphs
+            p.setRenderHint(QPainter::Antialiasing, i == 2);
+            if (i == 0) p.drawLine(QPointF(x - 5, y), QPointF(x + 5, y));
+            else if (i == 1 && m_window->isMaximized()) {   // restore: a square with another behind it
+                p.drawRect(QRectF(x - 5, y - 3, 8, 8));
+                p.drawPolyline(QPolygonF(
+                    {QPointF(x - 3, y - 3), QPointF(x - 3, y - 5), QPointF(x + 5, y - 5), QPointF(x + 5, y + 3), QPointF(x + 3, y + 3)}));
+            } else if (i == 1) p.drawRect(QRectF(x - 5, y - 5, 10, 10));
+            else {
+                p.drawLine(QPointF(x - 5, y - 5), QPointF(x + 5, y + 5));
+                p.drawLine(QPointF(x - 5, y + 5), QPointF(x + 5, y - 5));
+            }
+        }
+    }
     void paintEvent(QPaintEvent*) override {
         QPainter p(this);
+        if (kWinButtons) return paintWindows(p);
         p.setRenderHint(QPainter::Antialiasing);
         static const QColor colors[] = {QColor(0xf5, 0xc5, 0x18), QColor(0xb0, 0x30, 0xff), QColor(0xff, 0x45, 0x45)};
         for (int i = 0; i < 3; ++i) {
@@ -917,7 +944,8 @@ void MainWindow::placeTitle() {
     if (!m_titleLabel) return;
     int left = 0;
     for (QAction* a : mb->actions()) left = std::max(left, mb->actionGeometry(a).right() + 12);
-    m_windowButtons->move(mb->width() - m_windowButtons->width() - 6, (mb->height() - m_windowButtons->height()) / 2);
+    if (kWinButtons) m_windowButtons->setFixedHeight(mb->height());   // Windows' buttons fill the corner
+    m_windowButtons->move(mb->width() - m_windowButtons->width() - (kWinButtons ? 0 : 6), (mb->height() - m_windowButtons->height()) / 2);
     int right = m_windowButtons->x() - 12;
     QFontMetrics fm(m_titleLabel->font());
     int w = std::min(fm.horizontalAdvance(windowTitle()) + 8, std::max(0, right - left));
