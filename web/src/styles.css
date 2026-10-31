@@ -74,12 +74,10 @@ ul, ol { padding: 0; list-style: none; }
 .btn-ghost:hover { border-color: rgba(255, 255, 255, 0.22); }
 .btn-sm { height: 36px; padding: 0 16px; font-size: 14px; }
 
-/* Nav: see-through, a dark blurred tint over whatever scrolls under it, fading out below the bar instead of ending in a line */
-.nav { position: sticky; top: 0; z-index: 10; }
-.nav::before {
-  content: ''; position: absolute; inset: 0 0 -28px; z-index: -1; pointer-events: none;
+/* Nav: see-through, a dark blurred tint over whatever scrolls under it, edged by a hairline */
+.nav {
+  position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--line);
   background: rgba(0, 0, 0, 0.45); backdrop-filter: blur(6px) saturate(1.2); -webkit-backdrop-filter: blur(6px) saturate(1.2);
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
 }
 section[id] { scroll-margin-top: 64px; }   /* a link to a section stops below the bar, not under it */
 .nav-row { display: flex; align-items: center; gap: 28px; height: 64px; padding: 0 clamp(16px, 3vw, 40px); }   /* edge to edge */
