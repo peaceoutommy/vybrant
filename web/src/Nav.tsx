@@ -15,7 +15,7 @@ const links = [
   { label: 'Pricing', href: '/#pricing' },
   { label: 'Download', href: '/download' },
 ];
-const here = (href: string) => (location.pathname === href ? 'page' : undefined);
+const here = (href: string) => (typeof location !== 'undefined' && location.pathname === href ? 'page' : undefined);   // none in the prerender
 
 // A see-through bar across the top: the name on the left, the links on the right
 export function Nav() {

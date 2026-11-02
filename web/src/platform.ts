@@ -3,6 +3,7 @@ export type Os = 'windows' | 'linux' | 'mac' | 'mobile' | 'other';
 export type BuildOs = 'windows' | 'linux';   // the ones Vybrant is built for
 
 export function detectOs(): Os {
+  if (typeof window === 'undefined') return 'other';   // the build's prerender: no visitor yet
   const hint = (navigator as Navigator & { userAgentData?: { platform?: string; mobile?: boolean } }).userAgentData;
   const platform = (hint?.platform || navigator.platform || '').toLowerCase();
   const ua = navigator.userAgent.toLowerCase();
