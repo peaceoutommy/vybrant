@@ -18,6 +18,7 @@ export function Footer() {
           <a href="/#features">Features</a>
           <a href="/#pricing">Pricing</a>
           <a href="/download">Download</a>
+          <a href="/changelog">Changelog</a>
         </div>
         <div>
           <p className="label">Account</p>

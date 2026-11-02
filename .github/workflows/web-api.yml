@@ -21,4 +21,4 @@ jobs:
       - name: Website (typecheck + build + prerender)
         env:
           VITE_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk   # a well-formed placeholder: the prerender needs one, Pages has the real key
-        run: cd web && npm ci && npm run build
+        run: cd web && npm ci && npm test && npm run build

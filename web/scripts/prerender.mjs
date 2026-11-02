@@ -27,6 +27,7 @@ const app = {
 const pages = [
   { path: '/', file: 'index.html', data: app },
   { path: '/download', file: 'download.html' },
+  { path: '/changelog', file: 'changelog.html' },
   { path: '/account', file: 'account.html', noindex: true },
   { path: '/404', file: '404.html', noindex: true },
 ].map((p) => ({ ...p, ...meta[p.path] }));   // title and description from src/pages.ts

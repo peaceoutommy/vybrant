@@ -337,6 +337,23 @@ section[id] { scroll-margin-top: 64px; }   /* a link to a section stops below th
 .intro-text .os-switch { width: max-content; margin-left: auto; }
 @media (max-width: 820px) { .intro-text .os-switch { margin-left: 0; } }
 
+.notes-more { margin-top: 24px; font-size: 15px; color: var(--dim); }
+
+/* Changelog: a row per release, its version and date pinned at the left while the notes scroll by */
+.changelog { margin-top: 72px; }
+.release { display: grid; grid-template-columns: 220px 1fr; gap: 24px 48px; padding: 40px 0; border-top: 1px solid var(--line); }
+.release-side { position: sticky; top: 96px; align-self: start; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; }
+.release-version { font-weight: 300; font-size: 36px; letter-spacing: -0.04em; line-height: 1; }
+.release-version:hover { color: var(--accent); }
+.release-side time { flex-basis: 100%; font: 400 12.5px/1.4 var(--mono); color: var(--faint); }
+.release-body .notes { margin-top: 0; grid-template-columns: 1fr; }
+.release-body .notes li:first-child { border-top: 0; padding-top: 4px; }
+.release-group + .release-group { margin-top: 28px; }
+.release-group .label { margin-bottom: 8px; }
+.release-group .label + .notes li:first-child { padding-top: 12px; }
+.release-wait { padding: 40px 0; border-top: 1px solid var(--line); }
+@media (max-width: 720px) { .release { grid-template-columns: 1fr; padding: 32px 0; } .release-side { position: static; } }
+
 /* Cookies: a one-time notice, bottom left */
 .cookie-notice {
   position: fixed;

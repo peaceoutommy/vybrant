@@ -34,3 +34,37 @@ export function useLatestRelease() {
   }, []);
   return { release, state };
 }
+
+export interface Entry {
+  version: string;
+  date: string;
+  notes: string;   // the release tag's message as written
+}
+// Every release, newest first (downloads.yml keeps releases.json): null while loading or when it can't be had
+export function useReleases() {
+  const [entries, setEntries] = useState<Entry[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    fetch(`${DOWNLOADS}/releases.json`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then(setEntries)
+      .catch(() => setFailed(true));
+  }, []);
+  return { entries, failed };
+}
+
+// A release's notes in groups: a heading line ("## Fixed", "New:") starts one; "- item" lines are its changes
+export function groups(notes: string) {
+  const out: { title: string | null; items: string[] }[] = [];
+  for (const raw of notes.split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    const heading = line.match(/^#+\s*(.+?)\s*:?$/) ?? line.match(/^(new|added|improved|improvements|changed|fixed|fixes|removed|security)\s*:$/i);
+    if (heading) out.push({ title: heading[1].charAt(0).toUpperCase() + heading[1].slice(1), items: [] });
+    else {
+      if (!out.length) out.push({ title: null, items: [] });
+      out[out.length - 1].items.push(line.replace(/^[-*•]\s*/, ''));
+    }
+  }
+  return out.filter((g) => g.items.length);
+}

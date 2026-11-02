@@ -206,6 +206,11 @@ export function Download() {
                 <li key={n}>{n}</li>
               ))}
             </ul>
+            <p className="notes-more">
+              <a href="/changelog" className="link">
+                Every release in the changelog
+              </a>
+            </p>
           </section>
         )}
 

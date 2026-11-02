@@ -5,6 +5,7 @@ import { Landing } from './Landing';
 import { Account } from './Account';
 import { Download } from './Download';
 import { NotFound } from './NotFound';
+import { Changelog } from './Changelog';
 import { Nav } from './Nav';
 import { pageFor } from './pages';
 
@@ -29,7 +30,7 @@ const appearance = {
 
 // The page for a path, in the browser (main.tsx) and in the build's prerender (entry-server.tsx)
 export function App({ path, children }: { path: string; children?: ReactNode }) {
-  const page = { '/': <Landing />, '/download': <Download />, '/account': <Account />, '/404': <NotFound /> }[pageFor(path)];
+  const page = { '/': <Landing />, '/download': <Download />, '/changelog': <Changelog />, '/account': <Account />, '/404': <NotFound /> }[pageFor(path)];
   return (
     <StrictMode>
       <ClerkProvider publishableKey={key} afterSignOutUrl="/" signInFallbackRedirectUrl="/account" appearance={appearance}>

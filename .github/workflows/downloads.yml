@@ -52,3 +52,13 @@ jobs:
           cat latest.json
           aws s3 cp latest.json "$BUCKET/latest.json" --endpoint-url "$R2_ENDPOINT" --content-type application/json \
             --cache-control "max-age=60" --only-show-errors
+
+      - name: Changelog (releases.json)
+        # every release and its notes, newest first, for the site's /changelog; GitHub's generated "Full Changelog" lines dropped
+        # ponytail: the newest 100 releases; page through the API once there are more
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '[.[] | select(.draft | not) | {version: (.tag_name | ltrimstr("v")),
+            date: .published_at, notes: ((.body // "") | split("\n") | map(select(test("Full Changelog") | not)) | join("\n"))}]' > releases.json
+          jq -c '.[] | {version, date}' releases.json
+          aws s3 cp releases.json "$BUCKET/releases.json" --endpoint-url "$R2_ENDPOINT" --content-type application/json \
+            --cache-control "max-age=300" --only-show-errors
