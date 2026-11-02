@@ -3,6 +3,7 @@ import { AnimatePresence, animate, motion, useMotionValue, useScroll, useTransfo
 import { Footer } from './Nav';
 import { buildOs, osName } from './platform';
 import { useLatestRelease } from './release';
+import { Intro, reveal } from './Intro';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
@@ -71,30 +72,6 @@ const slideMotion = {
   center: { opacity: 1, x: '0%', scale: 1, filter: 'blur(0px)' },
   exit: (dir: number) => ({ opacity: 0, x: `${dir * -6}%`, scale: 0.98, filter: 'blur(8px)' }),
 };
-
-// Reveal as it scrolls into view, once
-const reveal = {
-  initial: { opacity: 0, y: 24 },
-  whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true, margin: '-80px' },
-  transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
-} as const;
-
-function Intro({ label, title, text }: { label: string; title: string; text: string }) {
-  return (
-    <div className="intro">
-      <div>
-        <motion.p className="label" {...reveal}>
-          {label}
-        </motion.p>
-        <motion.h2 {...reveal}>{title}</motion.h2>
-      </div>
-      <motion.p className="intro-text" {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
-        {text}
-      </motion.p>
-    </div>
-  );
-}
 
 export function Landing() {
   const shot = useRef<HTMLDivElement>(null);

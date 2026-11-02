@@ -12,6 +12,7 @@ export interface Build {
 export interface Release {
   version: string;
   date: string;
+  notes: string[];   // what changed: the release tag's message, a line per change
   linux?: Build;
   windows?: Build;
 }
@@ -23,9 +24,10 @@ export function useLatestRelease() {
   useEffect(() => {
     fetch(`${DOWNLOADS}/latest.json`)
       .then((r) => (r.ok ? r.json() : Promise.reject()))
-      .then((r: { version: string; date: string } & Record<BuildOs, { path: string; size: number } | undefined>) => {
+      .then((r: { version: string; date: string; notes?: string } & Record<BuildOs, { path: string; size: number } | undefined>) => {
         const build = (b?: { path: string; size: number }): Build | undefined => b && { size: b.size, url: `${DOWNLOADS}/${b.path}` };
-        setRelease({ version: r.version, date: r.date, linux: build(r.linux), windows: build(r.windows) });
+        const notes = (r.notes ?? '').split('\n').map((l) => l.replace(/^\s*[-*•]\s*/, '').trim()).filter(Boolean);
+        setRelease({ version: r.version, date: r.date, notes, linux: build(r.linux), windows: build(r.windows) });
         setState('ready');
       })
       .catch(() => setState('none'));

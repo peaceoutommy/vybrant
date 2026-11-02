@@ -2,25 +2,31 @@ import { useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { Footer } from './Nav';
 import { buildOs, os, osName, type BuildOs } from './platform';
-import { useLatestRelease } from './release';
+import { useLatestRelease, type Build } from './release';
+import { Intro } from './Intro';
 
-const kind: Record<BuildOs, string> = { linux: 'AppImage for 64-bit Linux', windows: 'Installer for 64-bit Windows' };
+const kind: Record<BuildOs, string> = { linux: 'AppImage · 64-bit Linux', windows: 'Installer · 64-bit Windows 10 and 11' };
 const other: BuildOs = buildOs === 'linux' ? 'windows' : 'linux';
 const notice: Partial<Record<typeof os, string>> = {
   mac: "Vybrant runs on Windows and Linux. There's no macOS version yet.",
   mobile: 'Vybrant is a desktop app for Windows and Linux: download it on your computer.',
   other: 'Vybrant runs on Windows and Linux.',
 };
-const requirements: Record<BuildOs, string[]> = {
-  windows: ['Windows 10 or 11, 64-bit', 'Any audio device (WASAPI, DirectSound or MME)', 'VST3, VST2 and CLAP plugins (64-bit)'],
+const requirements: Record<BuildOs, [string, string][]> = {
+  windows: [
+    ['System', 'Windows 10 or 11, 64-bit'],
+    ['Audio', 'Any audio device: WASAPI, DirectSound or MME'],
+    ['Plugins', 'VST3, VST2 and CLAP, 64-bit'],
+  ],
   linux: [
-    'Any 64-bit Linux (x86_64) distribution from 2024 on: Arch, CachyOS, Manjaro, Ubuntu 24.04+, Fedora 40+, Debian 13+ (glibc 2.39 or newer)',
-    'FUSE 2 for AppImages (libfuse2), shipped by most distributions',
-    'PipeWire, JACK or ALSA for audio; ALSA for MIDI',
-    'X11 or XWayland for plugin windows',
-    'VST3, VST2, CLAP and LV2 plugins (64-bit)',
+    ['System', 'Any 64-bit (x86_64) distribution from 2024 on: Arch, CachyOS, Manjaro, Ubuntu 24.04+, Fedora 40+, Debian 13+ (glibc 2.39 or newer)'],
+    ['AppImage', 'FUSE 2 (libfuse2), shipped by most distributions'],
+    ['Audio', 'PipeWire, JACK or ALSA; ALSA for MIDI'],
+    ['Plugin windows', 'X11 or XWayland'],
+    ['Plugins', 'VST3, VST2, CLAP and LV2, 64-bit'],
   ],
 };
+const day = (iso: string) => new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
 
 const reveal = {
   initial: { opacity: 0, y: 20 },
@@ -125,10 +131,36 @@ function LinuxSteps() {
   );
 }
 
+// One system's download: the visitor's own comes first and leads
+function BuildCard({ system, build, version, mine, delay }: { system: BuildOs; build?: Build; version?: string; mine: boolean; delay: number }) {
+  return (
+    <motion.article className={mine ? 'build mine' : 'build'} {...reveal} transition={{ ...reveal.transition, delay }}>
+      <div className="build-head">
+        <h2>{osName[system]}</h2>
+        {/* only on that system itself: on a phone or a Mac, Windows merely leads */}
+        {mine && os === system && <span className="build-tag">Your system</span>}
+      </div>
+      <p className="build-kind">{kind[system]}</p>
+      <dl className="build-facts">
+        <div>
+          <dt>Version</dt>
+          <dd>{version ?? '—'}</dd>
+        </div>
+        <div>
+          <dt>Size</dt>
+          <dd>{build ? `${(build.size / 1048576).toFixed(0)} MB` : '—'}</dd>
+        </div>
+      </dl>
+      <a href={build?.url} className={mine ? 'btn btn-primary' : 'btn btn-ghost'} aria-disabled={!build}>
+        Download for {osName[system]}
+      </a>
+    </motion.article>
+  );
+}
+
 export function Download() {
   const { release, state } = useLatestRelease();
   const [shown, setShown] = useState<BuildOs>(buildOs);   // whose instructions: the visitor's own unless they switch
-  const mine = release?.[buildOs];
 
   return (
     <>
@@ -142,46 +174,43 @@ export function Download() {
             Get <em>Vybrant.</em>
           </motion.h1>
           <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
-            One download for every update. Vybrant asks for your license the first time it starts, and it's free with an
-            account.
+            One download for every update. Vybrant asks for your license the first time it starts, and it's free with an{' '}
+            <a href="/account" className="link">
+              account
+            </a>
+            .
           </motion.p>
           {notice[os] && (
             <motion.p className="notice" {...reveal} transition={{ ...reveal.transition, delay: 0.2 }}>
               {notice[os]}
             </motion.p>
           )}
-          <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.24 }}>
-            <a href={mine?.url} className="btn btn-primary" aria-disabled={!mine}>
-              Download for {osName[buildOs]}
-            </a>
-            <a href="/account" className="btn btn-ghost">
-              Get your free license
-            </a>
-          </motion.div>
-          <motion.p className="caption" {...reveal} transition={{ ...reveal.transition, delay: 0.3 }} aria-live="polite">
-            {state === 'loading' && 'Looking up the latest version…'}
-            {(state === 'none' || (release && !mine)) && `${kind[buildOs]} · Downloads are unavailable right now, try again in a minute`}
-            {release && mine &&
-              `Version ${release.version} · ${(mine.size / 1048576).toFixed(0)} MB · ${kind[buildOs]} · ${new Date(
-                release.date,
-              ).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}`}
-            {release?.[other] && (
-              <>
-                <br />
-                <a href={release[other].url} className="link">
-                  Also for {osName[other]}
-                </a>
-              </>
-            )}
-          </motion.p>
         </section>
 
+        <section className="container builds" aria-label="Downloads">
+          {[buildOs, other].map((o, i) => (
+            <BuildCard key={o} system={o} build={release?.[o]} version={release?.version} mine={o === buildOs} delay={0.24 + i * 0.08} />
+          ))}
+        </section>
+        <motion.p className="container release-meta" {...reveal} transition={{ ...reveal.transition, delay: 0.36 }} aria-live="polite">
+          {state === 'loading' && 'Looking up the latest version…'}
+          {state === 'none' && 'Downloads are unavailable right now, try again in a minute.'}
+          {release && `Version ${release.version}, released ${day(release.date)}. Your license, settings and projects carry over to every update.`}
+        </motion.p>
+
+        {!!release?.notes.length && (
+          <section className="section container">
+            <Intro label="What's new" title={`In version ${release.version}.`} text="Vybrant offers each update itself; this is what the latest one brings." />
+            <ul className="notes">
+              {release.notes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section className="section container">
-          <div className="section-head">
-            <div>
-              <p className="label">Install</p>
-              <h2>Running in a minute.</h2>
-            </div>
+          <Intro label="Install" title="Running in a minute.">
             <div className="os-switch" role="group" aria-label="Instructions for">
               {(['windows', 'linux'] as BuildOs[]).map((o) => (
                 <button key={o} className={shown === o ? 'on' : undefined} aria-pressed={shown === o} onClick={() => setShown(o)}>
@@ -189,7 +218,7 @@ export function Download() {
                 </button>
               ))}
             </div>
-          </div>
+          </Intro>
           {shown === 'windows' ? <WindowsSteps /> : <LinuxSteps />}
           <p className="small muted update-note">
             Updating: {shown === 'windows' ? 'run the new installer, it replaces the old version.' : 'start the new AppImage, it offers to replace the installed one.'}{' '}
@@ -198,12 +227,15 @@ export function Download() {
         </section>
 
         <section className="section container">
-          <p className="label">System requirements · {osName[shown]}</p>
-          <ul className="specs mono">
-            {requirements[shown].map((r) => (
-              <li key={r}>{r}</li>
+          <Intro label="Requirements" title={`What it needs on ${osName[shown]}.`} text="A recent 64-bit system and an audio device. Plugins are optional." />
+          <dl className="reqs">
+            {requirements[shown].map(([k, v]) => (
+              <div key={k}>
+                <dt>{k}</dt>
+                <dd>{v}</dd>
+              </div>
             ))}
-          </ul>
+          </dl>
         </section>
       </main>
       <Footer />
