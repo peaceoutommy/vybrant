@@ -1,8 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
-import { AnimatePresence, motion, useScroll, useTransform } from 'motion/react';
+import { AnimatePresence, animate, motion, useMotionValue, useScroll, useTransform } from 'motion/react';
 import { Footer, Nav } from './Nav';
 import { buildOs, osName } from './platform';
 import { useLatestRelease } from './release';
+
+const API = import.meta.env.VITE_API_URL ?? '';
+
+// How many licenses have been handed out (the license API counts them): null until known, and if it can't be had
+function useUserCount() {
+  const [users, setUsers] = useState<number | null>(null);
+  useEffect(() => {
+    fetch(`${API}/api/stats`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((s: { licenses: number }) => setUsers(s.licenses))
+      .catch(() => {});
+  }, []);
+  return users;
+}
 
 const features = [
   { title: 'Patterns and playlist', text: 'Step sequencer, piano roll and a playlist that arranges patterns, audio and automation.' },
@@ -46,6 +60,9 @@ export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({ target: shot, offset: ['start end', 'center center'] });
   const tilt = useTransform(scrollYProgress, [0, 1], [14, 0]);   // the screenshot lies back, then stands up as it arrives
+  const users = useUserCount();
+  const counted = useMotionValue(0);
+  const shownUsers = useTransform(counted, (v) => Math.round(v).toLocaleString('en'));   // counts up when it scrolls into view
   const [[slide, dir], setShown] = useState([0, 1]);   // dir: 1 = forwards, -1 = back
   const [paused, setPaused] = useState(false);   // while the pointer is on it
   const go = (to: number, d = to > slide ? 1 : -1) => setShown([(to + slides.length) % slides.length, d]);
@@ -164,6 +181,22 @@ export function Landing() {
             ))}
           </ol>
         </section>
+
+        {!!users && (
+          <section className="section container join">
+            <motion.h2 {...reveal} onViewportEnter={() => animate(counted, users, { duration: 1.6, ease: [0.22, 1, 0.36, 1] })}>
+              Join <motion.span className="join-count">{shownUsers}</motion.span> {users === 1 ? 'user' : 'users'}.
+            </motion.h2>
+            <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
+              Making music in Vybrant on Linux and Windows, each with a free license of their own.
+            </motion.p>
+            <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
+              <a href="/account" className="btn btn-primary">
+                Get your free license
+              </a>
+            </motion.div>
+          </section>
+        )}
 
         <section id="pricing" className="section container">
           <motion.div className="price-card" {...reveal}>

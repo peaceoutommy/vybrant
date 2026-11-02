@@ -154,6 +154,8 @@ section[id] { scroll-margin-top: 64px; }   /* a link to a section stops below th
 
 /* Sections */
 .section { padding-top: 140px; }
+.join { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.join-count { color: var(--accent); font-variant-numeric: tabular-nums; }   /* fixed-width digits: the count-up doesn't jitter */
 .section h2 {
   margin-top: 16px;
   max-width: 640px;
