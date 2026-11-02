@@ -5,7 +5,26 @@ import { Show, UserButton } from '@clerk/react';
 export function Footer() {
   return (
     <footer className="footer container">
-      <span>© {new Date().getFullYear()} Vybrant</span>
+      <div className="footer-brand">
+        <a href="/" className="brand" aria-label="Vybrant home">
+          <img src="/logo.png" alt="" width={22} height={22} />
+          <span>VYBRANT</span>
+        </a>
+        <p>A complete music studio for Linux and Windows.</p>
+      </div>
+      <nav className="footer-links" aria-label="Footer">
+        <div>
+          <p className="label">Product</p>
+          <a href="/#features">Features</a>
+          <a href="/#pricing">Pricing</a>
+          <a href="/download">Download</a>
+        </div>
+        <div>
+          <p className="label">Account</p>
+          <a href="/account">Your license</a>
+        </div>
+      </nav>
+      <p className="footer-legal">© {new Date().getFullYear()} Vybrant</p>
     </footer>
   );
 }

@@ -18,14 +18,38 @@ function useUserCount() {
   return users;
 }
 
-const features = [
-  { title: 'Patterns and playlist', text: 'Step sequencer, piano roll and a playlist that arranges patterns, audio and automation.' },
-  { title: 'Recording', text: 'Loop recording with takes and comping, count-in and punch in/out.' },
-  { title: 'Mixer', text: 'Inserts, sends and sidechains, track freeze and latency-compensated renders.' },
-  { title: 'Your plugins', text: 'VST2, VST3, CLAP and LV2. Each can run in its own process, so a crash stays contained.' },
-  { title: 'Built-in sound', text: 'Samplers, synths and drums, plus EQ, dynamics, delay, reverb and modulation effects.' },
-  { title: 'Export', text: 'Mixdowns, stems and MIDI files, at any sample rate.' },
-];
+// Feature tiles: the ones with a picture show that part of the app (web/scripts/showcase.py cuts them from its shots)
+const tiles = [
+  {
+    area: 'pattern',
+    title: 'Patterns and piano roll',
+    text: 'Sketch beats in the step sequencer, then play parts into the piano roll, with the other instruments faintly behind the one you edit.',
+    img: '/feature-pattern.webp',
+    alt: 'The channel rack over the piano roll: drum steps, bass, chords and a lead melody',
+  },
+  {
+    area: 'mixer',
+    title: 'Mixer',
+    text: 'Inserts, sends and sidechains, buses, freeze and delay compensation.',
+    img: '/feature-mixer.webp',
+    alt: 'Mixer strips with their effects, and the send from the chords to the reverb',
+  },
+  {
+    area: 'playlist',
+    title: 'Playlist',
+    text: 'Arrange patterns, audio and automation on as many tracks as the song needs.',
+    img: '/feature-playlist.webp',
+    alt: 'A song arranged in the playlist: drums, bass, chords, lead, an audio loop and two automation lanes',
+  },
+  {
+    area: 'sound',
+    title: 'Built-in sound',
+    text: 'Samplers, drums and three synths, plus EQ, dynamics, delay, reverb and modulation.',
+    img: '/feature-eq.webp',
+    alt: "The parametric EQ's curve over a live spectrum",
+  },
+] as const;
+const takes = [[0.08, 0.34], [0.3, 0.71], [0.62, 0.95]];   // the drawing on the Recording tile: the part of each take that is used
 
 const steps = [
   { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: '/download' },
@@ -55,6 +79,22 @@ const reveal = {
   viewport: { once: true, margin: '-80px' },
   transition: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
 } as const;
+
+function Intro({ label, title, text }: { label: string; title: string; text: string }) {
+  return (
+    <div className="intro">
+      <div>
+        <motion.p className="label" {...reveal}>
+          {label}
+        </motion.p>
+        <motion.h2 {...reveal}>{title}</motion.h2>
+      </div>
+      <motion.p className="intro-text" {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
+        {text}
+      </motion.p>
+    </div>
+  );
+}
 
 export function Landing() {
   const shot = useRef<HTMLDivElement>(null);
@@ -144,29 +184,71 @@ export function Landing() {
           </div>
         </div>
 
+        <motion.div className="container strip" {...reveal} aria-label="Plugin formats and systems">
+          <span className="strip-label">Plugins</span>
+          {['VST3', 'VST2', 'CLAP', 'LV2'].map((f) => (
+            <span key={f}>{f}</span>
+          ))}
+          <i aria-hidden />
+          <span className="strip-label">Runs on</span>
+          <span>Linux</span>
+          <span>Windows</span>
+        </motion.div>
+
         <section id="features" className="section container">
-          <motion.p className="label" {...reveal}>
-            What's inside
-          </motion.p>
-          <motion.h2 {...reveal}>Everything a track needs.</motion.h2>
-          <ul className="features">
-            {features.map((f, i) => (
-              <motion.li key={f.title} {...reveal} transition={{ ...reveal.transition, delay: (i % 2) * 0.08 }}>
-                <span className="index">{String(i + 1).padStart(2, '0')}</span>
-                <div>
-                  <h3>{f.title}</h3>
-                  <p className="mono">{f.text}</p>
+          <Intro
+            label="What's inside"
+            title="Everything a track needs."
+            text="Write, arrange, record and mix in one app, with instruments and effects built in and your own plugins alongside them."
+          />
+          <div className="bento">
+            {tiles.map((t, i) => (
+              <motion.article key={t.area} className={`tile tile-${t.area}`} {...reveal} transition={{ ...reveal.transition, delay: (i % 2) * 0.08 }}>
+                <h3>{t.title}</h3>
+                <p>{t.text}</p>
+                <div className="tile-img">
+                  <img src={t.img} alt={t.alt} loading="lazy" />
                 </div>
-              </motion.li>
+              </motion.article>
             ))}
-          </ul>
+            <motion.article className="tile tile-plugins" {...reveal}>
+              <h3>Your plugins</h3>
+              <p>Each one can run in its own process, so a crash stays contained and the song keeps playing.</p>
+              <ul className="chips" aria-label="Plugin formats">
+                {['VST3', 'VST2', 'CLAP', 'LV2'].map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </motion.article>
+            <motion.article className="tile tile-record" {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
+              <h3>Recording</h3>
+              <p>Loop recording with takes and comping, count-in, punch in and out.</p>
+              <div className="takes" aria-hidden>
+                {takes.map(([from, to], i) => (
+                  <div key={i} className="take">
+                    <b>Take {i + 1}</b>
+                    <div className="take-lane">
+                      <span style={{ left: `${from * 100}%`, width: `${(to - from) * 100}%` }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </motion.article>
+            <motion.article className="tile tile-export" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
+              <h3>Export</h3>
+              <p>Mixdowns, stems and MIDI files, at any sample rate.</p>
+              <ul className="files" aria-hidden>
+                <li>Song.wav</li>
+                <li>Song - Drums.wav</li>
+                <li>Song - Bass.wav</li>
+                <li>Song.mid</li>
+              </ul>
+            </motion.article>
+          </div>
         </section>
 
         <section id="license" className="section container">
-          <motion.p className="label" {...reveal}>
-            Get started
-          </motion.p>
-          <motion.h2 {...reveal}>Three steps to your first track.</motion.h2>
+          <Intro label="Get started" title="Three steps to your first track." text="No trial, no card, no catch: one free license per account." />
           <ol className="steps">
             {steps.map((s, i) => (
               <motion.li key={s.title} {...reveal} transition={{ ...reveal.transition, delay: i * 0.1 }}>
@@ -178,35 +260,49 @@ export function Landing() {
           </ol>
         </section>
 
-        {!!users && (
-          <section className="section container join">
-            <motion.h2 {...reveal} onViewportEnter={() => animate(counted, users, { duration: 1.6, ease: [0.22, 1, 0.36, 1] })}>
-              Join <motion.span className="join-count">{shownUsers}</motion.span> {users === 1 ? 'user' : 'users'}.
-            </motion.h2>
-            <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
-              Making music in Vybrant on Linux and Windows, each with a free license of their own.
-            </motion.p>
-            <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
-              <a href="/account" className="btn btn-primary">
+        <section id="pricing" className="section container">
+          <motion.div className="pricing" {...reveal}>
+            <div>
+              <p className="label">Pricing</p>
+              <p className="price">€0</p>
+              <p className="pricing-sub">Free, with everything in it.</p>
+            </div>
+            <ul className="pricing-list">
+              <li>Every instrument, effect and feature</li>
+              <li>One license per account, yours to keep</li>
+              <li>Checked on your machine: works offline</li>
+              <li>Updates offered inside the app</li>
+            </ul>
+            <div className="pricing-cta">
+              <a href={download} className="btn btn-primary">
+                Download for {osName[buildOs]}
+              </a>
+              <a href="/account" className="btn btn-ghost">
                 Get your free license
               </a>
-            </motion.div>
-          </section>
-        )}
+            </div>
+          </motion.div>
+        </section>
 
-        <section id="pricing" className="section container">
-          <motion.div className="price-card" {...reveal}>
-            <p className="label">Pricing</p>
-            <p className="price">
-              Free<span>€0</span>
-            </p>
-            <ul className="mono">
-              <li>Every feature</li>
-              <li>One license per account</li>
-              <li>Works offline</li>
-            </ul>
+        <section className="section container closing">
+          <motion.h2 {...reveal} onViewportEnter={() => users && animate(counted, users, { duration: 1.6, ease: [0.22, 1, 0.36, 1] })}>
+            {users ? (
+              <>
+                Join <motion.span className="join-count">{shownUsers}</motion.span> {users === 1 ? 'user' : 'users'}.
+              </>
+            ) : (
+              'Make your next track here.'
+            )}
+          </motion.h2>
+          <motion.p className="lead" {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
+            Free on Linux and Windows: every feature, one license per account.
+          </motion.p>
+          <motion.div className="cta" {...reveal} transition={{ ...reveal.transition, delay: 0.16 }}>
             <a href={download} className="btn btn-primary">
               Download for {osName[buildOs]}
+            </a>
+            <a href="/account" className="btn btn-ghost">
+              Get your free license
             </a>
           </motion.div>
         </section>

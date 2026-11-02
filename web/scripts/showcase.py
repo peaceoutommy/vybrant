@@ -241,6 +241,13 @@ EFFECTS = [[("parametriceq", "10=1 13=4 20=1 22=180 23=-3 30=1 32=650 33=-5 35=1
            [("reverb", ""), ("delay", "")]]
 INSTRUMENTS = [[("wavetable", ""), ("synth", "")], [("fm", "")]]
 BG = "#0f1216"   # the app window's background
+# Feature tiles on the landing page: parts of those shots (geometry in the 3200 x 1800 window shots), and their width
+FEATURES = [
+    ("pattern", "pattern.png", "2264x1318+916+226", 1400),   # channel rack over the piano roll
+    ("mixer", "mixer.png", "976x1504+1904+226", 640),   # five strips, the chords' send wire
+    ("playlist", "playlist.png", "2264x1144+916+280", 1400),
+    ("eq", "parametriceq.png", "1460x600+0+0", 1100),   # the curve, without the band controls
+]
 
 
 def editors(work, env, name, rows):
@@ -296,6 +303,9 @@ def main():
         app.quit()
     editors(work, env, "plugins", EFFECTS)
     editors(work, env, "instruments", INSTRUMENTS)
+    for name, src, geometry, width in FEATURES:
+        magick(os.path.join(work, src), "-crop", geometry, "+repage", "-resize", f"{width}x", "-quality", "85",
+               os.path.join(OUT, f"feature-{name}.webp"))
     for name in ("pattern", "playlist", "mixer", "plugins", "instruments"):   # 2400 px wide: sharp on a 2x screen at the page's width
         magick(os.path.join(work, name + ".png"), "-resize", "2400x", "-quality", "82", os.path.join(OUT, f"showcase-{name}.webp"))
     print(work)
