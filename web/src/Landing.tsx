@@ -30,7 +30,7 @@ const features = [
 const steps = [
   { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: '/download' },
   { title: 'Get your license', text: 'Sign in with Google or your email; one free license per account.', href: '/account' },
-  { title: 'Paste it into Vybrant', text: 'Vybrant checks it on your machine. No connection needed after that.' },
+  { title: 'Make your first track', text: 'Paste your license in when Vybrant asks, then start making music. It works offline from then on.' },
 ];
 
 // The app as it looks, one view after another (web/scripts/showcase.py makes these from a generated song)
@@ -81,9 +81,6 @@ export function Landing() {
       <div className="glow" aria-hidden />
       <main>
         <section className="hero container">
-          <motion.p className="label" {...reveal}>
-            Digital audio workstation · Linux · Windows
-          </motion.p>
           <motion.h1 {...reveal} transition={{ ...reveal.transition, delay: 0.08 }}>
             From first loop
             <br />
