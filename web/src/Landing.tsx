@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, animate, motion, useMotionValue, useScroll, useTransform } from 'motion/react';
-import { Footer, Nav } from './Nav';
+import { Footer } from './Nav';
 import { buildOs, osName } from './platform';
 import { useLatestRelease } from './release';
 
@@ -79,7 +79,6 @@ export function Landing() {
   return (
     <>
       <div className="glow" aria-hidden />
-      <Nav />
       <main>
         <section className="hero container">
           <motion.p className="label" {...reveal}>

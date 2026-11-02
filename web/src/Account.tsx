@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Show, SignIn, useAuth, useUser } from '@clerk/react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Nav } from './Nav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
@@ -16,7 +15,6 @@ export function Account() {
   return (
     <>
       <div className="glow" aria-hidden />
-      <Nav />
       <main className="account container">
         <Show when="signed-out">
           <div className="signin">

@@ -5,10 +5,10 @@
 import { readFileSync, rmSync, writeFileSync } from 'node:fs';
 
 const SITE = 'https://vybrant.studio';
-const { render } = await import(new URL('../dist-ssr/entry-server.js', import.meta.url));
+const { render, pages: meta } = await import(new URL('../dist-ssr/entry-server.js', import.meta.url));
 const template = readFileSync('dist/index.html', 'utf8');
 
-const home = 'Vybrant is a complete digital audio workstation for Linux and Windows. Free, one license per account.';
+const home = meta['/'].description;
 const app = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -25,16 +25,11 @@ const app = {
   publisher: { '@type': 'Organization', name: 'Vybrant', url: `${SITE}/`, logo: `${SITE}/logo.png` },
 };
 const pages = [
-  { path: '/', file: 'index.html', title: 'Modern DAW | Vybrant', description: home, data: app },
-  {
-    path: '/download',
-    file: 'download.html',
-    title: 'Download for Windows and Linux | Vybrant',
-    description: 'Download Vybrant, a free digital audio workstation: an installer for 64-bit Windows and an AppImage for Linux, with install steps and system requirements.',
-  },
-  { path: '/account', file: 'account.html', title: 'Your license | Vybrant', description: 'Sign in to get your free Vybrant license.', noindex: true },
-  { path: '/404', file: '404.html', title: 'Page not found | Vybrant', description: 'There is no page at this address.', noindex: true },
-];
+  { path: '/', file: 'index.html', data: app },
+  { path: '/download', file: 'download.html' },
+  { path: '/account', file: 'account.html', noindex: true },
+  { path: '/404', file: '404.html', noindex: true },
+].map((p) => ({ ...p, ...meta[p.path] }));   // title and description from src/pages.ts
 
 const attr = (s) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 for (const p of pages) {

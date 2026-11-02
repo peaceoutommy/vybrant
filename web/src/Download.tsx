@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { Footer, Nav } from './Nav';
+import { Footer } from './Nav';
 import { buildOs, os, osName, type BuildOs } from './platform';
 import { useLatestRelease } from './release';
 
@@ -133,7 +133,6 @@ export function Download() {
   return (
     <>
       <div className="glow" aria-hidden />
-      <Nav />
       <main>
         <section className="hero container">
           <motion.p className="label" {...reveal}>

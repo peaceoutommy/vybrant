@@ -5,6 +5,8 @@ import { Landing } from './Landing';
 import { Account } from './Account';
 import { Download } from './Download';
 import { NotFound } from './NotFound';
+import { Nav } from './Nav';
+import { pageFor } from './pages';
 
 const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 if (!key) throw new Error('VITE_CLERK_PUBLISHABLE_KEY is not set (see .env.example)');
@@ -27,12 +29,13 @@ const appearance = {
 
 // The page for a path, in the browser (main.tsx) and in the build's prerender (entry-server.tsx)
 export function App({ path, children }: { path: string; children?: ReactNode }) {
-  const page =
-    path === '/' ? <Landing /> : path.startsWith('/download') ? <Download /> : path.startsWith('/account') ? <Account /> : <NotFound />;
+  const page = { '/': <Landing />, '/download': <Download />, '/account': <Account />, '/404': <NotFound /> }[pageFor(path)];
   return (
     <StrictMode>
       <ClerkProvider publishableKey={key} afterSignOutUrl="/" signInFallbackRedirectUrl="/account" appearance={appearance}>
         <MotionConfig reducedMotion="never">
+          {/* drawn once for the whole site: switching pages keeps it, and the signed-in user, as they are */}
+          <Nav />
           {page}
           {children}
         </MotionConfig>

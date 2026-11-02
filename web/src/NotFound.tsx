@@ -1,10 +1,9 @@
-import { Footer, Nav } from './Nav';
+import { Footer } from './Nav';
 
 export function NotFound() {
   return (
     <>
       <div className="glow" aria-hidden />
-      <Nav />
       <main>
         <section className="hero container">
           <p className="label">404</p>
