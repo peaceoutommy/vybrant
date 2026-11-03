@@ -1,4 +1,5 @@
 #include "ui/BrowserPanel.h"
+#include "harmony/ChordLibrary.h"
 #include "project/MidiFile.h"
 #include "ui/InAppDrag.h"
 #include "ui/Theme.h"
@@ -57,6 +58,13 @@ BrowserModel::BrowserModel(App& app, QObject* parent)
         m_dirs << QStandardPaths::writableLocation(QStandardPaths::MusicLocation);
         for (auto& d : {"/usr/share/sounds", "/usr/share/hydrogen/data/drumkits", "/usr/share/sounds/sf2"})
             if (QDir(d).exists()) m_dirs << d;
+    }
+    // the chord progressions the app ships: listed once, then a folder like any other (removing it keeps it removed)
+    const QString chords = harmony::chordLibrary();
+    if (!s.value("browser/chordLibrary").toBool()) {
+        if (!m_dirs.contains(chords)) m_dirs << chords;
+        s.setValue("browser/chordLibrary", true);
+        s.setValue("browser/dirs", m_dirs);
     }
     reindex();
 }

@@ -19,6 +19,7 @@
 #include "AppImage.h"
 #include "Updater.h"
 #include "harmony/Harmony.h"
+#include "harmony/ChordLibrary.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1853,6 +1854,23 @@ int runSelfTest(App& app) {
                 .arg(noRepeat)
                 .arg(sevenths)
                 .arg(royal)
+                .toUtf8()
+                .constData());
+    }
+    {   // the chord progressions the app ships are written as MIDI files, a folder per genre, in C major or A minor
+        QTemporaryDir dir;
+        const int written = harmony::writeChordLibrary(dir.path());
+        const QStringList genres = QDir(dir.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        const QStringList pop = QDir(dir.path() + "/Pop").entryList({"*I–V–vi–IV (C G Am F).mid"});
+        MidiFileData d;
+        const bool loads = !pop.isEmpty() && MidiFile::load(dir.path() + "/Pop/" + pop[0], d) && d.tracks.size() == 1 &&
+            d.tracks[0].notes.size() == 12 && d.tracks[0].notes.back().start == 3 * 4 * PPQ;
+        CHECK(written > 500 && genres.size() >= 15 && loads,
+            QString("chord library: %1 progressions in %2 genres; Pop has %3 (12 notes, a chord a bar: %4)")
+                .arg(written)
+                .arg(genres.size())
+                .arg(pop.isEmpty() ? QString("no I–V–vi–IV") : pop[0])
+                .arg(loads)
                 .toUtf8()
                 .constData());
     }
