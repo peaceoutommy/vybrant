@@ -1744,7 +1744,7 @@ int runSelfTest(App& app) {
         chordAt(0, {57, 60, 64});
         chordAt(4 * PPQ, {53, 57, 60});
         chordAt(8 * PPQ, {55, 60, 64});
-        auto segs = segments(notes, PPQ / 8);
+        auto segs = segments(notes, PPQ, 4 * PPQ);
         std::vector<std::pair<int, double>> w;
         for (auto& n : notes) w.push_back({n.pitch, (double)n.duration});
         Key k = detectKey(w, segs.empty() ? Chord{} : segs[0].chord);
@@ -1766,6 +1766,48 @@ int runSelfTest(App& app) {
                 .arg(g.size() > 1 ? g[1] : -1)
                 .arg(g.size() > 2 ? g[2] : -1)
                 .arg(alt.empty() ? QString("-") : chordName(alt[0].chord, k))
+                .toUtf8()
+                .constData());
+    }
+    {   // strummed and arpeggiated chords are found too, and a chord added after one is played the same way
+        using namespace harmony;
+        Id id = 1;
+        auto note = [&](int p, Tick at, Tick len) {
+            Note n;
+            n.id = id++, n.pitch = p, n.start = at, n.duration = len;
+            return n;
+        };
+        const Tick bar = 4 * PPQ, e8 = PPQ / 2;
+        const std::vector<int> am = {57, 60, 64}, f = {53, 57, 60}, am7 = {57, 60, 64, 67}, strummed = {45, 52, 57, 60};
+        std::vector<Note> strum, arp, blocks, arp7;
+        for (int i = 0; i < 4; ++i) strum.push_back(note(strummed[i], i * 40, bar - i * 40));   // Am, strings 40 ticks apart, ringing
+        for (int i = 0; i < 8; ++i) arp.push_back(note(am[i % 3], i * e8, e8));   // bar 1: A C E A C E A C in eighths
+        for (int i = 0; i < 8; ++i) arp.push_back(note(f[i % 3], bar + i * e8, e8));   // bar 2: F A C F A C F A
+        for (int p : {48, 52, 55}) blocks.push_back(note(p, 0, 2 * PPQ));   // C for two beats, then Em: not one Cmaj7
+        for (int p : {52, 55, 59}) blocks.push_back(note(p, 2 * PPQ, 2 * PPQ));
+        for (int i = 0; i < 8; ++i) arp7.push_back(note(am7[i % 4], i * e8, e8));   // A C E G: one Am7, not Am then something
+        std::vector<Note> line, held;   // a bass line: B♭ E♭ F spell a B♭sus4, but E♭ F is a step: a line, not a chord
+        for (int i = 0; int p : {46, 51, 53, 51, 48}) line.push_back(note(p, i++ * e8, e8));
+        for (int p : am) held.push_back(note(p, 0, bar));   // a held Am with G E♭ C under it: still just Am, no Cm inside it
+        for (int i = 0; int p : {55, 51, 48}) held.push_back(note(p - 12, PPQ + i++ * PPQ, PPQ));
+        auto names = [&](const std::vector<Note>& ns) {
+            QStringList l;
+            for (auto& sg : segments(ns, PPQ, bar)) l << chordName(sg.chord, Key{9, true});
+            return l.join(' ');
+        };
+        auto segs = segments(arp, PPQ, bar);
+        std::vector<Note> model;   // the arpeggiated F
+        for (auto& n : arp)
+            if (segs.size() == 2 && std::find(segs[1].notes.begin(), segs[1].notes.end(), n.id) != segs[1].notes.end()) model.push_back(n);
+        auto g = follow(model, {55, 59, 62}, 2 * bar);   // G after it: the same eight eighths, F A C becoming G B D
+        const bool rhythm = g.size() == 8 && g[0].start == 2 * bar && g[1].start == 2 * bar + e8 && g[7].start == 2 * bar + 7 * e8 &&
+            g[0].pitch == 55 && g[1].pitch == 59 && g[2].pitch == 62 && g[3].pitch == 55;
+        CHECK(names(strum) == "Am" && names(arp) == "Am F" && names(blocks) == "C Em" && names(arp7) == "Am7" && names(line).isEmpty() &&
+                names(held) == "Am" && rhythm,
+            QString("strummed (%1), arpeggiated (%2, %3) and block chords (%4) are found, lines aren't (%5, %6); a chord after an "
+                    "arpeggio follows its rhythm (%7)")
+                .arg(names(strum), names(arp), names(arp7), names(blocks), names(line), names(held))
+                .arg(rhythm)
                 .toUtf8()
                 .constData());
     }

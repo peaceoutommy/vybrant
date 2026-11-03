@@ -26,9 +26,11 @@ struct Chord {
     int bass = -1;   // pitch class of the lowest note, when it isn't the root (an inversion)
     bool operator==(const Chord& o) const { return root == o.root && quality == o.quality; }
 };
-struct Segment {   // notes that start together: one chord in the piano roll
+struct Segment {   // one chord in the piano roll: notes played together, strummed or arpeggiated
     Tick start = 0, end = 0;
-    std::vector<int> pitches;   // sorted, as played
+    std::vector<int> pitches;   // its distinct pitches, low to high
+    std::vector<Id> notes;   // the notes that play it
+    bool block = true;   // all its notes start together (else a strum or an arpeggio: a new chord follows its rhythm)
     Chord chord;
 };
 struct Suggestion {
@@ -38,8 +40,16 @@ struct Suggestion {
 };
 
 Chord identify(const std::vector<int>& pitches);
-// Chords in a channel's notes: notes starting within 'tolerance' of each other form one; single notes are skipped
-std::vector<Segment> segments(const std::vector<Note>& notes, Tick tolerance);
+// Chords in a channel's notes. Notes that start together, or a little apart while they ring together (a strum), form an
+// event; consecutive events join while they still spell one chord (an arpeggio, a bass note under a chord, Am growing to
+// Am7). Two full chords stay apart unless they are the same one repeated; a complete chord stops collecting at a bar line;
+// a beat of silence ends one. Notes moving by step (a melody or a bass line) don't unfold a chord, and notes that never
+// spell one are skipped.
+std::vector<Segment> segments(const std::vector<Note>& notes, Tick beat, Tick bar);
+// 'chord' (MIDI pitches, low to high) played the way 'model' plays its chord, from 'start': a block chord gives the whole
+// voicing at once, a strum or an arpeggio keeps each note's timing, length and velocity and gives it the new chord's note
+// of the same rank (low to high)
+std::vector<Note> follow(const std::vector<Note>& model, const std::vector<int>& chord, Tick start);
 // The key of these pitches (weighted by how long they sound), read the way the progression starts: a song opening on the
 // relative minor's tonic chord is in that minor key
 Key detectKey(const std::vector<std::pair<int, double>>& weighted, const Chord& first);

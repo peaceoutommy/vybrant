@@ -181,7 +181,8 @@ private:
     std::pair<Tick, Tick> chordSlot(int seg) const;   // where a chord goes: start and length
     std::vector<ChordOption> chordOptions(int seg) const;
     void openChordMenu(int seg, const QPoint& globalPos);
-    void previewChord(const std::vector<int>& pitches, Tick start, Tick length);
+    std::vector<Note> chordNotes(const harmony::Segment& s) const;   // the notes that play it, as they are now
+    void previewChord(const std::vector<int>& pitches, std::vector<Note> shown);
     void stopChordPreview();
     void applyChord(int seg, const std::vector<int>& pitches);
     bool m_assistant = true;

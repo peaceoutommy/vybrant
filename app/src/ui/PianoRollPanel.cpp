@@ -1777,7 +1777,8 @@ void PianoRollView::setChordAssistant(bool on) {
 }
 void PianoRollView::analyzeChords() {
     const auto& notes = notesView();
-    m_chordSegs = harmony::segments(notes, PPQ / 8);
+    const auto& ts = m_app.project().transport.timeSig;
+    m_chordSegs = harmony::segments(notes, ts.ticksPerBeat(), ts.ticksPerBar());
     if (m_scale == 1 || m_scale == 2) {   // a major or minor scale picked in the toolbar is the key
         m_key = harmony::Key{m_scaleRoot, m_scale == 2};
         return;
@@ -1837,7 +1838,7 @@ void PianoRollView::openChordMenu(int seg, const QPoint& globalPos) {
     analyzeChords();
     const auto opts = chordOptions(seg);
     if (opts.empty()) return;
-    const auto [start, len] = chordSlot(seg);
+    const Tick start = chordSlot(seg).first;
     QMenu m(this);
     const QString of = harmony::chordName((seg < 0 ? m_chordSegs.back() : m_chordSegs[seg]).chord, m_key);
     m.addSection(seg < 0 ? QString("After %1, in %2").arg(of, harmony::keyName(m_key)) : QString("Instead of %1").arg(of));
@@ -1845,25 +1846,31 @@ void PianoRollView::openChordMenu(int seg, const QPoint& globalPos) {
         if (opts[i].section) m.addSection(opts[i].label);
         else m.addAction(opts[i].label + "\t" + opts[i].numeral)->setData((int)i);
     }
-    // hover to hear it and see it in place; leaving the menu stops it
-    connect(&m, &QMenu::hovered, this, [&](QAction* a) {
-        if (a->data().isValid()) previewChord(opts[a->data().toInt()].pitches, start, len);
+    // hover to hear it and see it in place, played the way the chord it follows (or replaces) is; leaving the menu stops it
+    const auto model = chordNotes(seg < 0 ? m_chordSegs.back() : m_chordSegs[seg]);
+    connect(&m, &QMenu::hovered, this, [&, start](QAction* a) {
+        if (a->data().isValid())
+            previewChord(opts[a->data().toInt()].pitches, harmony::follow(model, opts[a->data().toInt()].pitches, start));
         else stopChordPreview();
     });
     QAction* chosen = m.exec(globalPos);
     stopChordPreview();
     if (chosen && chosen->data().isValid()) applyChord(seg, opts[chosen->data().toInt()].pitches);
 }
-void PianoRollView::previewChord(const std::vector<int>& pitches, Tick start, Tick length) {
+std::vector<Note> PianoRollView::chordNotes(const harmony::Segment& s) const {
+    std::vector<Note> out;
+    for (auto& n : notesView())
+        if (std::find(s.notes.begin(), s.notes.end(), n.id) != s.notes.end()) out.push_back(n);
+    return out;
+}
+void PianoRollView::previewChord(const std::vector<int>& pitches, std::vector<Note> shown) {
     stopChordPreview();
     m_app.selectChannel(m_channel);
-    for (int p : pitches) {
+    for (int p : pitches) {   // heard as one chord; drawn the way it will be played
         m_app.noteOn(p, m_lastVelocity);
         m_sounding.push_back(p);
-        Note n;
-        n.pitch = p, n.start = start, n.duration = length;
-        m_chordPreview.push_back(n);
     }
+    m_chordPreview = std::move(shown);
     update();
 }
 void PianoRollView::stopChordPreview() {
@@ -1874,24 +1881,18 @@ void PianoRollView::stopChordPreview() {
 }
 void PianoRollView::applyChord(int seg, const std::vector<int>& pitches) {
     if (pitches.empty() || !data() || m_chordSegs.empty()) return;
-    const auto [start, len] = chordSlot(seg);
+    const Tick start = chordSlot(seg).first;
     const harmony::Segment model = seg >= 0 ? m_chordSegs[seg] : m_chordSegs.back();   // a copy: the edit re-analyses
-    beginEdit();
+    beginEdit();   // steps become notes here, keeping the ids the segment knows them by
     PatternChannelData* d = data();
-    auto inModel = [&](const Note& n) {
-        return !n.muted && n.start >= model.start && n.start - model.start <= PPQ / 8 &&
-            std::binary_search(model.pitches.begin(), model.pitches.end(), n.pitch);
-    };
-    float vel = 0;   // as loud as the chord it follows or replaces
-    int count = 0;
+    auto inModel = [&](const Note& n) { return std::find(model.notes.begin(), model.notes.end(), n.id) != model.notes.end(); };
+    std::vector<Note> played;   // the new chord is played the way this one is: as a block, strummed or arpeggiated
     for (auto& n : d->notes)
-        if (inModel(n)) vel += n.velocity, ++count;
-    vel = count ? vel / count : m_lastVelocity;
+        if (inModel(n)) played.push_back(n);
     if (seg >= 0) std::erase_if(d->notes, inModel);
-    for (size_t i = 0; i < pitches.size(); ++i) {
-        Note n;
-        n.id = kVirtualBase + ((Id)1 << 40) + i;   // fresh: commitEdit gives it a project id
-        n.pitch = pitches[i], n.start = start, n.duration = len, n.velocity = vel;
+    Id fresh = kVirtualBase + ((Id)1 << 40);   // commitEdit gives these project ids
+    for (Note n : harmony::follow(played, pitches, start)) {
+        n.id = fresh++;
         d->notes.push_back(n);
     }
     commitEdit(seg < 0 ? "Add chord" : "Change chord");

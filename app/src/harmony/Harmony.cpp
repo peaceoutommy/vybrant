@@ -65,23 +65,122 @@ Chord identify(const std::vector<int>& pitches) {
     return best;
 }
 
-std::vector<Segment> segments(const std::vector<Note>& notes, Tick tolerance) {
+static bool spellsChord(int pcs) {   // these pitch classes are exactly one of the chords
+    for (auto& q : qualities())
+        for (int r = 0; r < 12; ++r)
+            if (mask(r, q.intervals) == pcs) return true;
+    return false;
+}
+
+std::vector<Segment> segments(const std::vector<Note>& notes, Tick beat, Tick bar) {
     std::vector<const Note*> sorted;
     for (auto& n : notes)
         if (!n.muted) sorted.push_back(&n);
     std::sort(sorted.begin(), sorted.end(), [](const Note* a, const Note* b) { return a->start < b->start; });
+    // 1. events: notes that start together, or a little apart while all of them still sound (a strum)
+    struct Event {
+        Tick start, end, firstEnd;
+        int pcs = 0;
+        std::vector<const Note*> notes;
+    };
+    std::vector<Event> events;
+    for (const Note* n : sorted) {
+        const Tick end = n->start + n->duration;
+        if (!events.empty()) {
+            Event& e = events.back();
+            Tick d = n->start - e.start;
+            if (d <= PPQ / 8 || (d <= beat / 2 && n->start < e.firstEnd)) {
+                e.notes.push_back(n), e.pcs |= 1 << pc(n->pitch);
+                e.end = std::max(e.end, end), e.firstEnd = std::min(e.firstEnd, end);
+                continue;
+            }
+        }
+        events.push_back(Event{n->start, end, end, 1 << pc(n->pitch), {n}});
+    }
+    // 2. chords: consecutive events joined while they still spell one chord
     std::vector<Segment> out;
-    for (size_t i = 0; i < sorted.size();) {
+    std::vector<const Note*> cur;
+    int curPcs = 0;
+    Tick curStart = 0, curEnd = 0;
+    bool stated = false;   // the current chord began as a block or a strum, not one note at a time
+    auto finish = [&] {
+        if (cur.empty()) return;
         Segment s;
-        s.start = sorted[i]->start;
-        for (; i < sorted.size() && sorted[i]->start - s.start <= tolerance; ++i) {
-            s.pitches.push_back(sorted[i]->pitch);
-            s.end = std::max(s.end, sorted[i]->start + sorted[i]->duration);
+        s.start = curStart, s.end = curEnd;
+        for (const Note* n : cur) {
+            s.pitches.push_back(n->pitch);
+            s.notes.push_back(n->id);
+            s.block = s.block && n->start - curStart <= PPQ / 8;
         }
         std::sort(s.pitches.begin(), s.pitches.end());
         s.pitches.erase(std::unique(s.pitches.begin(), s.pitches.end()), s.pitches.end());
         s.chord = identify(s.pitches);
-        if (s.chord.root >= 0) out.push_back(std::move(s));
+        if (s.chord.root >= 0 && (__builtin_popcount(curPcs) >= 3 || s.block))
+            out.push_back(std::move(s));   // a lone fifth only as a block
+        cur.clear();
+    };
+    int line = -1;   // the previous event's pitch, when it was a single note
+    for (const Event& e : events) {
+        // a single note a step from the single note before it is a melody or a bass line moving, not a chord unfolding
+        const int p = e.notes.size() == 1 ? e.notes[0]->pitch : -1;
+        const bool step = p >= 0 && line >= 0 && p != line && std::abs(p - line) <= 2;
+        line = p;
+        bool join = false;
+        const bool eventFull = __builtin_popcount(e.pcs) >= 3 && spellsChord(e.pcs);
+        if (!cur.empty() && e.start - curEnd <= beat) {
+            const int both = curPcs | e.pcs;
+            const bool curFull = __builtin_popcount(curPcs) >= 3 && spellsChord(curPcs);
+            const bool sameBar = e.start / bar == curStart / bar;
+            // under a block or strummed chord still ringing in its bar, other notes are a line over it, not part of a chord
+            if (stated && !eventFull && sameBar && e.start < curEnd) continue;
+            if (curFull && eventFull) join = e.pcs == curPcs;   // two full chords: only the same one again
+            else if (curFull) {   // a full chord, then more notes: the same chord going on, or the same root extended in the bar
+                std::vector<int> ps;
+                for (const Note* n : cur) ps.push_back(n->pitch);
+                for (const Note* n : e.notes) ps.push_back(n->pitch);
+                join = (both == curPcs && (sameBar || e.pcs == curPcs)) ||
+                    (!step && sameBar && spellsChord(both) &&
+                        identify(ps).root == identify(std::vector<int>(ps.begin(), ps.begin() + cur.size())).root);
+            } else join = !step && e.start - curStart < bar && (__builtin_popcount(both) <= 2 || spellsChord(both));   // still collecting
+        }
+        if (!join) {
+            finish();
+            curPcs = 0, curStart = e.start, curEnd = e.end, stated = eventFull;
+        }
+        cur.insert(cur.end(), e.notes.begin(), e.notes.end());
+        curPcs |= e.pcs, curEnd = std::max(curEnd, e.end);
+    }
+    finish();
+    return out;
+}
+
+std::vector<Note> follow(const std::vector<Note>& model, const std::vector<int>& chord, Tick start) {
+    std::vector<Note> out;
+    if (model.empty() || chord.empty()) return out;
+    Tick first = model[0].start, end = 0;
+    float vel = 0;
+    for (auto& n : model) first = std::min(first, n.start), end = std::max(end, n.start + n.duration), vel += n.velocity;
+    if (std::all_of(model.begin(), model.end(), [&](const Note& n) { return n.start - first <= PPQ / 8; })) {   // a block chord
+        for (int p : chord) {
+            Note n = model[0];
+            n.id = 0, n.pitch = p, n.start = start, n.duration = end - first, n.velocity = vel / model.size();
+            out.push_back(n);
+        }
+        return out;
+    }
+    std::vector<int> ranks;   // the model's pitches, low to high: rank i plays the new chord's i-th note
+    for (auto& n : model) ranks.push_back(n.pitch);
+    std::sort(ranks.begin(), ranks.end());
+    ranks.erase(std::unique(ranks.begin(), ranks.end()), ranks.end());
+    std::vector<int> v = chord;
+    for (size_t i = 0; v.size() < ranks.size() && v[i] + 12 <= 127; ++i) v.push_back(v[i] + 12);   // fewer notes: double them up an octave
+    for (auto& m : model) {
+        size_t r = std::lower_bound(ranks.begin(), ranks.end(), m.pitch) - ranks.begin();
+        Note n = m;   // more notes than the model has: keep the low ones and the top one, drop from the middle
+        n.id = 0;
+        n.pitch = v[std::min(r + 1 == ranks.size() ? v.size() - 1 : r, v.size() - 1)];
+        n.start = start + (m.start - first);
+        out.push_back(n);
     }
     return out;
 }
