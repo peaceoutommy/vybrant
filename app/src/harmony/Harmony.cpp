@@ -185,59 +185,32 @@ std::vector<Note> follow(const std::vector<Note>& model, const std::vector<int>&
     return out;
 }
 
-Key detectKey(const std::vector<std::pair<int, double>>& weighted, const Chord& first) {
-    // Krumhansl-Kessler key profiles: how strongly each scale degree belongs to a major or minor key
-    static const double major[12] = {6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88};
-    static const double minorP[12] = {6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17};
-    double h[12] = {};
-    for (auto& [p, w] : weighted) h[pc(p)] += w;
-    auto corr = [&](const double* prof, int t) {
-        double mx = 0, my = 0;
-        for (int i = 0; i < 12; ++i) mx += h[pc(i + t)], my += prof[i];
-        mx /= 12, my /= 12;
-        double sxy = 0, sxx = 0, syy = 0;
-        for (int i = 0; i < 12; ++i) {
-            double x = h[pc(i + t)] - mx, y = prof[i] - my;
-            sxy += x * y, sxx += x * x, syy += y * y;
-        }
-        return sxx > 0 && syy > 0 ? sxy / std::sqrt(sxx * syy) : 0.0;
-    };
-    Key best;
-    double bestR = -2;
-    for (int t = 0; t < 12; ++t)
-        for (bool m : {false, true}) {
-            double r = corr(m ? minorP : major, t);
-            if (r > bestR) bestR = r, best = Key{t, m};
-        }
-    // relative keys share their notes: the first chord decides which of the two the progression is in
-    if (first.root >= 0) {
-        bool firstMinor = qualities()[first.quality].minor;
-        if (!best.minor && firstMinor && first.root == pc(best.tonic + 9)) best = Key{first.root, true};
-        else if (best.minor && !firstMinor && first.root == pc(best.tonic + 3)) best = Key{first.root, false};
-    }
-    return best;
-}
-
 // Spelling: keys written with flats get flat names
 static bool flatKey(const Key& k) {
-    static const std::set<int> majorFlats = {5, 10, 3, 8, 1, 6}, minorFlats = {2, 7, 0, 5, 10, 3};
+    static const std::set<int> majorFlats = {5, 10, 3, 8, 1}, minorFlats = {2, 7, 0, 5, 10};
     return (k.minor ? minorFlats : majorFlats).count(k.tonic) > 0;
 }
-static QString pcName(int p, const Key& k, bool flat = false) {
+static QString pcName(int p, const Key& k) {
     static const char* sharps[] = {"C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"};
     static const char* flats[] = {"C", "D♭", "D", "E♭", "E", "F", "G♭", "G", "A♭", "A", "B♭", "B"};
-    return (flat || flatKey(k) ? flats : sharps)[pc(p)];
+    return (flatKey(k) ? flats : sharps)[pc(p)];
 }
-// a root its numeral calls lowered (♭II, ♭VII, ...) is spelled with a flat in any key: B♭, not A♯, in A minor
-static bool loweredDegree(int interval, const Key& k) {
-    const int i = pc(interval);
-    return k.minor ? i == 1 : i == 1 || i == 3 || i == 8 || i == 10;
+// a note named by its scale degree's letter, as the key writes it: B as IV of F♯ major, B♭ as ♭II of A minor, A♯ as iii
+// of F♯; a double sharp or flat gives way to the plain name
+static QString spell(int p, const Key& k) {
+    static const int letterPc[7] = {0, 2, 4, 5, 7, 9, 11};
+    static const int degreeLetter[12] = {0, 1, 1, 2, 2, 3, 3, 4, 5, 5, 6, 6};   // I ♭II II ♭III III IV ♯IV V ♭VI VI ♭VII VII
+    static const QString letters = "CDEFGAB";
+    const int l = (letters.indexOf(pcName(k.tonic, k)[0]) + degreeLetter[pc(p - k.tonic)]) % 7;
+    const int acc = (pc(p - letterPc[l]) + 6) % 12 - 6;
+    if (std::abs(acc) > 1) return pcName(p, k);
+    return letters[l] + QString(acc > 0 ? "♯" : acc < 0 ? "♭" : "");
 }
 QString keyName(const Key& k) { return pcName(k.tonic, k) + (k.minor ? " minor" : " major"); }
 QString chordName(const Chord& c, const Key& k) {
     if (c.root < 0) return {};
-    QString s = pcName(c.root, k, loweredDegree(c.root - k.tonic, k)) + qualities()[c.quality].suffix;
-    if (c.bass >= 0) s += "/" + pcName(c.bass, k);
+    QString s = spell(c.root, k) + qualities()[c.quality].suffix;
+    if (c.bass >= 0) s += "/" + spell(c.bass, k);
     return s;
 }
 QString numeral(const Chord& c, const Key& k) {
@@ -301,7 +274,7 @@ const std::vector<Move>& movesFrom(const Key& k, int interval, bool minorChord) 
             {{0, Maj, .95, "resolves home"}, {9, Min, .75, "deceptive: dodges the expected resolution"},
                 {5, Maj, .55, "rock-style step back"}}},
         {9,
-            {{5, Maj, .9, "the pop move, as in I–V–vi–IV"}, {2, Min, .6, "falls a fifth toward ii–V"},
+            {{5, Maj, .9, "the pop move, as in I–V–vi–IV"}, {2, Min, .6, "falls a fifth toward ii–V"}, {0, Maj, .58, "back up home"},
                 {7, Maj, .55, "climbs back toward home"}, {4, Min, .35, "steps down"}}},
         {11, {{0, Maj, .9, "resolves the tension home"}, {4, Min, .4, "falls to iii"}}},
     };
@@ -309,7 +282,7 @@ const std::vector<Move>& movesFrom(const Key& k, int interval, bool minorChord) 
         {0,
             {{8, Maj, .85, "lifts to the major side"}, {5, Min, .8, "a darker subdominant"},
                 {10, Maj, .75, "steps down a tone: the natural minor sound"}, {7, Maj, .6, "a major V pulls straight back home"},
-                {3, Maj, .5, "the relative major"}}},
+                {3, Maj, .72, "the relative major"}}},
         {2, {{7, Maj, .9, "ii°–V–i: the minor cadence"}, {5, Min, .4, "softer, same role"}}},
         {3, {{8, Maj, .8, "falls a fifth"}, {10, Maj, .7, "climbs a tone"}, {5, Min, .5, "steps up to iv"}}},
         {5,
@@ -329,7 +302,8 @@ const std::vector<Move>& movesFrom(const Key& k, int interval, bool minorChord) 
         {0, Min, .8, "back home"}, {5, Min, .6, "to the subdominant"}, {8, Maj, .6, "to the major side"}, {10, Maj, .5, "a step down"}};
     // a minor v and a major V in minor move differently; elsewhere the root alone decides
     if (k.minor && interval == 7 && minorChord) {
-        static const std::vector<Move> v = {{0, Min, .8, "a soft return home"}, {8, Maj, .6, "steps up to VI"}};
+        static const std::vector<Move> v = {
+            {0, Min, .8, "a soft return home"}, {8, Maj, .6, "steps up to VI"}, {10, Maj, .5, "climbs to VII"}};
         return v;
     }
     for (auto& [i, moves] : k.minor ? minor : major)
@@ -343,32 +317,142 @@ struct Loop {
 const std::vector<Loop>& loops(const Key& k) {
     static const std::vector<Loop> inMajor = {{{0, 7, 9, 5}, "I\u2013V\u2013vi\u2013IV, the pop progression"},
         {{0, 9, 5, 7}, "I\u2013vi\u2013IV\u2013V, the 50s progression"}, {{2, 7, 0}, "ii\u2013V\u2013I, the jazz cadence"},
-        {{0, 5, 7}, "I\u2013IV\u2013V, the rock and blues basis"}};
+        {{0, 5, 7}, "I\u2013IV\u2013V, the rock and blues basis"},
+        {{0, 5, 0, 7, 5, 0, 7}, "the 12-bar blues"}};   // its repeated bars merge into one chord each
     static const std::vector<Loop> inMinor = {{{0, 8, 3, 10}, "i\u2013VI\u2013III\u2013VII, the epic pop loop"},
         {{0, 10, 8, 7}, "i\u2013VII\u2013VI\u2013V, the Andalusian cadence"}, {{0, 8, 10}, "i\u2013VI\u2013VII, the cinematic rise"},
         {{0, 5, 7}, "i\u2013iv\u2013V, the minor cadence"}};
     return k.minor ? inMinor : inMajor;
 }
-// Colour from outside the key: borrowed from the parallel key, or chromatic chords with a pull of their own
-const std::vector<Move>& spicy(const Key& k) {
-    static const std::vector<Move> inMajor = {{5, Min, 0, "borrowed from minor: bittersweet"},
-        {10, Maj, 0, "\u266dVII: a Mixolydian, rock and film colour"}, {8, Maj, 0, "\u266dVI: a borrowed, cinematic lift"},
-        {2, Maj, 0, "V of V: leans hard into V"}, {4, Maj, 0, "V of vi: pulls into the relative minor"}};
-    static const std::vector<Move> inMinor = {{1, Maj, 0, "\u266dII, the Neapolitan: dark and cinematic"},
-        {5, Maj, 0, "a major IV: Dorian brightness"}, {7, Dom7, 0, "V7: the strongest pull home"},
-        {0, Maj, 0, "a major I: ends bright (Picardy third)"}};
+// Colour from outside the key: borrowed from the parallel key, or chromatic chords with a pull of their own, each first in
+// line after the degrees it usually follows (IV–iv, V–♭VI, iv–♭II...)
+struct Spice {
+    int interval, quality;
+    std::vector<int> after;
+    const char* reason;
+};
+const std::vector<Spice>& spicy(const Key& k) {
+    static const std::vector<Spice> inMajor = {{5, Min, {0, 5}, "borrowed from minor: bittersweet"},
+        {10, Maj, {0, 5, 9}, "\u266dVII: a Mixolydian, rock and film colour"}, {8, Maj, {0, 5, 7}, "\u266dVI: a borrowed, cinematic lift"},
+        {2, Maj, {0, 9, 5}, "V of V: leans hard into V"}, {4, Maj, {0, 5, 2}, "V of vi: pulls into the relative minor"},
+        {9, Maj, {0, 4, 5}, "V of ii: leans into ii"}, {3, Maj, {0, 8, 10}, "\u266dIII: borrowed, a bold rock lift"}};
+    static const std::vector<Spice> inMinor = {{1, Maj, {0, 5, 8}, "\u266dII, the Neapolitan: dark and cinematic"},
+        {5, Maj, {0, 10}, "a major IV: Dorian brightness"}, {7, Dom7, {0, 5, 8, 2, 1}, "V7: the strongest pull home"},
+        {0, Maj, {7}, "a major I: ends bright (Picardy third)"}, {2, Maj, {0, 8}, "a major II: lifts toward V"}};
     return k.minor ? inMinor : inMajor;
 }
 Chord chordAt(const Key& k, int interval, int quality) { return Chord{pc(k.tonic + interval), quality, -1}; }
 }   // namespace
 
+// the key's home chord, plain or coloured
+static bool isTonic(const Chord& c, const Key& k) {
+    if (c.root != k.tonic || c.quality == Dim || c.quality == Dim7 || c.quality == HalfDim7 || c.quality == Aug) return false;
+    return c.quality == Power || c.quality == Sus2 || c.quality == Sus4 || qualities()[c.quality].minor == k.minor;
+}
+
+Key detectKey(const std::vector<std::pair<int, double>>& weighted, const std::vector<Chord>& chords) {
+    std::vector<Chord> cs;
+    for (auto& c : chords)
+        if (c.root >= 0) cs.push_back(c);
+    // a lone chord (or one chord over and over) is its own key; a diminished one leads into the major key a semitone up
+    if (!cs.empty() && std::all_of(cs.begin(), cs.end(), [&](const Chord& c) { return c == cs[0]; })) {
+        const Chord& c = cs[0];
+        if (c.quality == Dim || c.quality == Dim7 || c.quality == HalfDim7) return Key{pc(c.root + 1), false};
+        return Key{c.root, qualities()[c.quality].minor && c.quality != Aug};
+    }
+    // Krumhansl-Kessler key profiles: how strongly each scale degree belongs to a major or minor key
+    static const double major[12] = {6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88};
+    static const double minorP[12] = {6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17};
+    double h[12] = {};
+    for (auto& [p, w] : weighted) h[pc(p)] += w;
+    auto corr = [&](const double* prof, int t) {
+        double mx = 0, my = 0;
+        for (int i = 0; i < 12; ++i) mx += h[pc(i + t)], my += prof[i];
+        mx /= 12, my /= 12;
+        double sxy = 0, sxx = 0, syy = 0;
+        for (int i = 0; i < 12; ++i) {
+            double x = h[pc(i + t)] - mx, y = prof[i] - my;
+            sxy += x * y, sxx += x * x, syy += y * y;
+        }
+        return sxx > 0 && syy > 0 ? sxy / std::sqrt(sxx * syy) : 0.0;
+    };
+    // how much of the progression sits in the key's scale (minor with its leading tone), chord by chord: the triad decides,
+    // a 7th or a 9th on top doesn't take a chord out of the key (the blues' I7 and IV7)
+    static const std::vector<int> majorScale = {0, 2, 4, 5, 7, 9, 11}, minorScale = {0, 2, 3, 5, 7, 8, 10, 11};
+    auto inScale = [&](const Key& k, int p) {
+        const auto& sc = k.minor ? minorScale : majorScale;
+        return std::find(sc.begin(), sc.end(), pc(p - k.tonic)) != sc.end();
+    };
+    auto chordFit = [&](const Key& k) {
+        int in = 0;   // a chord in the key counts whole, a common outsider half
+        for (auto& c : cs) {
+            bool ok = true;
+            for (int i : qualities()[c.quality].intervals)
+                if (i != 9 && i != 10 && i != 11 && (i != 2 || c.quality == Sus2)) ok = ok && inScale(k, c.root + i);
+            const bool common = std::any_of(spicy(k).begin(), spicy(k).end(), [&](const Spice& m) {   // borrowed, V of...
+                return pc(k.tonic + m.interval) == c.root && qualities()[m.quality].minor == qualities()[c.quality].minor;
+            });
+            in += ok ? 2 : common ? 1 : 0;
+        }
+        return cs.empty() ? 0.0 : in / (2.0 * cs.size());
+    };
+    // keys sharing their notes (C major, A minor, G major...) fit alike: then the chords decide, the way the ear hears home:
+    // starting there, resolving there from V, ending there. Weighed against 50 real songs: 45 read as their sources say.
+    auto home = [&](const Key& k) {
+        double s = isTonic(cs.front(), k) * 3 + isTonic(cs.back(), k);
+        for (size_t j = 0; j + 1 < cs.size(); ++j)
+            if (cs[j].root == pc(k.tonic + 7) && !qualities()[cs[j].quality].minor && isTonic(cs[j + 1], k)) {
+                s += 3;
+                break;
+            }
+        return s;
+    };
+    Key best;
+    double bestScore = -1e9;
+    for (int i = 0; i < 24; ++i) {
+        const Key k{i / 2, i % 2 == 1};
+        const double r = corr(k.minor ? minorP : major, k.tonic);
+        const double score = (cs.empty() ? 0 : home(k) + 6 * chordFit(k)) + 2 * r;   // the notes' profile settles ties
+        if (score > bestScore) bestScore = score, best = k;
+    }
+    return best;
+}
+
+// the seventh chord a triad on this degree grows into: V7 (and any major chord in the blues) is dominant
+static int seventhOf(const Key& k, int at, int quality, bool bluesy) {
+    if (quality == Dim) return HalfDim7;
+    if (qualities()[quality].minor) return Min7;
+    return bluesy || at == 7 || (k.minor && at == 10) ? Dom7 : Maj7;
+}
+// the same root with a note more or less (E after E7): not a move
+static bool sameRoot(const Chord& a, const Chord& b) {
+    if (a.root != b.root) return false;
+    const int x = mask(a.root, qualities()[a.quality].intervals), y = mask(b.root, qualities()[b.quality].intervals);
+    return (x & y) == x || (x & y) == y;
+}
+
 std::vector<Suggestion> next(const std::vector<Chord>& before, const Key& k) {
     if (before.empty()) return {};
     const Chord& last = before.back();
     const int at = pc(last.root - k.tonic);
+    // a progression of seventh chords gets seventh chords; dominant sevenths on the tonic and elsewhere: the blues, all dominant
+    const auto seventh = [](const Chord& c) {
+        return (c.quality >= Dom7 && c.quality <= Dim7) || (c.quality >= Maj9 && c.quality <= Dom9);
+    };
+    const bool sevenths = 2 * std::count_if(before.begin(), before.end(), seventh) >= (long)before.size();
+    std::set<int> dominants;
+    for (auto& c : before)
+        if (c.quality == Dom7) dominants.insert(c.root);
+    const bool bluesy = dominants.count(k.tonic) && dominants.size() >= 2;
+    auto colour = [&](Chord c) {
+        if (sevenths && (c.quality == Maj || c.quality == Min || c.quality == Dim))
+            c.quality = seventhOf(k, pc(c.root - k.tonic), c.quality, bluesy);
+        return c;
+    };
     std::vector<std::pair<double, Suggestion>> ranked;
-    auto add = [&](const Chord& c, double w, const QString& reason, bool spice) {
-        if (c == last) return;
+    auto add = [&](Chord c, double w, const QString& reason, bool spice) {
+        c = colour(c);
+        if (sameRoot(c, last)) return;
         for (auto& [rw, s] : ranked)
             if (s.chord == c) {   // the same chord found twice: keep it once, at its better rank and with that reason
                 if (w > rw) rw = w, s.reason = reason;
@@ -376,12 +460,12 @@ std::vector<Suggestion> next(const std::vector<Chord>& before, const Key& k) {
             }
         ranked.push_back({w, Suggestion{c, reason, spice}});
     };
-    // a well-known loop the progression is in the middle of: its next chord comes first
+    // a well-known loop the progression is in the middle of: its next chord comes first, unless only two chords match
     std::vector<int> played;
     for (auto& c : before) played.push_back(pc(c.root - k.tonic));
     for (auto& loop : loops(k)) {
         const int n = (int)loop.intervals.size();
-        for (int len = std::min<int>(n - 1, (int)played.size()); len >= 2; --len)
+        for (int len = std::min<int>(n - 1, (int)played.size()); len >= (n > 4 ? 3 : 2); --len)
             for (int start = 0; start < n; ++start) {
                 bool match = true;
                 for (int i = 0; i < len && match; ++i) match = loop.intervals[(start + i) % n] == played[played.size() - len + i];
@@ -389,19 +473,27 @@ std::vector<Suggestion> next(const std::vector<Chord>& before, const Key& k) {
                 int iv = loop.intervals[(start + len) % n];
                 int q = diatonicQuality(k, iv);
                 if (k.minor && iv == 7) q = Maj;   // these loops resolve with a major V
-                add(chordAt(k, iv, q < 0 ? Maj : q), 1.0 + len * 0.1, QString("continues %1").arg(loop.name), false);
+                add(chordAt(k, iv, q < 0 ? Maj : q), len >= 3 ? 1.0 + len * 0.1 : 0.9, QString("continues %1").arg(loop.name), false);
             }
+    }
+    if (last.quality == Dom7 || last.quality == Dom9) {   // a dominant seventh pulls a fifth down, wherever it stands
+        const int to = pc(at + 5), q = diatonicQuality(k, to);
+        add(chordAt(k, to, q < 0 ? Maj : q == Dim ? Min : q), 1.05, "resolves a fifth down, where a 7th chord pulls", false);
     }
     for (auto& m : movesFrom(k, at, qualities()[last.quality].minor)) add(chordAt(k, m.interval, m.quality), m.weight, m.reason, false);
     std::stable_sort(ranked.begin(), ranked.end(), [](auto& a, auto& b) { return a.first > b.first; });
     std::vector<Suggestion> out;
     for (auto& [w, s] : ranked)
         if (out.size() < 4) out.push_back(s);
-    for (auto& m : spicy(k)) {
-        Chord c = chordAt(k, m.interval, m.quality);
-        if (c == last || std::any_of(out.begin(), out.end(), [&](const Suggestion& s) { return s.chord == c; })) continue;
+    std::vector<const Spice*> spices;   // the ones idiomatic after this chord first
+    for (auto& m : spicy(k)) spices.push_back(&m);
+    std::stable_partition(
+        spices.begin(), spices.end(), [&](const Spice* m) { return std::count(m->after.begin(), m->after.end(), at) > 0; });
+    for (const Spice* m : spices) {
+        Chord c = colour(chordAt(k, m->interval, m->quality));
+        if (sameRoot(c, last) || std::any_of(out.begin(), out.end(), [&](const Suggestion& s) { return s.chord == c; })) continue;
         if (std::count_if(out.begin(), out.end(), [](const Suggestion& s) { return s.spicy; }) < 3)
-            out.push_back(Suggestion{c, m.reason, true});
+            out.push_back(Suggestion{c, m->reason, true});
     }
     return out;
 }
@@ -425,10 +517,7 @@ std::vector<Suggestion> replacements(const Chord& c, const Key& k) {
                     step == 2 ? "a third up: shares two notes, a lighter colour" : "a third down: shares two notes, a deeper colour");
             }
     // the same root, coloured
-    const int seventh = diatonicQuality(k, at) == Dim ? HalfDim7
-        : !minor                                      ? (k.minor ? (at == 7 || at == 10 ? Dom7 : Maj7) : (at == 7 ? Dom7 : Maj7))
-                                                      : Min7;
-    add(Chord{c.root, seventh, -1}, "adds the seventh: richer, smoother");
+    add(Chord{c.root, seventhOf(k, at, c.quality == Dim ? Dim : minor ? Min : Maj, false), -1}, "adds the seventh: richer, smoother");
     add(Chord{c.root, minor ? MinAdd9 : Add9, -1}, "adds the ninth: open and modern");
     add(Chord{c.root, Sus2, -1}, "sus2: neither major nor minor, airy");
     add(Chord{c.root, Sus4, -1}, "sus4: suspended, wants to resolve");

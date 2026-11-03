@@ -1747,9 +1747,9 @@ int runSelfTest(App& app) {
         auto segs = segments(notes, PPQ, 4 * PPQ);
         std::vector<std::pair<int, double>> w;
         for (auto& n : notes) w.push_back({n.pitch, (double)n.duration});
-        Key k = detectKey(w, segs.empty() ? Chord{} : segs[0].chord);
         std::vector<Chord> prog;
         for (auto& sg : segs) prog.push_back(sg.chord);
+        Key k = detectKey(w, prog);
         auto sug = next(prog, k);
         auto alt = replacements(Chord{5, Maj, -1}, k);
         std::vector<int> g = voice(Chord{7, Maj, -1}, {55, 60, 64});
@@ -1808,6 +1808,51 @@ int runSelfTest(App& app) {
                     "arpeggio follows its rhythm (%7)")
                 .arg(names(strum), names(arp), names(arp7), names(blocks), names(line), names(held))
                 .arg(rhythm)
+                .toUtf8()
+                .constData());
+    }
+    {   // the chord assistant hears home where a listener does, and suggests in the progression's own colour
+        using namespace harmony;
+        auto parse = [](const QString& name) {   // "F#m7" -> a chord
+            static const QString letters = "C D EF G A B";
+            int r = letters.indexOf(name[0]), i = 1;
+            for (; i < name.size() && (name[i] == '#' || name[i] == 'b'); ++i) r += name[i] == '#' ? 1 : -1;
+            Chord c{(r + 12) % 12, Maj, -1};
+            for (int q = 0; q < (int)qualities().size(); ++q)
+                if (name.mid(i) == qualities()[q].suffix) c.quality = q;
+            return c;
+        };
+        auto read = [&](const QString& prog) {   // its key, as the piano roll finds it from block chords
+            std::vector<Chord> cs;
+            std::vector<std::pair<int, double>> w;
+            for (auto& n : prog.split(' ')) {
+                cs.push_back(parse(n));
+                for (int i : qualities()[cs.back().quality].intervals) w.push_back({48 + cs.back().root + i, 1.0});
+            }
+            return std::pair{cs, detectKey(w, cs)};
+        };
+        auto key = [&](const QString& prog) { return keyName(read(prog).second); };
+        auto first = [&](const QString& prog) {
+            auto [cs, k] = read(prog);
+            auto s = next(cs, k);
+            return s.empty() ? QString() : chordName(s[0].chord, k);
+        };
+        auto [andalusian, am] = read("Am G F E");
+        auto [jazz, bb] = read("Cm7 F7 Bbmaj7");
+        const auto after = next(andalusian, am), afterJazz = next(jazz, bb);
+        const bool noRepeat = std::none_of(after.begin(), after.end(), [](const Suggestion& s) { return s.chord.root == 4; });
+        const bool sevenths = std::all_of(afterJazz.begin(), afterJazz.end(), [](const Suggestion& s) { return s.chord.quality >= Dom7; });
+        const QString keys =
+            QStringList{key("C G"), key("C G/B Am"), key("F#m D A E"), key("Ebmaj7"), key("Bdim"), key("A7 D7 A7 E7")}.join(", ");
+        const Key fs{6, false};
+        const QString royal = QStringList{chordName(parse("B"), fs), chordName(parse("C#"), fs), chordName(parse("A#m"), fs)}.join(' ');
+        CHECK(keys == "C major, C major, F♯ minor, E♭ major, C major, A major" && first("A7 D7 A7 E7") == "D7" && noRepeat && sevenths &&
+                royal == "B C♯ A♯m" && keyName(fs) == "F♯ major",
+            QString("keys read as heard (%1); the blues goes on to %2; after E no E7 (%3); 7ths get 7ths (%4); F♯ major spells %5")
+                .arg(keys, first("A7 D7 A7 E7"))
+                .arg(noRepeat)
+                .arg(sevenths)
+                .arg(royal)
                 .toUtf8()
                 .constData());
     }

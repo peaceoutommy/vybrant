@@ -1786,7 +1786,9 @@ void PianoRollView::analyzeChords() {
     std::vector<std::pair<int, double>> weighted;
     for (auto& n : notes)
         if (!n.muted) weighted.push_back({n.pitch, (double)n.duration});
-    m_key = harmony::detectKey(weighted, m_chordSegs.empty() ? harmony::Chord{} : m_chordSegs.front().chord);
+    std::vector<harmony::Chord> chords;
+    for (auto& s : m_chordSegs) chords.push_back(s.chord);
+    m_key = harmony::detectKey(weighted, chords);
 }
 std::pair<Tick, Tick> PianoRollView::chordSlot(int seg) const {
     if (seg >= 0) return {m_chordSegs[seg].start, m_chordSegs[seg].end - m_chordSegs[seg].start};

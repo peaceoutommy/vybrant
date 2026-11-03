@@ -50,9 +50,10 @@ std::vector<Segment> segments(const std::vector<Note>& notes, Tick beat, Tick ba
 // voicing at once, a strum or an arpeggio keeps each note's timing, length and velocity and gives it the new chord's note
 // of the same rank (low to high)
 std::vector<Note> follow(const std::vector<Note>& model, const std::vector<int>& chord, Tick start);
-// The key of these pitches (weighted by how long they sound), read the way the progression starts: a song opening on the
-// relative minor's tonic chord is in that minor key
-Key detectKey(const std::vector<std::pair<int, double>>& weighted, const Chord& first);
+// The key of these chords (and pitches, weighted by how long they sound): the one whose scale holds the chords (borrowed
+// and secondary-dominant ones half) and whose home chord the progression starts on, resolves to from V, or ends on. A lone
+// chord is its own key.
+Key detectKey(const std::vector<std::pair<int, double>>& weighted, const std::vector<Chord>& chords);
 QString keyName(const Key& k);
 QString chordName(const Chord& c, const Key& k);
 QString numeral(const Chord& c, const Key& k);
