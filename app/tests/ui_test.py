@@ -448,6 +448,22 @@ def main():
     check("not a valid" in r and os.path.getsize(png) > 0, "the license dialog rejects a key that is not signed by Vybrant", r)
     ins.quit()
 
+    # ---- chord assistant: a drawn A minor chord is named, suggestions follow it, and picking one adds it after the chord
+    cfgc = os.path.join(tmp, "cfg-chords")
+    os.makedirs(cfgc)
+    ins = Instance(cfgc, sock)
+    ins.send("action view.pianoRoll")
+    ins.send("select 4 roll")
+    for p in (57, 60, 64):
+        ins.send(f"notes 4 {p} 1 3840")
+    nxt, alt = ins.send("prchords -1"), ins.send("prchords 0")
+    before = ins.send("patdata").count("@3840+3840)")
+    picked = ins.send("prchordpick -1 0")
+    after = ins.send("patdata").count("@3840+3840)")
+    check(nxt.count("|") >= 3 and "[Spicier]" in nxt and "[Voicing]" in alt and picked == "ok" and before == 0 and after >= 3,
+          "the chord assistant suggests what follows a drawn chord and adds the picked one right after it", f"{nxt} || {alt} || {picked} {before}->{after}")
+    ins.quit()
+
     # ---- the app was called MusicThingy, then Tactum: settings and data move to Vybrant on the first start
     for n, old in enumerate(["MusicThingy", "Tactum"]):
         c = os.path.join(tmp, f"cfg-old{n}")

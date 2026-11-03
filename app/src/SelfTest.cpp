@@ -18,6 +18,7 @@
 #include "core/ProcessUsage.h"
 #include "AppImage.h"
 #include "Updater.h"
+#include "harmony/Harmony.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1729,6 +1730,44 @@ int runSelfTest(App& app) {
         own.ensurePolished();
         CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && residentBytes() > 1e6,
             "buttons show the hand cursor, and the process's memory is read");
+    }
+    {   // the chord assistant's theory: names, the key, what comes after Am F C, and a G voiced next to a C
+        using namespace harmony;
+        std::vector<Note> notes;
+        auto chordAt = [&](Tick at, std::vector<int> ps) {
+            for (int p : ps) {
+                Note n;
+                n.pitch = p, n.start = at, n.duration = 4 * PPQ;
+                notes.push_back(n);
+            }
+        };
+        chordAt(0, {57, 60, 64});
+        chordAt(4 * PPQ, {53, 57, 60});
+        chordAt(8 * PPQ, {55, 60, 64});
+        auto segs = segments(notes, PPQ / 8);
+        std::vector<std::pair<int, double>> w;
+        for (auto& n : notes) w.push_back({n.pitch, (double)n.duration});
+        Key k = detectKey(w, segs.empty() ? Chord{} : segs[0].chord);
+        std::vector<Chord> prog;
+        for (auto& sg : segs) prog.push_back(sg.chord);
+        auto sug = next(prog, k);
+        auto alt = replacements(Chord{5, Maj, -1}, k);
+        std::vector<int> g = voice(Chord{7, Maj, -1}, {55, 60, 64});
+        const bool named = chordName(identify({57, 60, 64}), k) == "Am" && chordName(identify({48, 52, 55, 57}), k) == "C6" &&
+            chordName(identify({45, 48, 52, 55}), k) == "Am7" && chordName(identify({52, 55, 60}), k) == "C/E";
+        CHECK(named && segs.size() == 3 && k.tonic == 9 && k.minor && !sug.empty() && chordName(sug[0].chord, k) == "G" &&
+                numeral(sug[0].chord, k) == "VII" && sug[0].reason.contains("epic") && !alt.empty() && g == std::vector<int>({55, 59, 62}),
+            QString("chord assistant: Am F C reads as %1, G comes next (%2 %3: %4), voiced %5 %6 %7 after C; F could be %8")
+                .arg(keyName(k))
+                .arg(sug.empty() ? QString("-") : chordName(sug[0].chord, k))
+                .arg(sug.empty() ? QString() : numeral(sug[0].chord, k))
+                .arg(sug.empty() ? QString() : sug[0].reason)
+                .arg(g.size() > 0 ? g[0] : -1)
+                .arg(g.size() > 1 ? g[1] : -1)
+                .arg(g.size() > 2 ? g[2] : -1)
+                .arg(alt.empty() ? QString("-") : chordName(alt[0].chord, k))
+                .toUtf8()
+                .constData());
     }
     {   // the updater offers only a newer release, for this platform, with the checksum its download is verified against
         QJsonObject build{{"path", "0.1.10/Vybrant-v0.1.10-x86_64.AppImage"}, {"size", 1000}, {"sha256", "ab"}};

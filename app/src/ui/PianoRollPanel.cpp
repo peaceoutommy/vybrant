@@ -125,9 +125,13 @@ PianoRollView::Layout PianoRollView::layout() const {
     Layout l;
     l.velH = m_velH;
     int w = width() - 14, h = height() - 14;
-    l.keys = QRect(0, l.rulerH, l.keyW, h - l.rulerH - l.velH);
+    l.chordsH = m_assistant ? 24 : 0;
+    const int top = l.rulerH + l.chordsH;
+    l.keys = QRect(0, top, l.keyW, h - top - l.velH);
     l.ruler = QRect(l.keyW, 0, w - l.keyW, l.rulerH);
-    l.grid = QRect(l.keyW, l.rulerH, w - l.keyW, h - l.rulerH - l.velH);
+    l.chords = QRect(l.keyW, l.rulerH, w - l.keyW, l.chordsH);
+    l.chordKey = QRect(0, l.rulerH, l.keyW, l.chordsH);
+    l.grid = QRect(l.keyW, top, w - l.keyW, h - top - l.velH);
     l.vel = QRect(l.keyW, h - l.velH, w - l.keyW, l.velH);
     return l;
 }
@@ -195,8 +199,8 @@ const std::vector<Note>& PianoRollView::notesView() const {
     m_virtual = stepsAsNotes();
     return m_virtual;
 }
-int PianoRollView::yToPitch(int y) const { return m_topPitch - (y - layout().rulerH) / m_rowH; }
-int PianoRollView::pitchToY(int pitch) const { return layout().rulerH + (m_topPitch - pitch) * m_rowH; }
+int PianoRollView::yToPitch(int y) const { return m_topPitch - (y - layout().grid.top()) / m_rowH; }
+int PianoRollView::pitchToY(int pitch) const { return layout().grid.top() + (m_topPitch - pitch) * m_rowH; }
 // lowest allowed top pitch: pitch 0 sits on the bottom row, so the grid never scrolls past the end of the keyboard
 int PianoRollView::minTopPitch() const {
     int rows = (layout().grid.height() + m_rowH - 1) / m_rowH;
@@ -342,6 +346,56 @@ void PianoRollView::renderCache() {
     if (m_timeSel) {
         int x1 = tickToX(m_selStart), x2 = tickToX(m_selEnd);
         p.fillRect(QRect(x1, L.ruler.top(), x2 - x1, 5), theme::accent());
+    }
+    if (m_assistant) {   // the chord lane: each chord's name over its notes, the key at the left, a + where the next one goes
+        analyzeChords();
+        p.setClipping(false);   // paintRuler leaves the painter clipped to the ruler
+        p.fillRect(L.chords, theme::bg());
+        p.fillRect(L.chordKey, theme::panel());
+        p.setPen(theme::border());
+        p.drawLine(L.chordKey.left(), L.chords.bottom(), L.chords.right(), L.chords.bottom());
+        p.setFont(theme::smallFont());
+        p.setPen(m_chordSegs.empty() ? theme::textDim() : theme::text());
+        p.drawText(L.chordKey.adjusted(6, 0, -2, 0), Qt::AlignVCenter | Qt::AlignLeft,
+            m_chordSegs.empty() ? QString("Chords") : harmony::keyName(m_key).replace(" major", " maj").replace(" minor", " min"));
+        p.save();
+        p.setClipRect(L.chords);
+        p.setRenderHint(QPainter::Antialiasing);
+        const Channel* chn = m_app.project().channel(m_channel);
+        const QColor col = chn ? chn->color : theme::accent();
+        auto pill = [&](Tick start, Tick end) {
+            return QRectF(tickToX(start) + 1.5, L.chords.top() + 3.5, std::max(20.0, (end - start) * m_ppt - 3), L.chords.height() - 7);
+        };
+        for (auto& s : m_chordSegs) {
+            QRectF r = pill(s.start, s.end);
+            if (r.right() < L.chords.left() || r.left() > L.chords.right()) continue;
+            p.setPen(QPen(theme::withAlpha(col, 150), 1));
+            p.setBrush(theme::withAlpha(col, 45));
+            p.drawRoundedRect(r, 5, 5);
+            const QString name = harmony::chordName(s.chord, m_key), num = harmony::numeral(s.chord, m_key);
+            QFontMetrics fm(p.font());
+            p.setPen(theme::text());
+            p.drawText(r.adjusted(7, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft, fm.elidedText(name, Qt::ElideRight, (int)r.width() - 10));
+            int nameW = fm.horizontalAdvance(name) + 14;
+            if (nameW + fm.horizontalAdvance(num) < r.width() - 6) {
+                p.setPen(theme::textDim());
+                p.drawText(r.adjusted(nameW, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft, num);
+            }
+        }
+        if (m_chordSegs.empty()) {
+            p.setPen(theme::textDim());
+            p.drawText(L.chords.adjusted(10, 0, -10, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                "Draw a chord (notes that start together) and Vybrant names it and suggests what could come next");
+        } else {
+            auto [start, len] = chordSlot(-1);
+            QRectF r = pill(start, start + len);
+            p.setPen(QPen(theme::withAlpha(theme::text(), 90), 1, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(r, 5, 5);
+            p.setPen(theme::textDim());
+            p.drawText(r, Qt::AlignCenter, "+");
+        }
+        p.restore();
     }
     p.setClipping(false);
     // keys
@@ -510,6 +564,18 @@ void PianoRollView::paintEvent(QPaintEvent*) {
         });
         p.restore();
         m_ticker->keepAlive(m_noteAnim.active());
+    }
+    if (!m_chordPreview.empty()) {
+        p.save();
+        p.setClipRect(L.grid);
+        p.setRenderHint(QPainter::Antialiasing);
+        for (auto& n : m_chordPreview) {
+            QRectF r(tickToX(n.start), pitchToY(n.pitch), std::max(3.0, n.duration * m_ppt), m_rowH);
+            p.setPen(QPen(theme::withAlpha(theme::accent(), 230), 1, Qt::DashLine));
+            p.setBrush(theme::withAlpha(theme::accent(), 60));
+            p.drawRoundedRect(r.adjusted(0.5, 1.5, -0.5, -1.5), 3, 3);
+        }
+        p.restore();
     }
     paintPlayhead(p, L.ruler.top(), L.vel.bottom());
     if (m_drag == Rubber) paintRubber(p);
@@ -733,6 +799,11 @@ void PianoRollView::mousePressEvent(QMouseEvent* e) {
         m_drag = Pan;
         return;
     }
+    if (L.chords.contains(e->pos()) || L.chordKey.contains(e->pos())) {
+        if (int seg = chordIndexAt(e->pos().x()); seg != -2 && L.chords.contains(e->pos()))
+            openChordMenu(seg, mapToGlobal(QPoint(e->pos().x(), L.chords.bottom() + 1)));
+        return;
+    }
     if (L.ruler.contains(e->pos())) {
         Tick t = std::max<Tick>(0, snapNear(xToTick(e->pos().x())));
         if (e->modifiers() & Qt::ControlModifier) {
@@ -916,7 +987,10 @@ void PianoRollView::mouseMoveEvent(QMouseEvent* e) {
     if (m_drag == NoDrag) {
         bool edge = false;
         Note* n = L.grid.contains(e->pos()) ? noteAt(e->pos(), &edge) : nullptr;
-        if (L.keys.contains(e->pos()) || L.ruler.contains(e->pos()) || L.vel.contains(e->pos())) setCursor(Qt::PointingHandCursor);
+        if (L.keys.contains(e->pos()) || L.ruler.contains(e->pos()) || L.vel.contains(e->pos()) ||
+            (L.chords.contains(e->pos()) && chordIndexAt(e->pos().x()) != -2))
+            setCursor(Qt::PointingHandCursor);
+        else if (L.chords.contains(e->pos())) setCursor(Qt::ArrowCursor);
         else if (m_tool == Draw || m_tool == Select)
             setCursor(n && edge ? QCursor(Qt::SizeHorCursor) : (n ? QCursor(Qt::SizeAllCursor) : toolCursorFor(m_tool)));
         else setCursor(toolCursorFor(m_tool));
@@ -1224,7 +1298,7 @@ void PianoRollView::wheelEvent(QWheelEvent* e) {
         int d = e->angleDelta().y() != 0 ? e->angleDelta().y() : e->angleDelta().x();
         int pitchAtMouse = yToPitch(e->position().toPoint().y());
         m_rowH = clamp(m_rowH + (d > 0 ? 1 : -1), 5, 30);
-        m_topPitch = clamp(pitchAtMouse + (e->position().toPoint().y() - L.rulerH) / m_rowH, minTopPitch(), 127);
+        m_topPitch = clamp(pitchAtMouse + (e->position().toPoint().y() - L.grid.top()) / m_rowH, minTopPitch(), 127);
         updateScrollbars();
         invalidate();
         e->accept();
@@ -1695,6 +1769,147 @@ void PianoRollView::setSelectedLength(Tick len) {
 }
 
 // ---------------------------------------------------------------- panel
+// ---------------------------------------------------------------- chord assistant
+void PianoRollView::setChordAssistant(bool on) {
+    m_assistant = on;
+    QResizeEvent ev(size(), size());   // the grid moves down or up: so does the vertical scrollbar
+    TimelineView::resizeEvent(&ev);
+}
+void PianoRollView::analyzeChords() {
+    const auto& notes = notesView();
+    m_chordSegs = harmony::segments(notes, PPQ / 8);
+    if (m_scale == 1 || m_scale == 2) {   // a major or minor scale picked in the toolbar is the key
+        m_key = harmony::Key{m_scaleRoot, m_scale == 2};
+        return;
+    }
+    std::vector<std::pair<int, double>> weighted;
+    for (auto& n : notes)
+        if (!n.muted) weighted.push_back({n.pitch, (double)n.duration});
+    m_key = harmony::detectKey(weighted, m_chordSegs.empty() ? harmony::Chord{} : m_chordSegs.front().chord);
+}
+std::pair<Tick, Tick> PianoRollView::chordSlot(int seg) const {
+    if (seg >= 0) return {m_chordSegs[seg].start, m_chordSegs[seg].end - m_chordSegs[seg].start};
+    const auto& last = m_chordSegs.back();
+    Tick step = m_chordSegs.size() >= 2 ? last.start - m_chordSegs[m_chordSegs.size() - 2].start : 0;   // keep the progression's pace
+    return {step > 0 ? last.start + step : last.end, last.end - last.start};
+}
+int PianoRollView::chordIndexAt(int x) const {
+    Tick t = xToTick(x);
+    for (int i = 0; i < (int)m_chordSegs.size(); ++i)
+        if (t >= m_chordSegs[i].start && t < std::max(m_chordSegs[i].end, m_chordSegs[i].start + (Tick)(20 / m_ppt))) return i;
+    if (m_chordSegs.empty()) return -2;
+    auto [start, len] = chordSlot(-1);
+    return t >= start && t < start + std::max(len, (Tick)(20 / m_ppt)) ? -1 : -2;
+}
+std::vector<PianoRollView::ChordOption> PianoRollView::chordOptions(int seg) const {
+    std::vector<ChordOption> out;
+    if (m_chordSegs.empty() || seg >= (int)m_chordSegs.size()) return out;
+    // after the last chord, voiced against it; instead of one, voiced against the chord before it
+    const auto& from = seg < 0 ? m_chordSegs.back().pitches : seg > 0 ? m_chordSegs[seg - 1].pitches : m_chordSegs[seg].pitches;
+    std::vector<harmony::Suggestion> sug;
+    if (seg < 0) {
+        std::vector<harmony::Chord> progression;
+        for (auto& s : m_chordSegs) progression.push_back(s.chord);
+        sug = harmony::next(progression, m_key);
+    } else sug = harmony::replacements(m_chordSegs[seg].chord, m_key);
+    bool spicy = false;
+    for (auto& s : sug) {
+        if (s.spicy && !spicy) {
+            out.push_back({"Spicier", {}, true, {}});
+            spicy = true;
+        }
+        out.push_back({harmony::chordName(s.chord, m_key) + "     " + s.reason, harmony::numeral(s.chord, m_key), false,
+            harmony::voice(s.chord, from)});
+    }
+    if (seg >= 0) {   // the same chord, its lowest note moved up an octave or its highest down
+        auto up = m_chordSegs[seg].pitches, down = up;
+        up.front() += 12;
+        down.back() -= 12;
+        std::sort(up.begin(), up.end());
+        std::sort(down.begin(), down.end());
+        out.push_back({"Voicing", {}, true, {}});
+        if (up.back() <= 127) out.push_back({"Next inversion     the lowest note up an octave", {}, false, up});
+        if (down.front() >= 0) out.push_back({"Previous inversion     the highest note down an octave", {}, false, down});
+    }
+    return out;
+}
+void PianoRollView::openChordMenu(int seg, const QPoint& globalPos) {
+    analyzeChords();
+    const auto opts = chordOptions(seg);
+    if (opts.empty()) return;
+    const auto [start, len] = chordSlot(seg);
+    QMenu m(this);
+    const QString of = harmony::chordName((seg < 0 ? m_chordSegs.back() : m_chordSegs[seg]).chord, m_key);
+    m.addSection(seg < 0 ? QString("After %1, in %2").arg(of, harmony::keyName(m_key)) : QString("Instead of %1").arg(of));
+    for (size_t i = 0; i < opts.size(); ++i) {
+        if (opts[i].section) m.addSection(opts[i].label);
+        else m.addAction(opts[i].label + "\t" + opts[i].numeral)->setData((int)i);
+    }
+    // hover to hear it and see it in place; leaving the menu stops it
+    connect(&m, &QMenu::hovered, this, [&](QAction* a) {
+        if (a->data().isValid()) previewChord(opts[a->data().toInt()].pitches, start, len);
+        else stopChordPreview();
+    });
+    QAction* chosen = m.exec(globalPos);
+    stopChordPreview();
+    if (chosen && chosen->data().isValid()) applyChord(seg, opts[chosen->data().toInt()].pitches);
+}
+void PianoRollView::previewChord(const std::vector<int>& pitches, Tick start, Tick length) {
+    stopChordPreview();
+    m_app.selectChannel(m_channel);
+    for (int p : pitches) {
+        m_app.noteOn(p, m_lastVelocity);
+        m_sounding.push_back(p);
+        Note n;
+        n.pitch = p, n.start = start, n.duration = length;
+        m_chordPreview.push_back(n);
+    }
+    update();
+}
+void PianoRollView::stopChordPreview() {
+    for (int p : m_sounding) m_app.noteOff(p);
+    m_sounding.clear();
+    m_chordPreview.clear();
+    update();
+}
+void PianoRollView::applyChord(int seg, const std::vector<int>& pitches) {
+    if (pitches.empty() || !data() || m_chordSegs.empty()) return;
+    const auto [start, len] = chordSlot(seg);
+    const harmony::Segment model = seg >= 0 ? m_chordSegs[seg] : m_chordSegs.back();   // a copy: the edit re-analyses
+    beginEdit();
+    PatternChannelData* d = data();
+    auto inModel = [&](const Note& n) {
+        return !n.muted && n.start >= model.start && n.start - model.start <= PPQ / 8 &&
+            std::binary_search(model.pitches.begin(), model.pitches.end(), n.pitch);
+    };
+    float vel = 0;   // as loud as the chord it follows or replaces
+    int count = 0;
+    for (auto& n : d->notes)
+        if (inModel(n)) vel += n.velocity, ++count;
+    vel = count ? vel / count : m_lastVelocity;
+    if (seg >= 0) std::erase_if(d->notes, inModel);
+    for (size_t i = 0; i < pitches.size(); ++i) {
+        Note n;
+        n.id = kVirtualBase + ((Id)1 << 40) + i;   // fresh: commitEdit gives it a project id
+        n.pitch = pitches[i], n.start = start, n.duration = len, n.velocity = vel;
+        d->notes.push_back(n);
+    }
+    commitEdit(seg < 0 ? "Add chord" : "Change chord");
+}
+QStringList PianoRollView::debugChordOptions(int seg) {
+    analyzeChords();
+    QStringList l;
+    for (auto& o : chordOptions(seg)) l << (o.section ? "[" + o.label + "]" : o.label.section("     ", 0, 0) + " " + o.numeral);
+    return l;
+}
+bool PianoRollView::debugChordPick(int seg, int option) {
+    analyzeChords();
+    auto opts = chordOptions(seg);
+    if (option < 0 || option >= (int)opts.size() || opts[option].section) return false;
+    applyChord(seg, opts[option].pitches);
+    return true;
+}
+
 PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     : QWidget(parent)
     , m_app(app) {
@@ -1804,6 +2019,14 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     m_scale->addItems(PianoRollView::scaleNames());
     m_chord = mkCombo(100, "Chord helper: drawing a note adds the chord intervals");
     m_chord->addItems(PianoRollView::chordNames());
+    m_assist = new QToolButton(this);
+    m_assist->setText("Chords");
+    m_assist->setCheckable(true);
+    m_assist->setFixedHeight(kH);
+    m_assist->setFocusPolicy(Qt::NoFocus);
+    m_assist->setToolTip(
+        "Chord assistant: names the chords you draw and suggests what could come next. Click a chord to swap it, or the + after the last one; hover a suggestion to hear it");
+    top->addWidget(m_assist);
     sep();
     {
         auto* g = group();
@@ -1868,6 +2091,12 @@ PianoRollPanel::PianoRollPanel(App& app, QWidget* parent)
     connect(
         m_root, &QComboBox::currentIndexChanged, this, [this](int) { m_view->setScale(m_root->currentIndex(), m_scale->currentIndex()); });
     connect(m_chord, &QComboBox::currentIndexChanged, this, [this](int i) { m_view->setChord(i); });
+    m_assist->setChecked(QSettings().value("pianoroll/chordAssistant", true).toBool());
+    m_view->setChordAssistant(m_assist->isChecked());
+    connect(m_assist, &QToolButton::toggled, this, [this](bool on) {
+        m_view->setChordAssistant(on);
+        QSettings().setValue("pianoroll/chordAssistant", on);
+    });
     {
         int m = QSettings().value("pianoroll/keyLabels", (int)PianoRollView::LabelsC).toInt();
         m_labels->setCurrentIndex(m);

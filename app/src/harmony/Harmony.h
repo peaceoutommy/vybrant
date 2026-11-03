@@ -1,0 +1,53 @@
+// Chord assistant: what the notes in the piano roll are (chords, key), which chords could come next or stand in for one,
+// and how to voice a chord so it moves the least from the one before. Plain music theory and a hand-written table of
+// common moves: no model, instant, offline.
+#pragma once
+#include "project/Project.h"
+#include <QString>
+#include <vector>
+
+namespace mt::harmony {
+
+struct Quality {
+    const char* suffix;   // in a chord name: "m", "maj7", ...
+    std::vector<int> intervals;   // semitones above the root
+    bool minor;   // a minor third over the root: a lower-case numeral
+};
+const std::vector<Quality>& qualities();
+enum : int { Maj = 0, Min, Dim, Aug, Sus2, Sus4, Dom7, Maj7, Min7, HalfDim7, Dim7, Add9, MinAdd9, Maj9, Min9, Dom9, Six, MinSix, Power };
+
+struct Key {
+    int tonic = 0;   // pitch class
+    bool minor = false;
+};
+struct Chord {
+    int root = -1;   // pitch class; -1: not a chord
+    int quality = Maj;
+    int bass = -1;   // pitch class of the lowest note, when it isn't the root (an inversion)
+    bool operator==(const Chord& o) const { return root == o.root && quality == o.quality; }
+};
+struct Segment {   // notes that start together: one chord in the piano roll
+    Tick start = 0, end = 0;
+    std::vector<int> pitches;   // sorted, as played
+    Chord chord;
+};
+struct Suggestion {
+    Chord chord;
+    QString reason;
+    bool spicy = false;   // outside the key: borrowed or chromatic
+};
+
+Chord identify(const std::vector<int>& pitches);
+// Chords in a channel's notes: notes starting within 'tolerance' of each other form one; single notes are skipped
+std::vector<Segment> segments(const std::vector<Note>& notes, Tick tolerance);
+// The key of these pitches (weighted by how long they sound), read the way the progression starts: a song opening on the
+// relative minor's tonic chord is in that minor key
+Key detectKey(const std::vector<std::pair<int, double>>& weighted, const Chord& first);
+QString keyName(const Key& k);
+QString chordName(const Chord& c, const Key& k);
+QString numeral(const Chord& c, const Key& k);
+std::vector<Suggestion> next(const std::vector<Chord>& before, const Key& k);   // what could follow the last of these
+std::vector<Suggestion> replacements(const Chord& c, const Key& k);   // what could stand in for this one
+std::vector<int> voice(const Chord& c, const std::vector<int>& from);   // MIDI pitches, moving the least from 'from'
+
+}   // namespace mt::harmony

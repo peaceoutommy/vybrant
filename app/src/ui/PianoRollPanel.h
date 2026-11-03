@@ -8,6 +8,7 @@
 #include <QPixmap>
 #include <QTimer>
 #include "ui/Anim.h"
+#include "harmony/Harmony.h"
 #include <set>
 #include <map>
 
@@ -52,6 +53,10 @@ public:
         invalidate();
     }
     void setChord(int chordIdx) { m_chord = chordIdx; }
+    void setChordAssistant(bool on);   // the lane under the ruler: chord names, suggestions for what comes next or instead
+    // tests: the lane's options for a chord (its index) or for the slot after the last one (-1), and picking one
+    QStringList debugChordOptions(int seg);
+    bool debugChordPick(int seg, int option);
     void setNoteRepeat(bool r) { m_noteRepeat = r; }
     void setKeyLabels(int m) {
         m_keyLabels = m;
@@ -134,8 +139,8 @@ private:
         ControlErase
     };
     struct Layout {
-        int keyW = 60, rulerH = 22, velH = 70;
-        QRect grid, ruler, keys, vel;
+        int keyW = 60, rulerH = 22, velH = 70, chordsH = 0;
+        QRect grid, ruler, keys, vel, chords, chordKey;   // chords: the assistant's lane under the ruler; chordKey: its key, left of it
     };
     Layout layout() const;
     Pattern* pattern() const;
@@ -154,7 +159,7 @@ private:
     void commitEdit(const QString& desc, int mergeId = 0);   // mergeId: consecutive edits with the same id are one undo step
     void seekToPatternTick(Tick t);
     QRect timeArea() const override { return layout().grid; }
-    int rulerHeight() const override { return layout().rulerH; }
+    int rulerHeight() const override { return layout().grid.top(); }   // everything above the grid: the ruler and the chord lane
     std::pair<double, double> pptRange() const override { return {0.002, 2.0}; }
     void onVScroll(int v) override { m_topPitch = clamp(127 - v, minTopPitch(), 127); }
     void selectInRect(const QRect& r) override;
@@ -165,6 +170,25 @@ private:
     bool previewAllowed() const;
     std::map<Id, Note> m_created;
     void showAreaMenu(const QPoint& pos, const QPoint& globalPos);
+    // chord assistant
+    struct ChordOption {
+        QString label, numeral;
+        bool section = false;   // a heading in the menu, not a choice
+        std::vector<int> pitches;   // already voiced against the chord before
+    };
+    void analyzeChords();
+    int chordIndexAt(int x) const;   // a chord's index, -1 for the slot after the last one, -2 for neither
+    std::pair<Tick, Tick> chordSlot(int seg) const;   // where a chord goes: start and length
+    std::vector<ChordOption> chordOptions(int seg) const;
+    void openChordMenu(int seg, const QPoint& globalPos);
+    void previewChord(const std::vector<int>& pitches, Tick start, Tick length);
+    void stopChordPreview();
+    void applyChord(int seg, const std::vector<int>& pitches);
+    bool m_assistant = true;
+    std::vector<harmony::Segment> m_chordSegs;
+    harmony::Key m_key;
+    std::vector<Note> m_chordPreview;   // drawn in the grid while a suggestion is hovered
+    std::vector<int> m_sounding;
     bool inScale(int pitch) const;
     Id m_channel = 0;
     bool m_ghost = true;
@@ -211,7 +235,7 @@ private:
     App& m_app;
     PianoRollView* m_view;
     QComboBox *m_channel, *m_snap, *m_scale, *m_root, *m_chord, *m_labels;
-    QToolButton *m_draw, *m_select, *m_erase, *m_mute, *m_ghost, *m_repeat;
+    QToolButton *m_draw, *m_select, *m_erase, *m_mute, *m_ghost, *m_repeat, *m_assist;
     bool m_updating = false;
 };
 

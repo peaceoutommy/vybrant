@@ -334,6 +334,9 @@ QString ControlServer::handle(const QString& line) {
         return v->debugScroll();
     }
     if (c == "prinfo") return m_win.pianoRoll()->view()->debugScroll();
+    if (c == "prchords" && a.size() >= 2)
+        return m_win.pianoRoll()->view()->debugChordOptions(a[1].toInt()).join(" | ");   // prchords <chord, -1 = next>
+    if (c == "prchordpick" && a.size() >= 3) return m_win.pianoRoll()->view()->debugChordPick(a[1].toInt(), a[2].toInt()) ? "ok" : "err";
     if (c == "rackclick" && a.size() >= 3) {   // click a rack step cell: rackclick <row> <step> [right]
         auto* v = m_win.rackPanel()->view();
         QPoint pt = v->debugStepPoint(a[1].toInt(), a[2].toInt());
