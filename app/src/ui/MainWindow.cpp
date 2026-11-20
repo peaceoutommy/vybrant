@@ -882,7 +882,7 @@ void MainWindow::buildMenus() {
         "help.about", "About Vybrant", "Help", QKeySequence(),
         [this] {
             QMessageBox::about(this, "About Vybrant",
-                "<b>Vybrant</b> - a digital audio workstation for Linux and Windows.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire on Linux, WASAPI/DirectSound/MME on Windows). MIDI: ALSA sequencer / WinMM.");
+                "<b>Vybrant</b> - a digital audio workstation for Linux and Windows.<br>Pattern-based sequencing, piano roll, playlist arrangement, mixer with routing/sends/sidechain, native instruments and effects, VST2/VST3/CLAP hosting, automation, recording and offline rendering.<br><br>Audio: PortAudio (ALSA/JACK/PipeWire on Linux, WASAPI/DirectSound/MME on Windows). MIDI: ALSA sequencer / WinMM.<br><br>Chord progressions: the most common per genre, counted in the Chordonomicon dataset (Kantarelis et al., 2024, arXiv:2410.22046, CC BY-NC 4.0).");
         },
         this));
 }

@@ -197,7 +197,7 @@ an Ed25519 signature; Vybrant verifies it offline against the public key in `app
 
 - `api/`: NestJS API. `GET/POST /api/license` behind the Clerk session token; the license is kept in the user's Clerk
   private metadata (no database). `npm run keygen` makes a signing key pair, `npm test` checks the signing.
-- `web/`: React + Motion landing page and the account page that generates and shows the license.
+- `web/`: React + Tailwind + Motion one-page site; its Account section generates and shows the license.
 
 Setup: create a Clerk application with Google enabled, then
 

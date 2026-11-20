@@ -18,6 +18,8 @@
 #include "core/ProcessUsage.h"
 #include "AppImage.h"
 #include "Updater.h"
+#include "harmony/Harmony.h"
+#include "harmony/ChordLibrary.h"
 #include <QSlider>
 #include <QPushButton>
 #include <QSettings>
@@ -1729,6 +1731,148 @@ int runSelfTest(App& app) {
         own.ensurePolished();
         CHECK(plain.cursor().shape() == Qt::PointingHandCursor && own.cursor().shape() == Qt::SizeVerCursor && residentBytes() > 1e6,
             "buttons show the hand cursor, and the process's memory is read");
+    }
+    {   // the chord assistant's theory: names, the key, what comes after Am F C, and a G voiced next to a C
+        using namespace harmony;
+        std::vector<Note> notes;
+        auto chordAt = [&](Tick at, std::vector<int> ps) {
+            for (int p : ps) {
+                Note n;
+                n.pitch = p, n.start = at, n.duration = 4 * PPQ;
+                notes.push_back(n);
+            }
+        };
+        chordAt(0, {57, 60, 64});
+        chordAt(4 * PPQ, {53, 57, 60});
+        chordAt(8 * PPQ, {55, 60, 64});
+        auto segs = segments(notes, PPQ, 4 * PPQ);
+        std::vector<std::pair<int, double>> w;
+        for (auto& n : notes) w.push_back({n.pitch, (double)n.duration});
+        std::vector<Chord> prog;
+        for (auto& sg : segs) prog.push_back(sg.chord);
+        Key k = detectKey(w, prog);
+        auto sug = next(prog, k);
+        auto alt = replacements(Chord{5, Maj, -1}, k);
+        std::vector<int> g = voice(Chord{7, Maj, -1}, {55, 60, 64});
+        const bool named = chordName(identify({57, 60, 64}), k) == "Am" && chordName(identify({48, 52, 55, 57}), k) == "C6" &&
+            chordName(identify({45, 48, 52, 55}), k) == "Am7" && chordName(identify({52, 55, 60}), k) == "C/E";
+        CHECK(named && segs.size() == 3 && k.tonic == 9 && k.minor && !sug.empty() && chordName(sug[0].chord, k) == "G" &&
+                numeral(sug[0].chord, k) == "VII" && sug[0].reason.contains("epic") && !alt.empty() && g == std::vector<int>({55, 59, 62}),
+            QString("chord assistant: Am F C reads as %1, G comes next (%2 %3: %4), voiced %5 %6 %7 after C; F could be %8")
+                .arg(keyName(k))
+                .arg(sug.empty() ? QString("-") : chordName(sug[0].chord, k))
+                .arg(sug.empty() ? QString() : numeral(sug[0].chord, k))
+                .arg(sug.empty() ? QString() : sug[0].reason)
+                .arg(g.size() > 0 ? g[0] : -1)
+                .arg(g.size() > 1 ? g[1] : -1)
+                .arg(g.size() > 2 ? g[2] : -1)
+                .arg(alt.empty() ? QString("-") : chordName(alt[0].chord, k))
+                .toUtf8()
+                .constData());
+    }
+    {   // strummed and arpeggiated chords are found too, and a chord added after one is played the same way
+        using namespace harmony;
+        Id id = 1;
+        auto note = [&](int p, Tick at, Tick len) {
+            Note n;
+            n.id = id++, n.pitch = p, n.start = at, n.duration = len;
+            return n;
+        };
+        const Tick bar = 4 * PPQ, e8 = PPQ / 2;
+        const std::vector<int> am = {57, 60, 64}, f = {53, 57, 60}, am7 = {57, 60, 64, 67}, strummed = {45, 52, 57, 60};
+        std::vector<Note> strum, arp, blocks, arp7;
+        for (int i = 0; i < 4; ++i) strum.push_back(note(strummed[i], i * 40, bar - i * 40));   // Am, strings 40 ticks apart, ringing
+        for (int i = 0; i < 8; ++i) arp.push_back(note(am[i % 3], i * e8, e8));   // bar 1: A C E A C E A C in eighths
+        for (int i = 0; i < 8; ++i) arp.push_back(note(f[i % 3], bar + i * e8, e8));   // bar 2: F A C F A C F A
+        for (int p : {48, 52, 55}) blocks.push_back(note(p, 0, 2 * PPQ));   // C for two beats, then Em: not one Cmaj7
+        for (int p : {52, 55, 59}) blocks.push_back(note(p, 2 * PPQ, 2 * PPQ));
+        for (int i = 0; i < 8; ++i) arp7.push_back(note(am7[i % 4], i * e8, e8));   // A C E G: one Am7, not Am then something
+        std::vector<Note> line, held;   // a bass line: B♭ E♭ F spell a B♭sus4, but E♭ F is a step: a line, not a chord
+        for (int i = 0; int p : {46, 51, 53, 51, 48}) line.push_back(note(p, i++ * e8, e8));
+        for (int p : am) held.push_back(note(p, 0, bar));   // a held Am with G E♭ C under it: still just Am, no Cm inside it
+        for (int i = 0; int p : {55, 51, 48}) held.push_back(note(p - 12, PPQ + i++ * PPQ, PPQ));
+        auto names = [&](const std::vector<Note>& ns) {
+            QStringList l;
+            for (auto& sg : segments(ns, PPQ, bar)) l << chordName(sg.chord, Key{9, true});
+            return l.join(' ');
+        };
+        auto segs = segments(arp, PPQ, bar);
+        std::vector<Note> model;   // the arpeggiated F
+        for (auto& n : arp)
+            if (segs.size() == 2 && std::find(segs[1].notes.begin(), segs[1].notes.end(), n.id) != segs[1].notes.end()) model.push_back(n);
+        auto g = follow(model, {55, 59, 62}, 2 * bar);   // G after it: the same eight eighths, F A C becoming G B D
+        const bool rhythm = g.size() == 8 && g[0].start == 2 * bar && g[1].start == 2 * bar + e8 && g[7].start == 2 * bar + 7 * e8 &&
+            g[0].pitch == 55 && g[1].pitch == 59 && g[2].pitch == 62 && g[3].pitch == 55;
+        CHECK(names(strum) == "Am" && names(arp) == "Am F" && names(blocks) == "C Em" && names(arp7) == "Am7" && names(line).isEmpty() &&
+                names(held) == "Am" && rhythm,
+            QString("strummed (%1), arpeggiated (%2, %3) and block chords (%4) are found, lines aren't (%5, %6); a chord after an "
+                    "arpeggio follows its rhythm (%7)")
+                .arg(names(strum), names(arp), names(arp7), names(blocks), names(line), names(held))
+                .arg(rhythm)
+                .toUtf8()
+                .constData());
+    }
+    {   // the chord assistant hears home where a listener does, and suggests in the progression's own colour
+        using namespace harmony;
+        auto parse = [](const QString& name) {   // "F#m7" -> a chord
+            static const QString letters = "C D EF G A B";
+            int r = letters.indexOf(name[0]), i = 1;
+            for (; i < name.size() && (name[i] == '#' || name[i] == 'b'); ++i) r += name[i] == '#' ? 1 : -1;
+            Chord c{(r + 12) % 12, Maj, -1};
+            for (int q = 0; q < (int)qualities().size(); ++q)
+                if (name.mid(i) == qualities()[q].suffix) c.quality = q;
+            return c;
+        };
+        auto read = [&](const QString& prog) {   // its key, as the piano roll finds it from block chords
+            std::vector<Chord> cs;
+            std::vector<std::pair<int, double>> w;
+            for (auto& n : prog.split(' ')) {
+                cs.push_back(parse(n));
+                for (int i : qualities()[cs.back().quality].intervals) w.push_back({48 + cs.back().root + i, 1.0});
+            }
+            return std::pair{cs, detectKey(w, cs)};
+        };
+        auto key = [&](const QString& prog) { return keyName(read(prog).second); };
+        auto first = [&](const QString& prog) {
+            auto [cs, k] = read(prog);
+            auto s = next(cs, k);
+            return s.empty() ? QString() : chordName(s[0].chord, k);
+        };
+        auto [andalusian, am] = read("Am G F E");
+        auto [jazz, bb] = read("Cm7 F7 Bbmaj7");
+        const auto after = next(andalusian, am), afterJazz = next(jazz, bb);
+        const bool noRepeat = std::none_of(after.begin(), after.end(), [](const Suggestion& s) { return s.chord.root == 4; });
+        const bool sevenths = std::all_of(afterJazz.begin(), afterJazz.end(), [](const Suggestion& s) { return s.chord.quality >= Dom7; });
+        const QString keys =
+            QStringList{key("C G"), key("C G/B Am"), key("F#m D A E"), key("Ebmaj7"), key("Bdim"), key("A7 D7 A7 E7")}.join(", ");
+        const Key fs{6, false};
+        const QString royal = QStringList{chordName(parse("B"), fs), chordName(parse("C#"), fs), chordName(parse("A#m"), fs)}.join(' ');
+        CHECK(keys == "C major, C major, F♯ minor, E♭ major, C major, A major" && first("A7 D7 A7 E7") == "D7" && noRepeat && sevenths &&
+                royal == "B C♯ A♯m" && keyName(fs) == "F♯ major",
+            QString("keys read as heard (%1); the blues goes on to %2; after E no E7 (%3); 7ths get 7ths (%4); F♯ major spells %5")
+                .arg(keys, first("A7 D7 A7 E7"))
+                .arg(noRepeat)
+                .arg(sevenths)
+                .arg(royal)
+                .toUtf8()
+                .constData());
+    }
+    {   // the chord progressions the app ships are written as MIDI files, a folder per genre, in C major or A minor
+        QTemporaryDir dir;
+        const int written = harmony::writeChordLibrary(dir.path());
+        const QStringList genres = QDir(dir.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        const QStringList pop = QDir(dir.path() + "/Pop").entryList({"*I–V–vi–IV (C G Am F).mid"});
+        MidiFileData d;
+        const bool loads = !pop.isEmpty() && MidiFile::load(dir.path() + "/Pop/" + pop[0], d) && d.tracks.size() == 1 &&
+            d.tracks[0].notes.size() == 12 && d.tracks[0].notes.back().start == 3 * 4 * PPQ;
+        CHECK(written > 500 && genres.size() >= 15 && loads,
+            QString("chord library: %1 progressions in %2 genres; Pop has %3 (12 notes, a chord a bar: %4)")
+                .arg(written)
+                .arg(genres.size())
+                .arg(pop.isEmpty() ? QString("no I–V–vi–IV") : pop[0])
+                .arg(loads)
+                .toUtf8()
+                .constData());
     }
     {   // the updater offers only a newer release, for this platform, with the checksum its download is verified against
         QJsonObject build{{"path", "0.1.10/Vybrant-v0.1.10-x86_64.AppImage"}, {"size", 1000}, {"sha256", "ab"}};

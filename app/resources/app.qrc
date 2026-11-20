@@ -10,5 +10,6 @@
   </qresource>
   <qresource prefix="/">
     <file>vybrant.png</file>
+    <file>progressions.json</file>
   </qresource>
 </RCC>
