@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, MotionConfig, AnimatePresence, useReducedMotion, useMotionValue, useMotionValueEvent, useSpring, useTransform } from 'motion/react'
 import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignInButton, SignOutButton, useAuth, useUser } from '@clerk/react'
-import { nav, hero, license, screens, browse, features, start, requirements, download, account, cookies, notFound, footer } from './content'
+import { nav, hero, license, screens, features, start, requirements, download, account, cookies, notFound, footer } from './content'
 import Mist, { fogFrames } from './Mist'
 
 // no backdrop-blur: behind a card there is only the fog, which is already soft, and blurring it again cost a pass per card per frame
@@ -328,14 +328,27 @@ function Hero() {
         </div>
       </motion.div>
 
-      {/* the line through the middle, with the app itself inside a ring on it */}
-      <motion.div {...rise} className="relative">
-        <div aria-hidden className="absolute inset-x-0 top-1/2 hidden h-px bg-white/15 md:block" />
-        <div className="relative mx-auto max-w-[min(34rem,calc((100svh_-_4rem)*0.67))]">
+      {/* the line through the middle, stopping short of the app, which sits inside a broken ring */}
+      <motion.div {...rise} className="flex items-center justify-center gap-6 md:gap-8">
+        <span aria-hidden className="hidden h-px flex-1 bg-gradient-to-r from-white/15 from-60% to-transparent md:block" />
+        <div className="relative w-full max-w-[min(34rem,calc((100svh_-_4rem)*0.67))] shrink-0">
           {/* sized from the screenshot: a 3:1 picture's corners fit inside from 106% of its width; the picture is capped by the
-              screen height so the ring stays within about three quarters of the hero */}
-          <svg aria-hidden viewBox="0 0 100 100" className="pointer-events-none absolute top-1/2 left-1/2 -z-10 aspect-square w-[112%] -translate-x-1/2 -translate-y-1/2">
-            <circle cx="50" cy="50" r="49.5" fill="none" stroke="rgb(255 255 255 / .09)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              screen height so the ring stays within about four fifths of the hero */}
+          <svg aria-hidden viewBox="0 0 100 100" className="pointer-events-none absolute top-1/2 left-1/2 -z-10 aspect-square w-[122%] -translate-x-1/2 -translate-y-1/2">
+            {/* two quarter arcs, over the top left (210° to 300°) and under the bottom right (30° to 120°); each fades out at both
+                ends through a gradient laid along its chord */}
+            <defs>
+              {[['arc-a', 7.13, 25.25, 74.75, 7.13], ['arc-b', 92.87, 74.75, 25.25, 92.87]].map(([id, x1, y1, x2, y2]) => (
+                <linearGradient key={id} id={id} gradientUnits="userSpaceOnUse" x1={x1} y1={y1} x2={x2} y2={y2}>
+                  <stop offset="0" stopColor="#fff" stopOpacity="0" />
+                  <stop offset=".15" stopColor="#fff" stopOpacity=".14" />
+                  <stop offset=".85" stopColor="#fff" stopOpacity=".14" />
+                  <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                </linearGradient>
+              ))}
+            </defs>
+            <path d="M7.13 25.25A49.5 49.5 0 0 1 74.75 7.13" fill="none" stroke="url(#arc-a)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <path d="M92.87 74.75A49.5 49.5 0 0 1 25.25 92.87" fill="none" stroke="url(#arc-b)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           </svg>
           <a href="#features" className="group relative block">
             <span className="block aspect-[3/1] overflow-hidden rounded-lg">
@@ -343,6 +356,7 @@ function Hero() {
             </span>
           </a>
         </div>
+        <span aria-hidden className="hidden h-px flex-1 bg-gradient-to-l from-white/15 from-60% to-transparent md:block" />
       </motion.div>
 
       <motion.div {...rise}><Words /></motion.div>
@@ -539,12 +553,6 @@ function Site() {
               })}
             </div>
           </div>
-
-          <a href="#features" className="group mt-16 flex items-center gap-4 text-white/80 hover:text-white">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-fuchsia-400/40" />
-            <span className={`${mono} text-xs`}>{browse} <span className="inline-block transition-transform group-hover:translate-x-1">→</span></span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-cyan-400/40" />
-          </a>
         </section>
 
         <section id="features" className={section}>

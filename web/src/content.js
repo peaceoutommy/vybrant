@@ -39,7 +39,6 @@ export const screens = [
   { tag: 'Instruments', title: 'Built-in samplers, drums and three synths', img: '/showcase-instruments.webp', href: '#features' },
 ]
 
-export const browse = 'What’s inside'
 
 export const features = {
   eyebrow: 'What’s inside',
