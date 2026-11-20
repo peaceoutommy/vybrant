@@ -15,7 +15,7 @@ export const nav = [
 export const hero = {
   label: 'Vybrant',
   tagline: ['A digital audio workstation', 'for Windows and Linux'],
-  word: 'Free',
+  word: 'free',
   cta: { label: 'Download', href: '#download' },
   shot: { img: '/showcase-playlist.webp', alt: 'The playlist: patterns, an audio loop and automation clips arranged over 24 bars' },
   // the big words, bottom left; they swap every few seconds
