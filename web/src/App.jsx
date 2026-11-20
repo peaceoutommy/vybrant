@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, MotionConfig, AnimatePresence, useReducedMotion, useMotionValue, useMotionValueEvent, useSpring, useTransform } from 'motion/react'
 import { ClerkFailed, ClerkLoaded, ClerkLoading, Show, SignInButton, SignOutButton, useAuth, useUser } from '@clerk/react'
-import { nav, hero, license, screens, browse, features, start, requirements, download, account, cookies, notFound, footer } from './content'
+import { nav, hero, license, screens, features, start, requirements, download, account, cookies, notFound, footer } from './content'
 import Mist, { fogFrames } from './Mist'
 
 // no backdrop-blur: behind a card there is only the fog, which is already soft, and blurring it again cost a pass per card per frame
 const glass = 'frost rounded-xl border border-white/[.07] shadow-[inset_0_1px_0_rgb(255_255_255/.05)]'
-const mono = 'font-mono text-[11px] uppercase tracking-[.14em]'
+// small mono caps carry the navbar's magenta/cyan fringe; labels are also tilted like the nav labels
+const mono = 'glitch-text font-mono text-[11px] uppercase tracking-[.14em] [--fringe:.3]'
+const label = `${mono} -skew-x-6`
+const button = `${mono} inline-block rounded-full px-6 py-3.5 transition-colors`
+// the purple of the lit nav cell
+const primary = `${button} bg-purple-800 text-white hover:bg-purple-700 disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-50`
+const ghost = `${button} border border-white/20 text-white/85 hover:border-white/50 hover:text-white`
 const rise = {
   initial: { opacity: 0, y: 24 },
   whileInView: { opacity: 1, y: 0 },
@@ -33,7 +39,7 @@ function Sky() {
     <div aria-hidden className="fixed inset-0 -z-10 overflow-hidden">
       <Mist />
       {/* plain alpha, not mix-blend: a full-screen blend group was redone on every fog frame */}
-      <div className="absolute inset-0 opacity-[.03]" style={{ backgroundImage: GRAIN }} />
+      <div className="absolute inset-0 opacity-[.11]" style={{ backgroundImage: GRAIN, backgroundSize: '120px' }} />
     </div>
   )
 }
@@ -111,7 +117,7 @@ function Fill({ pos, index }) {
 const layers = ['g-red', 'g-blue', 'g-main']
 function Glyph({ id, active, quiet }) {
   return (
-    <span aria-hidden className={`glitch relative h-7 w-7 md:h-9 md:w-9 ${active ? 'glitch-lit' : ''} ${active && !quiet ? 'glitch-in' : ''}`}>
+    <span aria-hidden className={`glitch relative h-5 w-5 md:h-9 md:w-9 ${active ? 'glitch-lit' : ''} ${active && !quiet ? 'glitch-in' : ''}`}>
       {layers.map(l => <svg key={l} viewBox="0 0 40 40" className={`absolute inset-0 h-full w-full ${l}`}>{icons[id]}</svg>)}
     </span>
   )
@@ -135,7 +141,7 @@ function NavItem({ item, active, quiet, onClick, children }) {
     >
       {children}
       <Glyph id={item.id} active={active} quiet={quiet} />
-      <span className={`glitch-text relative max-w-full -skew-x-6 truncate px-0.5 font-mono text-[8px] tracking-[-.06em] uppercase sm:text-[9px] sm:tracking-[.08em] md:text-[10px] md:tracking-[.14em] ${active ? 'glitch-text-on' : ''} ${active && !quiet ? 'glitch-text-in' : ''}`}>{item.label}</span>
+      <span className={`glitch-text relative max-w-full -skew-x-6 truncate px-0.5 font-mono text-[10px] tracking-[-.03em] uppercase sm:tracking-[.08em] md:tracking-[.14em] ${active ? 'glitch-text-on' : ''} ${active && !quiet ? 'glitch-text-in' : ''}`}>{item.label}</span>
     </a>
   )
 }
@@ -178,7 +184,27 @@ function FogStrip() {
   )
 }
 
+// Vybrant runs on Windows and Linux only, so phones get no Download section and no Download cell
+// which kind of device this is, for the "not available" note (iPads on iPadOS say Macintosh, but have touch)
+const ua = navigator.userAgent
+const device = /iPhone|iPod/.test(ua) ? 'ios' : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ipad' : /Android/.test(ua) ? 'android' : 'other'
+const phoneNav = nav.filter(n => n.id !== 'download')
+
+// true while the screen is at least Tailwind's md wide (48rem)
+function useWide() {
+  const q = '(min-width: 48rem)'
+  const [wide, setWide] = useState(() => matchMedia(q).matches)
+  useEffect(() => {
+    const m = matchMedia(q)
+    const on = () => setWide(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return wide
+}
+
 function NavBar() {
+  const items = useWide() ? nav : phoneNav
   const [active, setActive] = useState(0)
   const [live, setLive] = useState('0,0') // the one or two cells holding any fill right now
   const pos = useMotionValue(0)
@@ -193,7 +219,7 @@ function NavBar() {
   const onNavClick = () => { jumping.current = true; quietFor(300) }
 
   useEffect(() => {
-    const els = nav.map(n => document.getElementById(n.id))
+    const els = items.map(n => document.getElementById(n.id))
     let raf = 0
     const update = () => {
       raf = 0
@@ -210,7 +236,7 @@ function NavBar() {
     addEventListener('scroll', onScroll, { passive: true })
     addEventListener('resize', onScroll)
     return () => { cancelAnimationFrame(raf); removeEventListener('scroll', onScroll); removeEventListener('resize', onScroll) }
-  }, [pos, smooth])
+  }, [items, pos, smooth])
 
   const [a, b] = live.split(',').map(Number)
   return (
@@ -218,8 +244,8 @@ function NavBar() {
     // underneath only shows until the first fog frame.
     <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-20 overflow-hidden rounded-t-xl border-t border-white/[.08] bg-[#0b0a10]">
       <FogStrip />
-      <div className="relative grid h-16 grid-cols-6 md:h-20">
-        {nav.map((n, i) => (
+      <div className="relative grid h-16 grid-cols-5 md:h-20 md:grid-cols-6">
+        {items.map((n, i) => (
           <NavItem key={n.id} item={n} active={active === i} quiet={jumping.current} onClick={onNavClick}>
             {(i === a || i === b) && <Fill pos={smooth} index={i} />}
           </NavItem>
@@ -241,7 +267,7 @@ function Tile({ item, className = '', ratio = 'aspect-square', box = true }) {
         {item.mark && <span className={`${mono} absolute inset-0 grid place-items-center text-white/70`}>{item.mark}</span>}
         <div className="absolute inset-0 bg-white/0 transition-colors duration-500 group-hover:bg-white/[.04]" />
       </div>
-      {item.tag && <p className={`${mono} mt-3 px-1 text-white/45`}>{item.tag}</p>}
+      {item.tag && <p className={`${label} mt-3 px-1 text-white/45`}>{item.tag}</p>}
       <h3 className="mt-3 px-1 text-[15px] leading-snug text-white/90 md:text-base">{item.title}</h3>
       {item.text && <p className="mt-2 px-1 pb-1 text-sm leading-relaxed text-white/55">{item.text}</p>}
     </motion.a>
@@ -252,7 +278,7 @@ function Heading({ eyebrow, title, body }) {
   return (
     <motion.div {...rise} className="mb-12 grid gap-6 md:mb-16 md:grid-cols-2 md:items-end">
       <div>
-        <p className={`${mono} text-white/40`}>{eyebrow}</p>
+        <p className={`${label} text-white/40`}>{eyebrow}</p>
         <h2 className="mt-4 text-4xl font-light tracking-tight md:text-6xl">{title}</h2>
       </div>
       {body && <p className="max-w-md leading-relaxed text-white/55 md:justify-self-end">{body}</p>}
@@ -267,7 +293,7 @@ function LicenseCard() {
       <img src={license.shot.img} alt={license.shot.alt} width="920" height="400" loading="lazy" className="mb-8 w-full rounded-lg border border-white/10 shadow-[0_24px_60px_-24px_rgb(124_58_237/.45)] lg:my-auto" />
       <h2 className="text-[28px] leading-tight tracking-tight md:text-3xl">{license.title}</h2>
       <p className="mt-4 leading-relaxed text-white/60">{license.body}</p>
-      <a href={license.cta.href} className={`${mono} mt-8 self-start rounded-full bg-blue-600 px-6 py-3.5 text-white transition-colors hover:bg-blue-500`}>{license.cta.label} →</a>
+      <a href={license.cta.href} className={`${primary} mt-8 self-start`}>{license.cta.label} →</a>
     </motion.div>
   )
 }
@@ -316,20 +342,33 @@ function Hero() {
       <motion.div {...rise} className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
         <img src="/logo.png" alt={hero.label} width="44" height="44" className="h-11 w-11" />
         <div className="flex flex-col items-start md:items-end md:text-right">
-          <p className={`${mono} text-white/60`}>{hero.tagline.map(l => <span key={l} className="block">{l}</span>)}</p>
+          <p className={`${label} text-white/60`}>{hero.tagline.map(l => <span key={l} className="block">{l}</span>)}</p>
           <p className="mt-1 text-6xl font-light tracking-tighter md:text-7xl">{hero.word}</p>
-          <a href={hero.cta.href} className={`${mono} mt-5 rounded-full border border-white/20 px-6 py-3.5 text-white/85 transition-colors hover:border-white/50 hover:text-white`}>{hero.cta.label}</a>
+          <a href={hero.cta.href} className={`${ghost} mt-5 max-md:hidden`}>{hero.cta.label}</a>
         </div>
       </motion.div>
 
-      {/* the line through the middle, with the app itself inside a ring on it */}
-      <motion.div {...rise} className="relative">
-        <div aria-hidden className="absolute inset-x-0 top-1/2 hidden h-px bg-white/15 md:block" />
-        <div className="relative mx-auto max-w-[min(34rem,calc((100svh_-_4rem)*0.67))]">
+      {/* the line through the middle, stopping short of the app, which sits inside a broken ring */}
+      <motion.div {...rise} className="flex items-center justify-center gap-6 md:gap-8">
+        <span aria-hidden className="hidden h-px flex-1 bg-gradient-to-r from-white/15 from-60% to-transparent md:block" />
+        <div className="relative w-full max-w-[min(34rem,calc((100svh_-_4rem)*0.67))] shrink-0">
           {/* sized from the screenshot: a 3:1 picture's corners fit inside from 106% of its width; the picture is capped by the
-              screen height so the ring stays within about three quarters of the hero */}
-          <svg aria-hidden viewBox="0 0 100 100" className="pointer-events-none absolute top-1/2 left-1/2 -z-10 aspect-square w-[112%] -translate-x-1/2 -translate-y-1/2">
-            <circle cx="50" cy="50" r="49.5" fill="none" stroke="rgb(255 255 255 / .09)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              screen height so the ring stays within about four fifths of the hero */}
+          <svg aria-hidden viewBox="0 0 100 100" className="pointer-events-none absolute top-1/2 left-1/2 -z-10 aspect-square w-[122%] -translate-x-1/2 -translate-y-1/2">
+            {/* two quarter arcs, over the top left (210° to 300°) and under the bottom right (30° to 120°); each fades out at both
+                ends through a gradient laid along its chord */}
+            <defs>
+              {[['arc-a', 7.13, 25.25, 74.75, 7.13], ['arc-b', 92.87, 74.75, 25.25, 92.87]].map(([id, x1, y1, x2, y2]) => (
+                <linearGradient key={id} id={id} gradientUnits="userSpaceOnUse" x1={x1} y1={y1} x2={x2} y2={y2}>
+                  <stop offset="0" stopColor="#fff" stopOpacity="0" />
+                  <stop offset=".15" stopColor="#fff" stopOpacity=".14" />
+                  <stop offset=".85" stopColor="#fff" stopOpacity=".14" />
+                  <stop offset="1" stopColor="#fff" stopOpacity="0" />
+                </linearGradient>
+              ))}
+            </defs>
+            <path d="M7.13 25.25A49.5 49.5 0 0 1 74.75 7.13" fill="none" stroke="url(#arc-a)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+            <path d="M92.87 74.75A49.5 49.5 0 0 1 25.25 92.87" fill="none" stroke="url(#arc-b)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           </svg>
           <a href="#features" className="group relative block">
             <span className="block aspect-[3/1] overflow-hidden rounded-lg">
@@ -337,6 +376,7 @@ function Hero() {
             </span>
           </a>
         </div>
+        <span aria-hidden className="hidden h-px flex-1 bg-gradient-to-l from-white/15 from-60% to-transparent md:block" />
       </motion.div>
 
       <motion.div {...rise}><Words /></motion.div>
@@ -378,9 +418,6 @@ function CookieNotice() {
     </div>
   )
 }
-const button = `${mono} rounded-full px-6 py-3.5 transition-colors`
-const primary = `${button} bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60`
-const ghost = `${button} border border-white/20 text-white/85 hover:border-white/50 hover:text-white`
 
 // GET: the account's license (null before one was made); POST: make it (the server returns the existing one if there is one)
 async function licenseCall(method, token) {
@@ -435,7 +472,7 @@ function LicensePanel() {
           <pre aria-label="License key" className="mt-6 overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-4 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-white/80">{key}</pre>
           <div className="mt-6 flex flex-wrap gap-3" aria-live="polite">
             <button className={primary} onClick={copy}>{copied ? account.copied : account.copy}</button>
-            <a href={account.download.href} className={ghost}>{account.download.label}</a>
+            <a href={account.download.href} className={`${ghost} max-md:hidden`}>{account.download.label}</a>
           </div>
           <p className="mt-4 text-sm text-white/45">{account.hint}</p>
         </motion.div>
@@ -466,8 +503,7 @@ function Account() {
 
       {/* inside the last section so the nav marks it active at the bottom of the page */}
       <footer className="mt-auto flex flex-col items-start justify-between gap-4 border-t border-white/[.07] pt-8 md:flex-row md:items-end">
-        <p className="text-[18vw] leading-[.8] font-light tracking-tighter text-white/[.06] md:text-[11vw]">{footer.brand}</p>
-        <p className={`${mono} text-white/40`}>{footer.line}</p>
+        <p className="text-[18vw] leading-[.8] font-light tracking-tighter text-transparent [text-shadow:-.025em_0_rgb(224_64_251/.16),.025em_0_rgb(34_211_238/.16)] md:text-[11vw]">{footer.brand}</p>
       </footer>
     </section>
   )
@@ -480,18 +516,17 @@ function NotFound() {
   return (
     <MotionConfig reducedMotion="user">
       <Sky />
-      <main className="mx-auto flex min-h-svh max-w-[1400px] flex-col justify-between gap-16 px-5 py-8 md:px-10 md:py-10 lg:px-16">
+      {/* overflow-y-clip: the big 404 hangs below its tight line box and would make this one-screen page scroll */}
+      <main className="mx-auto flex min-h-svh max-w-[1400px] flex-col justify-between gap-16 overflow-y-clip px-5 py-8 md:px-10 md:py-10 lg:px-16">
         <a href="/" aria-label={notFound.cta} className="self-start"><img src="/logo.png" alt="" width="44" height="44" className="h-11 w-11" /></a>
         <motion.div {...rise} className="grid gap-10 md:grid-cols-2 md:items-end">
-          <p aria-hidden className="text-[38vw] leading-[.8] font-light tracking-tighter text-white/90 md:text-[16rem]">{notFound.code}</p>
+          <p aria-hidden className="glitch-loop text-[38vw] leading-[.8] font-light tracking-tighter text-white/90 [--g:.006em] md:text-[16rem]">{notFound.code}</p>
           <div>
-            <p className={`${mono} text-white/40`}>{notFound.code}</p>
-            <h1 className="mt-4 text-4xl font-light tracking-tight md:text-6xl">{notFound.heading}</h1>
-            <p className="mt-6 max-w-md leading-relaxed text-white/55">{notFound.body}</p>
-            <a href="/" className={`${mono} mt-8 inline-block rounded-full bg-blue-600 px-6 py-3.5 text-white transition-colors hover:bg-blue-500`}>{notFound.cta} →</a>
+            <h1 className="text-4xl font-light tracking-tight md:text-6xl">{notFound.heading}</h1>
+            <p className="glitch-loop mt-6 max-w-md leading-relaxed text-white/55 [animation-delay:.25s]">{notFound.body}</p>
+            <a href="/" className={`${primary} mt-8`}>{notFound.cta} →</a>
           </div>
         </motion.div>
-        <p className={`${mono} text-white/30`}>{footer.line}</p>
       </main>
     </MotionConfig>
   )
@@ -507,6 +542,7 @@ export default function App() {
 
 function Site() {
   const release = useLatestRelease()
+  const wide = useWide()
   useEffect(() => {
     const old = OLD[path]
     if (old) history.replaceState(null, '', `/#${old}`)
@@ -538,12 +574,6 @@ function Site() {
               })}
             </div>
           </div>
-
-          <a href="#features" className="group mt-16 flex items-center gap-4 text-white/80 hover:text-white">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/30" />
-            <span className={`${mono} text-xs`}>{browse} <span className="inline-block transition-transform group-hover:translate-x-1">→</span></span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/30" />
-          </a>
         </section>
 
         <section id="features" className={section}>
@@ -558,8 +588,8 @@ function Site() {
           <ol className="grid gap-10 md:grid-cols-3">
             {start.steps.map((st, i) => (
               <motion.li key={st.title} {...rise} className="border-t border-white/[.08] pt-6">
-                <span className="block text-6xl font-light tracking-tighter text-white/20">{String(i + 1).padStart(2, '0')}</span>
-                <h3 className="mt-6 text-xl">{st.href ? <a href={st.href} className="underline decoration-white/25 underline-offset-4 hover:decoration-white">{st.title}</a> : st.title}</h3>
+                <span className="glitch-text block -skew-x-6 font-mono text-6xl font-light tracking-tighter text-white/20 [--fringe:.25]">{String(i + 1).padStart(2, '0')}</span>
+                <h3 className="mt-6 text-xl">{st.desktopOnly && !wide ? <span aria-disabled="true" className="text-white/30">{st.title}<span className={`${label} mt-2 block text-white/45`}>{start.unavailable[device]}</span></span> : st.href ? <a href={st.href} className="underline decoration-white/25 underline-offset-4 hover:decoration-white">{st.title}</a> : st.title}</h3>
                 <p className="mt-3 max-w-sm leading-relaxed text-white/55">{st.text}</p>
               </motion.li>
             ))}
@@ -575,7 +605,7 @@ function Site() {
             <ul className="divide-y divide-white/[.08] border-b border-white/[.08]">
               {requirements.rows.map(([k, ...vals]) => (
                 <li key={k} className="grid gap-3 py-6 md:grid-cols-[200px_1fr_1fr] md:gap-6">
-                  <span className={`${mono} text-white/60`}>{k}</span>
+                  <span className={`${label} self-start text-white/60`}>{k}</span>
                   {vals.map((v, i) => (
                     <span key={i} className="leading-relaxed text-white/75">
                       <span className={`${mono} mr-2 text-white/30 md:hidden`}>{requirements.columns[i + 1]}</span>{v}
@@ -587,20 +617,20 @@ function Site() {
           </motion.div>
         </section>
 
-        <section id="download" className={section}>
+        <section id="download" className={`${section} max-md:hidden`}>
           <Heading {...download} />
           <div className="grid gap-10 md:grid-cols-3">
             {download.builds.map(d => (
               <motion.div key={d.name} {...rise} className="border-t border-white/[.08] pt-6">
                 <p className="text-3xl font-light tracking-tight">{d.name}</p>
-                <p className={`${mono} mt-2 text-white/40`}>{d.kind}</p>
-                <a href={release?.[d.os]} aria-disabled={!release?.[d.os]} className={`${mono} mt-6 inline-block rounded-full bg-blue-600 px-6 py-3.5 text-white transition-colors hover:bg-blue-500 aria-disabled:pointer-events-none aria-disabled:opacity-50`}>Download for {d.name} →</a>
+                <p className={`${label} mt-2 text-white/40`}>{d.kind}</p>
+                <a href={release?.[d.os]} aria-disabled={!release?.[d.os]} className={`${primary} mt-6`}>Download for {d.name} →</a>
               </motion.div>
             ))}
             <motion.div {...rise} className="border-t border-white/[.08] pt-6">
               <p className="text-3xl font-light tracking-tight">License</p>
-              <p className={`${mono} mt-2 text-white/40`}>{download.license.note}</p>
-              <a href={download.license.href} className={`${mono} mt-6 inline-block rounded-full border border-white/20 px-6 py-3.5 text-white/85 transition-colors hover:border-white/50 hover:text-white`}>{download.license.label}</a>
+              <p className={`${label} mt-2 text-white/40`}>{download.license.note}</p>
+              <a href={download.license.href} className={`${ghost} mt-6`}>{download.license.label}</a>
             </motion.div>
           </div>
           {release === false && <p role="status" className="mt-8 text-white/50">{download.unavailable}</p>}

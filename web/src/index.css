@@ -8,6 +8,7 @@
 html { scroll-behavior: smooth; }
 body { background: #0b0a10; color: rgb(255 255 255 / 0.9); -webkit-font-smoothing: antialiased; }
 section { scroll-margin-top: 2.5rem; }
+::selection { background: rgb(224 64 251 / .35); }
 
 
 /* the nav fill's blobs (Liquid in App.jsx): same path and easing motion ran, but on the compositor */
@@ -45,13 +46,21 @@ section { scroll-margin-top: 2.5rem; }
 @keyframes g-in-main { 0% { opacity: .4; transform: translateX(1.4px); } 20% { opacity: 1; transform: translateX(-.7px); } 40% { opacity: .7; transform: translateX(.35px); } 60% { opacity: 1; transform: none; } 80% { opacity: .8; } 100% { opacity: 1; } }
 
 /* the labels match: mono caps with the same magenta/cyan fringe, fuller on the lit cell, which glitches in with it */
-.glitch-text { text-shadow: -1px 0 rgb(224 64 251 / .45), 1px 0 rgb(34 211 238 / .45); }
+/* --fringe: how strong the split is; the small labels around the page use a fainter one */
+.glitch-text { text-shadow: -1px 0 rgb(224 64 251 / var(--fringe, .45)), 1px 0 rgb(34 211 238 / var(--fringe, .45)); }
 .glitch-text-on { text-shadow: -1px 0 rgb(224 64 251 / .9), 1px 0 rgb(34 211 238 / .9); }
-.glitch-text-in, a:hover .glitch-text, a:focus-visible .glitch-text { animation: g-in-text .5s steps(1); }
+.glitch-text-in, a:hover .glitch-text, a:focus-visible .glitch-text, .glitch-text:is(a, button):is(:hover, :focus-visible) { animation: g-in-text .5s steps(1); }
 @keyframes g-in-text {
   0% { text-shadow: -2px 0 #e040fb, 2px 0 #22d3ee; opacity: .5; }
   25% { text-shadow: 1.5px 0 #e040fb, -1.5px 0 #22d3ee; opacity: 1; }
   50% { text-shadow: -1.5px 0 #e040fb, 1.5px 0 #22d3ee; opacity: .8; }
   75% { text-shadow: 1px 0 #e040fb, -1px 0 #22d3ee; opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .glitch svg, .glitch-text { animation: none !important; } }
+/* the 404: split like the nav labels and glitching on its own every few seconds. --g sets the split, so big text splits wider */
+.glitch-loop { --gg: var(--g, 1px); text-shadow: calc(-1 * var(--gg)) 0 rgb(224 64 251 / .35), var(--gg) 0 rgb(34 211 238 / .35); animation: g-loop 5s steps(1) infinite; }
+@keyframes g-loop {
+  0% { text-shadow: calc(-2 * var(--gg)) 0 rgb(224 64 251 / .8), calc(2 * var(--gg)) 0 rgb(34 211 238 / .8); opacity: .85; transform: translateX(calc(.5 * var(--gg))); }
+  2% { text-shadow: calc(1.5 * var(--gg)) 0 rgb(224 64 251 / .7), calc(-1.5 * var(--gg)) 0 rgb(34 211 238 / .7); opacity: 1; transform: none; }
+  4%, 100% { text-shadow: calc(-1 * var(--gg)) 0 rgb(224 64 251 / .35), var(--gg) 0 rgb(34 211 238 / .35); opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .glitch svg, .glitch-text, .glitch-loop { animation: none !important; } }

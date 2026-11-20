@@ -15,7 +15,7 @@ export const nav = [
 export const hero = {
   label: 'Vybrant',
   tagline: ['A digital audio workstation', 'for Windows and Linux'],
-  word: 'Free',
+  word: 'free',
   cta: { label: 'Download', href: '#download' },
   shot: { img: '/showcase-playlist.webp', alt: 'The playlist: patterns, an audio loop and automation clips arranged over 24 bars' },
   // the big words, bottom left; they swap every few seconds
@@ -39,7 +39,6 @@ export const screens = [
   { tag: 'Instruments', title: 'Built-in samplers, drums and three synths', img: '/showcase-instruments.webp', href: '#features' },
 ]
 
-export const browse = 'What’s inside'
 
 export const features = {
   eyebrow: 'What’s inside',
@@ -57,11 +56,13 @@ export const features = {
 }
 
 export const start = {
+  // under the greyed-out download step on phones, by device (see `device` in App.jsx)
+  unavailable: { ios: 'Not available for iPhone', ipad: 'Not available for iPad', android: 'Not available for Android', other: 'For Windows and Linux' },
   eyebrow: 'Get started',
   title: 'Three steps to your first track.',
   body: 'No trial, no card, no catch: one free license per account.',
   steps: [
-    { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: `${SITE}/download` },
+    { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: `${SITE}/download`, desktopOnly: true }, // greyed out on phones
     { title: 'Get your license', text: 'Sign in with Google or your email; one free license per account.', href: '#account' },
     { title: 'Make your first track', text: 'Paste your license in when Vybrant asks, then start making music. It works offline from then on.' },
   ],
@@ -123,4 +124,4 @@ export const notFound = {
   cta: 'Go to the home page',
 }
 
-export const footer = { brand: 'vybrant', line: 'A complete music studio for Linux and Windows.' }
+export const footer = { brand: 'vybrant' }
