@@ -56,11 +56,13 @@ export const features = {
 }
 
 export const start = {
+  // under the greyed-out download step on phones, by device (see `device` in App.jsx)
+  unavailable: { ios: 'Not available for iPhone', ipad: 'Not available for iPad', android: 'Not available for Android', other: 'For Windows and Linux' },
   eyebrow: 'Get started',
   title: 'Three steps to your first track.',
   body: 'No trial, no card, no catch: one free license per account.',
   steps: [
-    { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: `${SITE}/download` },
+    { title: 'Download Vybrant', text: 'For 64-bit Linux and Windows, the same file for every update.', href: `${SITE}/download`, desktopOnly: true }, // greyed out on phones
     { title: 'Get your license', text: 'Sign in with Google or your email; one free license per account.', href: '#account' },
     { title: 'Make your first track', text: 'Paste your license in when Vybrant asks, then start making music. It works offline from then on.' },
   ],

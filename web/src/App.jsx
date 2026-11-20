@@ -117,7 +117,7 @@ function Fill({ pos, index }) {
 const layers = ['g-red', 'g-blue', 'g-main']
 function Glyph({ id, active, quiet }) {
   return (
-    <span aria-hidden className={`glitch relative h-7 w-7 md:h-9 md:w-9 ${active ? 'glitch-lit' : ''} ${active && !quiet ? 'glitch-in' : ''}`}>
+    <span aria-hidden className={`glitch relative h-5 w-5 md:h-9 md:w-9 ${active ? 'glitch-lit' : ''} ${active && !quiet ? 'glitch-in' : ''}`}>
       {layers.map(l => <svg key={l} viewBox="0 0 40 40" className={`absolute inset-0 h-full w-full ${l}`}>{icons[id]}</svg>)}
     </span>
   )
@@ -141,7 +141,7 @@ function NavItem({ item, active, quiet, onClick, children }) {
     >
       {children}
       <Glyph id={item.id} active={active} quiet={quiet} />
-      <span className={`glitch-text relative max-w-full -skew-x-6 truncate px-0.5 font-mono text-[8px] tracking-[-.06em] uppercase sm:text-[9px] sm:tracking-[.08em] md:text-[10px] md:tracking-[.14em] ${active ? 'glitch-text-on' : ''} ${active && !quiet ? 'glitch-text-in' : ''}`}>{item.label}</span>
+      <span className={`glitch-text relative max-w-full -skew-x-6 truncate px-0.5 font-mono text-[10px] tracking-[-.03em] uppercase sm:tracking-[.08em] md:tracking-[.14em] ${active ? 'glitch-text-on' : ''} ${active && !quiet ? 'glitch-text-in' : ''}`}>{item.label}</span>
     </a>
   )
 }
@@ -184,7 +184,27 @@ function FogStrip() {
   )
 }
 
+// Vybrant runs on Windows and Linux only, so phones get no Download section and no Download cell
+// which kind of device this is, for the "not available" note (iPads on iPadOS say Macintosh, but have touch)
+const ua = navigator.userAgent
+const device = /iPhone|iPod/.test(ua) ? 'ios' : /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'ipad' : /Android/.test(ua) ? 'android' : 'other'
+const phoneNav = nav.filter(n => n.id !== 'download')
+
+// true while the screen is at least Tailwind's md wide (48rem)
+function useWide() {
+  const q = '(min-width: 48rem)'
+  const [wide, setWide] = useState(() => matchMedia(q).matches)
+  useEffect(() => {
+    const m = matchMedia(q)
+    const on = () => setWide(m.matches)
+    m.addEventListener('change', on)
+    return () => m.removeEventListener('change', on)
+  }, [])
+  return wide
+}
+
 function NavBar() {
+  const items = useWide() ? nav : phoneNav
   const [active, setActive] = useState(0)
   const [live, setLive] = useState('0,0') // the one or two cells holding any fill right now
   const pos = useMotionValue(0)
@@ -199,7 +219,7 @@ function NavBar() {
   const onNavClick = () => { jumping.current = true; quietFor(300) }
 
   useEffect(() => {
-    const els = nav.map(n => document.getElementById(n.id))
+    const els = items.map(n => document.getElementById(n.id))
     let raf = 0
     const update = () => {
       raf = 0
@@ -216,7 +236,7 @@ function NavBar() {
     addEventListener('scroll', onScroll, { passive: true })
     addEventListener('resize', onScroll)
     return () => { cancelAnimationFrame(raf); removeEventListener('scroll', onScroll); removeEventListener('resize', onScroll) }
-  }, [pos, smooth])
+  }, [items, pos, smooth])
 
   const [a, b] = live.split(',').map(Number)
   return (
@@ -224,8 +244,8 @@ function NavBar() {
     // underneath only shows until the first fog frame.
     <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-20 overflow-hidden rounded-t-xl border-t border-white/[.08] bg-[#0b0a10]">
       <FogStrip />
-      <div className="relative grid h-16 grid-cols-6 md:h-20">
-        {nav.map((n, i) => (
+      <div className="relative grid h-16 grid-cols-5 md:h-20 md:grid-cols-6">
+        {items.map((n, i) => (
           <NavItem key={n.id} item={n} active={active === i} quiet={jumping.current} onClick={onNavClick}>
             {(i === a || i === b) && <Fill pos={smooth} index={i} />}
           </NavItem>
@@ -324,7 +344,7 @@ function Hero() {
         <div className="flex flex-col items-start md:items-end md:text-right">
           <p className={`${label} text-white/60`}>{hero.tagline.map(l => <span key={l} className="block">{l}</span>)}</p>
           <p className="mt-1 text-6xl font-light tracking-tighter md:text-7xl">{hero.word}</p>
-          <a href={hero.cta.href} className={`${ghost} mt-5`}>{hero.cta.label}</a>
+          <a href={hero.cta.href} className={`${ghost} mt-5 max-md:hidden`}>{hero.cta.label}</a>
         </div>
       </motion.div>
 
@@ -452,7 +472,7 @@ function LicensePanel() {
           <pre aria-label="License key" className="mt-6 overflow-x-auto rounded-lg border border-white/10 bg-black/30 p-4 font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-white/80">{key}</pre>
           <div className="mt-6 flex flex-wrap gap-3" aria-live="polite">
             <button className={primary} onClick={copy}>{copied ? account.copied : account.copy}</button>
-            <a href={account.download.href} className={ghost}>{account.download.label}</a>
+            <a href={account.download.href} className={`${ghost} max-md:hidden`}>{account.download.label}</a>
           </div>
           <p className="mt-4 text-sm text-white/45">{account.hint}</p>
         </motion.div>
@@ -522,6 +542,7 @@ export default function App() {
 
 function Site() {
   const release = useLatestRelease()
+  const wide = useWide()
   useEffect(() => {
     const old = OLD[path]
     if (old) history.replaceState(null, '', `/#${old}`)
@@ -568,7 +589,7 @@ function Site() {
             {start.steps.map((st, i) => (
               <motion.li key={st.title} {...rise} className="border-t border-white/[.08] pt-6">
                 <span className="glitch-text block -skew-x-6 font-mono text-6xl font-light tracking-tighter text-white/20 [--fringe:.25]">{String(i + 1).padStart(2, '0')}</span>
-                <h3 className="mt-6 text-xl">{st.href ? <a href={st.href} className="underline decoration-white/25 underline-offset-4 hover:decoration-white">{st.title}</a> : st.title}</h3>
+                <h3 className="mt-6 text-xl">{st.desktopOnly && !wide ? <span aria-disabled="true" className="text-white/30">{st.title}<span className={`${label} mt-2 block text-white/45`}>{start.unavailable[device]}</span></span> : st.href ? <a href={st.href} className="underline decoration-white/25 underline-offset-4 hover:decoration-white">{st.title}</a> : st.title}</h3>
                 <p className="mt-3 max-w-sm leading-relaxed text-white/55">{st.text}</p>
               </motion.li>
             ))}
@@ -596,7 +617,7 @@ function Site() {
           </motion.div>
         </section>
 
-        <section id="download" className={section}>
+        <section id="download" className={`${section} max-md:hidden`}>
           <Heading {...download} />
           <div className="grid gap-10 md:grid-cols-3">
             {download.builds.map(d => (
