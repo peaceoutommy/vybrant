@@ -6,9 +6,9 @@
 }
 
 html { scroll-behavior: smooth; }
-body { background: #0d080b; color: rgb(255 255 255 / 0.9); -webkit-font-smoothing: antialiased; }
+body { background: #0b0a10; color: rgb(255 255 255 / 0.9); -webkit-font-smoothing: antialiased; }
 section { scroll-margin-top: 2.5rem; }
-::selection { background: rgb(190 24 93 / .5); }
+::selection { background: rgb(224 64 251 / .35); }
 
 
 /* the nav fill's blobs (Liquid in App.jsx): same path and easing motion ran, but on the compositor */

@@ -39,11 +39,11 @@ function sampler(tex) {
   }
 }
 
-// the lit nav cell's palette: red wine and plum on a wine-black, with raspberry where the fog peaks
-const BASE = [13, 8, 11] // page background #0d080b
-const WINE = [118, 22, 60]
-const PLUM = [70, 8, 72]
-const RASPBERRY = [150, 34, 108]
+// obsidian: near-black with dark purple fog
+const BASE = [11, 10, 16] // page background #0b0a10
+const PURPLE = [70, 34, 120]
+const INDIGO = [40, 28, 96]
+const PLUM = [98, 34, 112]
 
 // Other places that show the fog (the navbar) listen here: each is called with the canvas after every new frame
 export const fogFrames = new Set()
@@ -97,13 +97,13 @@ export default function Mist() {
           // big soft patches of shade wander across, leaving dark gaps between the clouds
           d *= 0.2 + 0.8 * smooth(0.32, 0.68, T(sx * 0.22 - t * 0.6 + 0.13, sy * 0.22 + t * 0.4 + 0.71))
           d *= glow[i >> 2]
-          // colour: wine drifting to plum, and raspberry where that noise peaks
+          // colour: purple drifting to indigo, and plum where that noise peaks
           const hn = T(sx * 0.3 + 0.51, sy * 0.3 + t * 0.7)
           const h = smooth(0.35, 0.65, hn)
           const v = smooth(0.66, 0.8, hn) * 0.6
           for (let k = 0; k < 3; k++) {
-            const c = WINE[k] + (PLUM[k] - WINE[k]) * h
-            px[i + k] = BASE[k] + (c + (RASPBERRY[k] - c) * v) * d
+            const c = PURPLE[k] + (INDIGO[k] - PURPLE[k]) * h
+            px[i + k] = BASE[k] + (c + (PLUM[k] - c) * v) * d
           }
           px[i + 3] = 255
         }

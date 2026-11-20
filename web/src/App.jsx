@@ -10,8 +10,8 @@ const glass = 'frost rounded-xl border border-white/[.07] shadow-[inset_0_1px_0_
 const mono = 'glitch-text font-mono text-[11px] uppercase tracking-[.14em] [--fringe:.3]'
 const label = `${mono} -skew-x-6`
 const button = `${mono} inline-block rounded-full px-6 py-3.5 transition-colors`
-// the nav cell's red wine
-const primary = `${button} bg-pink-900 text-white hover:bg-pink-800 disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-50`
+// the purple of the lit nav cell
+const primary = `${button} bg-purple-800 text-white hover:bg-purple-700 disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-50`
 const ghost = `${button} border border-white/20 text-white/85 hover:border-white/50 hover:text-white`
 const rise = {
   initial: { opacity: 0, y: 24 },
@@ -26,7 +26,7 @@ const cover = ([a, b, pattern]) => ({
     pattern === 'lines' && 'repeating-linear-gradient(0deg, transparent 0 7px, rgb(255 255 255 / .08) 7px 8px)',
     `radial-gradient(circle at 25% 30%, ${a}, transparent 60%)`,
     `radial-gradient(circle at 80% 85%, ${b}, transparent 55%)`,
-    '#0e0710',
+    '#0b0f15',
   ].filter(Boolean).join(','),
 })
 
@@ -57,22 +57,22 @@ const icons = {
   account: <path d="M20 6l5 5-5 5-5-5zM8 34l12-13 12 13" {...L} />, // diamond head, wedge shoulders
 }
 
-// Obsidian inks: near-black with deep, muted pinks and one brighter glint
+// Obsidian inks: near-black with deep purples and one brighter violet glint
 // (drawn a little smaller and softer than listed, so dark gaps open between them as they drift)
 const inks = [
-  { c: '#4a044e', x: -20, y: -50, s: 140, d: 16 },
-  { c: '#3b0a33', x: -25, y: 40, s: 130, d: 20 },
-  { c: '#701a75', x: 20, y: -5, s: 140, d: 18 },
-  { c: '#2a0a22', x: 65, y: 35, s: 120, d: 22 },
-  { c: '#5c1450', x: 70, y: -45, s: 120, d: 21 },
-  { c: '#831843', x: 35, y: 50, s: 110, d: 14 },
-  { c: '#a8287a', x: 30, y: -30, s: 70, d: 12 },
+  { c: '#3b0764', x: -20, y: -50, s: 140, d: 16 },
+  { c: '#2e1065', x: -25, y: 40, s: 130, d: 20 },
+  { c: '#581c87', x: 20, y: -5, s: 140, d: 18 },
+  { c: '#1e1b4b', x: 65, y: 35, s: 120, d: 22 },
+  { c: '#4c1d95', x: 70, y: -45, s: 120, d: 21 },
+  { c: '#6b21a8', x: 35, y: 50, s: 110, d: 14 },
+  { c: '#8b5cf6', x: 30, y: -30, s: 70, d: 12 },
 ]
 
-// The drifting pink fill behind the active nav cell
+// The drifting purple fill behind the active nav cell
 function Liquid() {
   return (
-    <div className="absolute inset-0 overflow-hidden bg-[#0e0710]">
+    <div className="absolute inset-0 overflow-hidden bg-[#0c0814]">
       <div className="absolute -inset-[25%] blur-[9px]">
         {inks.map((b, i) => {
           const sx = i % 2 ? 1 : -1
@@ -222,7 +222,7 @@ function NavBar() {
   return (
     // the fog strip, not backdrop-blur: the blur cost ~40% of the frame rate over the moving fog. The page colour
     // underneath only shows until the first fog frame.
-    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-20 overflow-hidden rounded-t-xl border-t border-white/[.08] bg-[#0d080b]">
+    <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-20 overflow-hidden rounded-t-xl border-t border-white/[.08] bg-[#0b0a10]">
       <FogStrip />
       <div className="relative grid h-16 grid-cols-6 md:h-20">
         {nav.map((n, i) => (
@@ -242,7 +242,7 @@ function NavBar() {
 function Tile({ item, className = '', ratio = 'aspect-square', box = true }) {
   return (
     <motion.a href={item.href} {...rise} whileHover={{ y: -4 }} className={`group flex flex-col transition-colors ${box ? `${glass} p-3 hover:border-white/15` : ''} ${className}`}>
-      <div className={`relative overflow-hidden rounded-lg bg-[#0e0710] ${ratio}`} style={item.art && cover(item.art)}>
+      <div className={`relative overflow-hidden rounded-lg bg-[#0c0814] ${ratio}`} style={item.art && cover(item.art)}>
         {item.img && <img src={item.img} alt={item.alt ?? ''} loading="lazy" className="absolute inset-0 h-full w-full object-cover object-top" />}
         {item.mark && <span className={`${mono} absolute inset-0 grid place-items-center text-white/70`}>{item.mark}</span>}
         <div className="absolute inset-0 bg-white/0 transition-colors duration-500 group-hover:bg-white/[.04]" />
@@ -270,7 +270,7 @@ function Heading({ eyebrow, title, body }) {
 function LicenseCard() {
   return (
     <motion.div {...rise} className={`${glass} flex flex-col p-6 md:p-7`}>
-      <img src={license.shot.img} alt={license.shot.alt} width="920" height="400" loading="lazy" className="mb-8 w-full rounded-lg border border-white/10 shadow-[0_24px_60px_-24px_rgb(131_24_67/.6)] lg:my-auto" />
+      <img src={license.shot.img} alt={license.shot.alt} width="920" height="400" loading="lazy" className="mb-8 w-full rounded-lg border border-white/10 shadow-[0_24px_60px_-24px_rgb(124_58_237/.45)] lg:my-auto" />
       <h2 className="text-[28px] leading-tight tracking-tight md:text-3xl">{license.title}</h2>
       <p className="mt-4 leading-relaxed text-white/60">{license.body}</p>
       <a href={license.cta.href} className={`${primary} mt-8 self-start`}>{license.cta.label} →</a>
@@ -378,7 +378,7 @@ function CookieNotice() {
     setOpen(false)
   }
   return (
-    <div role="region" aria-label="Cookies" className={`${glass} fixed right-4 bottom-20 left-4 z-30 flex items-center gap-4 bg-[#0e0710]/90 p-4 sm:left-auto sm:max-w-sm md:bottom-24`}>
+    <div role="region" aria-label="Cookies" className={`${glass} fixed right-4 bottom-20 left-4 z-30 flex items-center gap-4 bg-[#0c0a12]/90 p-4 sm:left-auto sm:max-w-sm md:bottom-24`}>
       <p className="text-sm leading-relaxed text-white/70">{cookies.text}</p>
       <button className={`${mono} shrink-0 rounded-full bg-white/90 px-4 py-2.5 text-[#060509] hover:bg-white`} onClick={close}>{cookies.ok}</button>
     </div>
