@@ -6,7 +6,13 @@ import Mist, { fogFrames } from './Mist'
 
 // no backdrop-blur: behind a card there is only the fog, which is already soft, and blurring it again cost a pass per card per frame
 const glass = 'frost rounded-xl border border-white/[.07] shadow-[inset_0_1px_0_rgb(255_255_255/.05)]'
-const mono = 'font-mono text-[11px] uppercase tracking-[.14em]'
+// small mono caps carry the navbar's magenta/cyan fringe; labels are also tilted like the nav labels
+const mono = 'glitch-text font-mono text-[11px] uppercase tracking-[.14em] [--fringe:.3]'
+const label = `${mono} -skew-x-6`
+const button = `${mono} inline-block rounded-full px-6 py-3.5 transition-colors`
+// the purple of the lit nav cell
+const primary = `${button} bg-purple-800 text-white hover:bg-purple-700 disabled:opacity-60 aria-disabled:pointer-events-none aria-disabled:opacity-50`
+const ghost = `${button} border border-white/20 text-white/85 hover:border-white/50 hover:text-white`
 const rise = {
   initial: { opacity: 0, y: 24 },
   whileInView: { opacity: 1, y: 0 },
@@ -241,7 +247,7 @@ function Tile({ item, className = '', ratio = 'aspect-square', box = true }) {
         {item.mark && <span className={`${mono} absolute inset-0 grid place-items-center text-white/70`}>{item.mark}</span>}
         <div className="absolute inset-0 bg-white/0 transition-colors duration-500 group-hover:bg-white/[.04]" />
       </div>
-      {item.tag && <p className={`${mono} mt-3 px-1 text-white/45`}>{item.tag}</p>}
+      {item.tag && <p className={`${label} mt-3 px-1 text-white/45`}>{item.tag}</p>}
       <h3 className="mt-3 px-1 text-[15px] leading-snug text-white/90 md:text-base">{item.title}</h3>
       {item.text && <p className="mt-2 px-1 pb-1 text-sm leading-relaxed text-white/55">{item.text}</p>}
     </motion.a>
@@ -252,7 +258,7 @@ function Heading({ eyebrow, title, body }) {
   return (
     <motion.div {...rise} className="mb-12 grid gap-6 md:mb-16 md:grid-cols-2 md:items-end">
       <div>
-        <p className={`${mono} text-white/40`}>{eyebrow}</p>
+        <p className={`${label} text-white/40`}>{eyebrow}</p>
         <h2 className="mt-4 text-4xl font-light tracking-tight md:text-6xl">{title}</h2>
       </div>
       {body && <p className="max-w-md leading-relaxed text-white/55 md:justify-self-end">{body}</p>}
@@ -267,7 +273,7 @@ function LicenseCard() {
       <img src={license.shot.img} alt={license.shot.alt} width="920" height="400" loading="lazy" className="mb-8 w-full rounded-lg border border-white/10 shadow-[0_24px_60px_-24px_rgb(124_58_237/.45)] lg:my-auto" />
       <h2 className="text-[28px] leading-tight tracking-tight md:text-3xl">{license.title}</h2>
       <p className="mt-4 leading-relaxed text-white/60">{license.body}</p>
-      <a href={license.cta.href} className={`${mono} mt-8 self-start rounded-full bg-blue-600 px-6 py-3.5 text-white transition-colors hover:bg-blue-500`}>{license.cta.label} →</a>
+      <a href={license.cta.href} className={`${primary} mt-8 self-start`}>{license.cta.label} →</a>
     </motion.div>
   )
 }
@@ -316,9 +322,9 @@ function Hero() {
       <motion.div {...rise} className="flex flex-col gap-8 md:flex-row md:items-start md:justify-between">
         <img src="/logo.png" alt={hero.label} width="44" height="44" className="h-11 w-11" />
         <div className="flex flex-col items-start md:items-end md:text-right">
-          <p className={`${mono} text-white/60`}>{hero.tagline.map(l => <span key={l} className="block">{l}</span>)}</p>
+          <p className={`${label} text-white/60`}>{hero.tagline.map(l => <span key={l} className="block">{l}</span>)}</p>
           <p className="mt-1 text-6xl font-light tracking-tighter md:text-7xl">{hero.word}</p>
-          <a href={hero.cta.href} className={`${mono} mt-5 rounded-full border border-white/20 px-6 py-3.5 text-white/85 transition-colors hover:border-white/50 hover:text-white`}>{hero.cta.label}</a>
+          <a href={hero.cta.href} className={`${ghost} mt-5`}>{hero.cta.label}</a>
         </div>
       </motion.div>
 
@@ -378,9 +384,6 @@ function CookieNotice() {
     </div>
   )
 }
-const button = `${mono} rounded-full px-6 py-3.5 transition-colors`
-const primary = `${button} bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-60`
-const ghost = `${button} border border-white/20 text-white/85 hover:border-white/50 hover:text-white`
 
 // GET: the account's license (null before one was made); POST: make it (the server returns the existing one if there is one)
 async function licenseCall(method, token) {
@@ -485,10 +488,10 @@ function NotFound() {
         <motion.div {...rise} className="grid gap-10 md:grid-cols-2 md:items-end">
           <p aria-hidden className="text-[38vw] leading-[.8] font-light tracking-tighter text-white/90 md:text-[16rem]">{notFound.code}</p>
           <div>
-            <p className={`${mono} text-white/40`}>{notFound.code}</p>
+            <p className={`${label} text-white/40`}>{notFound.code}</p>
             <h1 className="mt-4 text-4xl font-light tracking-tight md:text-6xl">{notFound.heading}</h1>
             <p className="mt-6 max-w-md leading-relaxed text-white/55">{notFound.body}</p>
-            <a href="/" className={`${mono} mt-8 inline-block rounded-full bg-blue-600 px-6 py-3.5 text-white transition-colors hover:bg-blue-500`}>{notFound.cta} →</a>
+            <a href="/" className={`${primary} mt-8`}>{notFound.cta} →</a>
           </div>
         </motion.div>
         <p className={`${mono} text-white/30`}>{footer.line}</p>
@@ -540,9 +543,9 @@ function Site() {
           </div>
 
           <a href="#features" className="group mt-16 flex items-center gap-4 text-white/80 hover:text-white">
-            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-white/30" />
+            <span className="h-px flex-1 bg-gradient-to-r from-transparent to-fuchsia-400/40" />
             <span className={`${mono} text-xs`}>{browse} <span className="inline-block transition-transform group-hover:translate-x-1">→</span></span>
-            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-white/30" />
+            <span className="h-px flex-1 bg-gradient-to-l from-transparent to-cyan-400/40" />
           </a>
         </section>
 
@@ -558,7 +561,7 @@ function Site() {
           <ol className="grid gap-10 md:grid-cols-3">
             {start.steps.map((st, i) => (
               <motion.li key={st.title} {...rise} className="border-t border-white/[.08] pt-6">
-                <span className="block text-6xl font-light tracking-tighter text-white/20">{String(i + 1).padStart(2, '0')}</span>
+                <span className="glitch-text block -skew-x-6 font-mono text-6xl font-light tracking-tighter text-white/20 [--fringe:.25]">{String(i + 1).padStart(2, '0')}</span>
                 <h3 className="mt-6 text-xl">{st.href ? <a href={st.href} className="underline decoration-white/25 underline-offset-4 hover:decoration-white">{st.title}</a> : st.title}</h3>
                 <p className="mt-3 max-w-sm leading-relaxed text-white/55">{st.text}</p>
               </motion.li>
@@ -575,7 +578,7 @@ function Site() {
             <ul className="divide-y divide-white/[.08] border-b border-white/[.08]">
               {requirements.rows.map(([k, ...vals]) => (
                 <li key={k} className="grid gap-3 py-6 md:grid-cols-[200px_1fr_1fr] md:gap-6">
-                  <span className={`${mono} text-white/60`}>{k}</span>
+                  <span className={`${label} self-start text-white/60`}>{k}</span>
                   {vals.map((v, i) => (
                     <span key={i} className="leading-relaxed text-white/75">
                       <span className={`${mono} mr-2 text-white/30 md:hidden`}>{requirements.columns[i + 1]}</span>{v}
@@ -593,14 +596,14 @@ function Site() {
             {download.builds.map(d => (
               <motion.div key={d.name} {...rise} className="border-t border-white/[.08] pt-6">
                 <p className="text-3xl font-light tracking-tight">{d.name}</p>
-                <p className={`${mono} mt-2 text-white/40`}>{d.kind}</p>
-                <a href={release?.[d.os]} aria-disabled={!release?.[d.os]} className={`${mono} mt-6 inline-block rounded-full bg-blue-600 px-6 py-3.5 text-white transition-colors hover:bg-blue-500 aria-disabled:pointer-events-none aria-disabled:opacity-50`}>Download for {d.name} →</a>
+                <p className={`${label} mt-2 text-white/40`}>{d.kind}</p>
+                <a href={release?.[d.os]} aria-disabled={!release?.[d.os]} className={`${primary} mt-6`}>Download for {d.name} →</a>
               </motion.div>
             ))}
             <motion.div {...rise} className="border-t border-white/[.08] pt-6">
               <p className="text-3xl font-light tracking-tight">License</p>
-              <p className={`${mono} mt-2 text-white/40`}>{download.license.note}</p>
-              <a href={download.license.href} className={`${mono} mt-6 inline-block rounded-full border border-white/20 px-6 py-3.5 text-white/85 transition-colors hover:border-white/50 hover:text-white`}>{download.license.label}</a>
+              <p className={`${label} mt-2 text-white/40`}>{download.license.note}</p>
+              <a href={download.license.href} className={`${ghost} mt-6`}>{download.license.label}</a>
             </motion.div>
           </div>
           {release === false && <p role="status" className="mt-8 text-white/50">{download.unavailable}</p>}
