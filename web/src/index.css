@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+}
+
+html { scroll-behavior: smooth; }
+body { background: #0b0a10; color: rgb(255 255 255 / 0.9); -webkit-font-smoothing: antialiased; }
+section { scroll-margin-top: 2.5rem; }
+
+
+/* the nav fill's blobs (Liquid in App.jsx): same path and easing motion ran, but on the compositor */
+@keyframes ink {
+  0%, 100% { transform: none; }
+  25% { transform: translate(calc(45% * var(--sx)), calc(-35% * var(--sy))) scale(1.3); }
+  50% { transform: translate(calc(-30% * var(--sx)), calc(25% * var(--sy))) scale(0.8); }
+  75% { transform: translate(calc(20% * var(--sx)), calc(40% * var(--sy))) scale(1.15); }
+}
+.ink { animation: ink var(--d) ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .ink { animation: none; } }
+
+/* Glass cards without backdrop-filter, which costs about half the frame rate over the moving fog: a dark
+   fill, a soft light falloff from the top-left and fine white grain fake the frost. All static, so free. */
+.frost {
+  background-color: rgb(0 0 0 / var(--frost, .55)); /* --frost: how opaque the dark fill is */
+  background-image:
+    /* --frost-light: how bright the top-left falloff is */
+    linear-gradient(140deg, rgb(255 255 255 / var(--frost-light, .05)), rgb(255 255 255 / calc(var(--frost-light, .05) / 5)) 45%, transparent 70%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  .14 0 0 0 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+
+/* glitch icons: a magenta and a cyan copy split off the mark. An icon glitches when it is hovered or focused, and
+   when its cell lights up from your own scrolling (glitch-in; not during a nav click's scroll). Otherwise it holds still. */
+/* plain layering, not mix-blend-mode: blending re-ran for every copy on each fog frame behind the bar (~half the fps) */
+.glitch .g-red, .glitch .g-blue { opacity: .6; }
+.glitch .g-red { color: #e040fb; transform: translate(-1.5px, .3px); }
+.glitch .g-blue { color: #22d3ee; transform: translate(1.5px, -.3px); }
+.glitch-lit .g-red, .glitch-lit .g-blue { opacity: .9; }
+.glitch-in .g-red, a:hover .g-red, a:focus-visible .g-red { animation: g-in-red .5s steps(1); }
+.glitch-in .g-blue, a:hover .g-blue, a:focus-visible .g-blue { animation: g-in-blue .5s steps(1); }
+.glitch-in .g-main, a:hover .g-main, a:focus-visible .g-main { animation: g-in-main .5s steps(1); }
+@keyframes g-in-red { 0% { transform: translate(-3px, .4px); } 20% { transform: translate(2px, -.4px); } 40% { transform: translate(-2px, 0); } 60% { transform: translate(2.5px, .4px); } 80% { transform: translate(-1.6px, 0); } 100% { transform: translate(-1.5px, .3px); } }
+@keyframes g-in-blue { 0% { transform: translate(3px, -.4px); } 20% { transform: translate(-2px, .4px); } 40% { transform: translate(2px, 0); } 60% { transform: translate(-2.5px, -.4px); } 80% { transform: translate(1.6px, 0); } 100% { transform: translate(1.5px, -.3px); } }
+@keyframes g-in-main { 0% { opacity: .4; transform: translateX(1.4px); } 20% { opacity: 1; transform: translateX(-.7px); } 40% { opacity: .7; transform: translateX(.35px); } 60% { opacity: 1; transform: none; } 80% { opacity: .8; } 100% { opacity: 1; } }
+
+/* the labels match: mono caps with the same magenta/cyan fringe, fuller on the lit cell, which glitches in with it */
+.glitch-text { text-shadow: -1px 0 rgb(224 64 251 / .45), 1px 0 rgb(34 211 238 / .45); }
+.glitch-text-on { text-shadow: -1px 0 rgb(224 64 251 / .9), 1px 0 rgb(34 211 238 / .9); }
+.glitch-text-in, a:hover .glitch-text, a:focus-visible .glitch-text { animation: g-in-text .5s steps(1); }
+@keyframes g-in-text {
+  0% { text-shadow: -2px 0 #e040fb, 2px 0 #22d3ee; opacity: .5; }
+  25% { text-shadow: 1.5px 0 #e040fb, -1.5px 0 #22d3ee; opacity: 1; }
+  50% { text-shadow: -1.5px 0 #e040fb, 1.5px 0 #22d3ee; opacity: .8; }
+  75% { text-shadow: 1px 0 #e040fb, -1px 0 #22d3ee; opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .glitch svg, .glitch-text { animation: none !important; } }

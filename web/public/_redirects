@@ -1,0 +1,5 @@
+# Cloudflare Pages: the Vybrant app links to /account and /download. They are sections of the one page now,
+# so serve the page there (status 200); the page itself scrolls to the section.
+/account    /  200
+/download   /  200
+/changelog  /  200
