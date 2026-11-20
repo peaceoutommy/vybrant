@@ -50,9 +50,9 @@ export const features = {
     { title: 'Mixer', text: 'Inserts, sends and sidechains, buses, freeze and delay compensation.', img: '/feature-mixer.webp', alt: 'Mixer strips with their effects, and the send from the chords to the reverb' },
     { title: 'Playlist', text: 'Arrange patterns, audio and automation on as many tracks as the song needs.', img: '/feature-playlist.webp', alt: 'A song arranged in the playlist: drums, bass, chords, lead, an audio loop and two automation lanes' },
     { title: 'Built-in sound', text: 'Samplers, drums and three synths, plus EQ, dynamics, delay, reverb and modulation.', img: '/feature-eq.webp', alt: 'The parametric EQ’s curve over a live spectrum' },
-    { title: 'Your plugins', text: 'Each one can run in its own process, so a crash stays contained and the song keeps playing.', art: ['#4c1d95', '#1e1b4b', 'rings'], mark: 'VST3, VST2, CLAP, LV2' },
-    { title: 'Recording', text: 'Loop recording with takes and comping, count-in, punch in and out.', art: ['#581c87', '#0c0814', 'lines'], mark: 'Take 1, 2, 3' },
-    { title: 'Export', text: 'Mixdowns, stems and MIDI files, at any sample rate.', art: ['#2e1065', '#6b21a8', 'fog'], mark: 'Song.wav, Song.mid' },
+    { title: 'Your plugins', text: 'Each one can run in its own process, so a crash stays contained and the song keeps playing.', art: ['#831843', '#2a0a22', 'rings'], mark: 'VST3, VST2, CLAP, LV2' },
+    { title: 'Recording', text: 'Loop recording with takes and comping, count-in, punch in and out.', art: ['#a8287a', '#0e0710', 'lines'], mark: 'Take 1, 2, 3' },
+    { title: 'Export', text: 'Mixdowns, stems and MIDI files, at any sample rate.', art: ['#4a044e', '#831843', 'fog'], mark: 'Song.wav, Song.mid' },
   ],
 }
 
@@ -123,4 +123,4 @@ export const notFound = {
   cta: 'Go to the home page',
 }
 
-export const footer = { brand: 'vybrant', line: 'A complete music studio for Linux and Windows.' }
+export const footer = { brand: 'vybrant' }

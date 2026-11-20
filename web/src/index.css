@@ -6,9 +6,9 @@
 }
 
 html { scroll-behavior: smooth; }
-body { background: #0b0a10; color: rgb(255 255 255 / 0.9); -webkit-font-smoothing: antialiased; }
+body { background: #0d080b; color: rgb(255 255 255 / 0.9); -webkit-font-smoothing: antialiased; }
 section { scroll-margin-top: 2.5rem; }
-::selection { background: rgb(224 64 251 / .35); }
+::selection { background: rgb(190 24 93 / .5); }
 
 
 /* the nav fill's blobs (Liquid in App.jsx): same path and easing motion ran, but on the compositor */
@@ -56,4 +56,11 @@ section { scroll-margin-top: 2.5rem; }
   50% { text-shadow: -1.5px 0 #e040fb, 1.5px 0 #22d3ee; opacity: .8; }
   75% { text-shadow: 1px 0 #e040fb, -1px 0 #22d3ee; opacity: 1; }
 }
-@media (prefers-reduced-motion: reduce) { .glitch svg, .glitch-text { animation: none !important; } }
+/* the 404: split like the nav labels and glitching on its own every few seconds. --g sets the split, so big text splits wider */
+.glitch-loop { --gg: var(--g, 1px); text-shadow: calc(-1 * var(--gg)) 0 rgb(224 64 251 / .35), var(--gg) 0 rgb(34 211 238 / .35); animation: g-loop 5s steps(1) infinite; }
+@keyframes g-loop {
+  0% { text-shadow: calc(-2 * var(--gg)) 0 rgb(224 64 251 / .8), calc(2 * var(--gg)) 0 rgb(34 211 238 / .8); opacity: .85; transform: translateX(calc(.5 * var(--gg))); }
+  2% { text-shadow: calc(1.5 * var(--gg)) 0 rgb(224 64 251 / .7), calc(-1.5 * var(--gg)) 0 rgb(34 211 238 / .7); opacity: 1; transform: none; }
+  4%, 100% { text-shadow: calc(-1 * var(--gg)) 0 rgb(224 64 251 / .35), var(--gg) 0 rgb(34 211 238 / .35); opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) { .glitch svg, .glitch-text, .glitch-loop { animation: none !important; } }
